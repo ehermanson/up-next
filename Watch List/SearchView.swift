@@ -474,7 +474,7 @@ struct SearchResultRow: View {
     }
 
     #Preview("TV Shows") {
-        NavigationView {
+        NavigationStack {
             SearchView(
                 mediaType: .tvShow,
                 onItemAdded: { _ in },
@@ -486,7 +486,7 @@ struct SearchResultRow: View {
     }
 
     #Preview("Movies") {
-        NavigationView {
+        NavigationStack {
             SearchView(
                 mediaType: .movie,
                 onItemAdded: { _ in },

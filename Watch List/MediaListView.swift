@@ -21,7 +21,7 @@ struct MediaListView: View {
     let onSearchTapped: (() -> Void)?
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 if !unwatchedItems.isEmpty {
                     UnwatchedSection(
