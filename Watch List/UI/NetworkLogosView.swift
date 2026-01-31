@@ -38,14 +38,17 @@ struct NetworkLogosView: View {
                             }
                         }
                         .frame(width: logoSize, height: logoSize)
-                        .background(Color.white.opacity(0.85))
-                        .clipShape(.rect(cornerRadius: logoSize * 0.19))
+                        .background(Color.white.opacity(0.85), in: .rect(cornerRadius: logoSize * 0.19))
+                        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.19))
                     }
                 }
                 if networks.count > maxVisible {
-                    Text("+\(networks.count - maxVisible) more")
+                    Text("+\(networks.count - maxVisible)")
                         .font(.caption)
+                        .fontWeight(.medium)
                         .foregroundStyle(.secondary)
+                        .frame(width: logoSize, height: logoSize)
+                        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.19))
                 }
             }
             .padding(.vertical, 2)

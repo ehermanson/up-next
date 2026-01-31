@@ -45,33 +45,35 @@ struct MediaDetailView: View {
                 VStack(spacing: 0) {
                     HeaderImageView(imageURL: listItem.media?.thumbnailURL)
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text(listItem.media?.title ?? "")
-                            .font(.title)
-                            .fontWeight(.bold)
+                    GlassEffectContainer(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text(listItem.media?.title ?? "")
+                                .font(.title)
+                                .fontWeight(.bold)
 
-                        MetadataRow(listItem: listItem)
+                            MetadataRow(listItem: listItem)
 
-                        NetworkLogosView(networks: listItem.media?.networks ?? [])
+                            NetworkLogosView(networks: listItem.media?.networks ?? [])
 
-                        Divider().padding(.vertical, 4)
+                            Divider().padding(.vertical, 4)
 
-                        DescriptionSection(
-                            isLoading: isLoadingDetails,
-                            descriptionText: listItem.media?.descriptionText)
+                            DescriptionSection(
+                                isLoading: isLoadingDetails,
+                                descriptionText: listItem.media?.descriptionText)
 
-                        Divider().padding(.vertical, 4)
+                            Divider().padding(.vertical, 4)
 
-                        CastSection(cast: listItem.media?.cast ?? [])
+                            CastSection(cast: listItem.media?.cast ?? [])
 
-                        Divider().padding(.vertical, 4)
+                            Divider().padding(.vertical, 4)
 
-                        WatchedToggleCard(listItem: $listItem)
+                            WatchedToggleCard(listItem: $listItem)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                        .padding(.bottom, 24)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 28))
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 24)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 28))
                     .padding(.horizontal, 12)
                     .offset(y: -40)
                 }

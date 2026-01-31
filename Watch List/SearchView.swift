@@ -51,8 +51,10 @@ struct SearchView: View {
                 } else if let error = errorMessage {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
+                            .font(.system(size: 40))
                             .foregroundStyle(.orange)
+                            .frame(width: 80, height: 80)
+                            .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .circle)
                         Text(error)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -288,29 +290,31 @@ private struct ShimmerLoadingView: View {
     @State private var shimmerOffset: CGFloat = -200
 
     var body: some View {
-        VStack(spacing: 16) {
-            ForEach(0..<4, id: \.self) { _ in
-                HStack(spacing: 12) {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: 60, height: 90)
-                    VStack(alignment: .leading, spacing: 8) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(height: 16)
-                            .frame(maxWidth: 180)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.gray.opacity(0.15))
-                            .frame(height: 12)
-                            .frame(maxWidth: 240)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.gray.opacity(0.1))
-                            .frame(height: 12)
-                            .frame(maxWidth: 200)
+        GlassEffectContainer(spacing: 8) {
+            VStack(spacing: 16) {
+                ForEach(0..<4, id: \.self) { _ in
+                    HStack(spacing: 12) {
+                        Color.clear
+                            .frame(width: 60, height: 90)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 10))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Color.clear
+                                .frame(height: 16)
+                                .frame(maxWidth: 180)
+                                .glassEffect(.regular, in: .capsule)
+                            Color.clear
+                                .frame(height: 12)
+                                .frame(maxWidth: 240)
+                                .glassEffect(.regular, in: .capsule)
+                            Color.clear
+                                .frame(height: 12)
+                                .frame(maxWidth: 200)
+                                .glassEffect(.regular, in: .capsule)
+                        }
+                        Spacer()
                     }
-                    Spacer()
+                    .padding(.horizontal, 20)
                 }
-                .padding(.horizontal, 20)
             }
         }
         .overlay(
@@ -417,7 +421,7 @@ struct SearchResultRow: View {
             .accessibilityLabel("Add to list")
             .hoverEffect(.lift)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
         .padding(.horizontal, 4)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
