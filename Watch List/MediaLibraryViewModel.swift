@@ -1,13 +1,13 @@
-import Combine
 import Foundation
 import SwiftData
 
 @MainActor
-final class MediaLibraryViewModel: ObservableObject {
-    @Published var tvShows: [ListItem] = []
-    @Published var movies: [ListItem] = []
-    @Published var unwatchedTVShows: [ListItem] = []
-    @Published var unwatchedMovies: [ListItem] = []
+@Observable
+final class MediaLibraryViewModel {
+    var tvShows: [ListItem] = []
+    var movies: [ListItem] = []
+    var unwatchedTVShows: [ListItem] = []
+    var unwatchedMovies: [ListItem] = []
 
     private var modelContext: ModelContext?
     private var tvList: MediaList?

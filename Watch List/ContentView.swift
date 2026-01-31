@@ -15,7 +15,7 @@ struct ContentView: View {
     }
 
     @Environment(\.modelContext) private var modelContext
-    @StateObject private var viewModel = MediaLibraryViewModel()
+    @State private var viewModel = MediaLibraryViewModel()
 
     @State private var expandedTVShowID: String? = nil
     @State private var expandedMovieID: String? = nil
