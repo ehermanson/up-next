@@ -129,11 +129,9 @@ struct WatchedSection: View {
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
 
-    private var watchedIndices: [Int] {
-        items.indices.filter { items[$0].isWatched }
-            .sorted { lhsIndex, rhsIndex in
-                let lhs = items[lhsIndex]
-                let rhs = items[rhsIndex]
+    private var watchedItems: [ListItem] {
+        items.filter { $0.isWatched }
+            .sorted { lhs, rhs in
                 // Sort by watchedAt ascending, nils last
                 switch (lhs.watchedAt, rhs.watchedAt) {
                 case (let l?, let r?):
@@ -149,14 +147,17 @@ struct WatchedSection: View {
     }
 
     var body: some View {
-        if !watchedIndices.isEmpty {
+        if !watchedItems.isEmpty {
             Section {
-                ForEach(watchedIndices, id: \.self) { sortedIndex in
-                    let item = items[sortedIndex]
+                ForEach(watchedItems, id: \.media?.id) { item in
                     let itemBinding = Binding(
-                        get: { items[sortedIndex] },
+                        get: {
+                            items.first(where: { $0.media?.id == item.media?.id }) ?? item
+                        },
                         set: { newValue in
-                            items[sortedIndex] = newValue
+                            if let index = items.firstIndex(where: { $0.media?.id == item.media?.id }) {
+                                items[index] = newValue
+                            }
                         }
                     )
                     MediaListRow(
@@ -166,14 +167,14 @@ struct WatchedSection: View {
                         subtitle: subtitleProvider(item),
                         onItemExpanded: onItemExpanded,
                         onWatchedToggled: {
-                            var updatedItem = items[sortedIndex]
-                            updatedItem.isWatched.toggle()
-                            if updatedItem.isWatched {
-                                updatedItem.watchedAt = Date()
-                            } else {
-                                updatedItem.watchedAt = nil
+                            if let index = items.firstIndex(where: { $0.media?.id == item.media?.id }) {
+                                items[index].isWatched.toggle()
+                                if items[index].isWatched {
+                                    items[index].watchedAt = Date()
+                                } else {
+                                    items[index].watchedAt = nil
+                                }
                             }
-                            items[sortedIndex] = updatedItem
                             onWatchedToggled()
                         }
                     )
