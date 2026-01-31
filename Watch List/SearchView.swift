@@ -390,8 +390,8 @@ struct SearchResultRow: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 60, height: 90)
+                        .clipShape(.rect(cornerRadius: 8))
                         .clipped()
-                        .cornerRadius(8)
                 case .failure:
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))

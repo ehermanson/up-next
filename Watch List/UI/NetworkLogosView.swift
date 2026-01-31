@@ -37,7 +37,7 @@ struct NetworkLogosView: View {
                             }
                         }
                         .frame(width: logoSize, height: logoSize)
-                        .cornerRadius(logoSize * 0.19)
+                        .clipShape(.rect(cornerRadius: logoSize * 0.19))
                     }
                 }
                 if networks.count > maxVisible {

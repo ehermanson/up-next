@@ -19,13 +19,13 @@ struct MediaCardView: View {
                     Color.gray.opacity(0.1)
                 }
                 .frame(width: 60, height: 70)
-                .cornerRadius(18)
+                .clipShape(.rect(cornerRadius: 18))
                 .clipped()
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
                     .frame(width: 60, height: 70)
-                    .cornerRadius(18)
+                    .clipShape(.rect(cornerRadius: 18))
             }
 
             VStack(alignment: .leading, spacing: 4) {
