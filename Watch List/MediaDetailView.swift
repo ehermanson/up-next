@@ -310,7 +310,7 @@ private struct CastSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Cast")
                     .font(.headline)
-                ScrollView(.horizontal, showsIndicators: false) {
+                ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(cast.prefix(10), id: \.self) { member in
                             Text(member)
@@ -324,6 +324,7 @@ private struct CastSection: View {
                     }
                     .padding(.horizontal, 1)
                 }
+                .scrollIndicators(.hidden)
             }
         }
     }
