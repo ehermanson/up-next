@@ -421,8 +421,8 @@ struct SearchResultRow: View {
             .accessibilityLabel("Add to list")
             .hoverEffect(.lift)
         }
-        .padding(.vertical, 2)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))

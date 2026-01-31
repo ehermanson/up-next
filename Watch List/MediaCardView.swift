@@ -58,7 +58,7 @@ struct MediaCardView: View {
             }
         }
         .padding(.all, 14)
-        .glassEffect(.regular.tint(.indigo.opacity(0.12)).interactive(), in: .rect(cornerRadius: 24))
+        .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: 20))
     }
 }
 
