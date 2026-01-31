@@ -43,7 +43,7 @@ struct NetworkLogosView: View {
                 if networks.count > maxVisible {
                     Text("+\(networks.count - maxVisible) more")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
         }

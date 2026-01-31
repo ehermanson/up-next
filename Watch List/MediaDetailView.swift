@@ -54,11 +54,11 @@ struct MediaDetailView: View {
                         if let summary = listItem.tvShow?.seasonsEpisodesSummary {
                             Text(summary)
                                 .font(.title3)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                         } else if let movie = listItem.movie, let meta = movieMeta(from: movie) {
                             Text(meta)
                                 .font(.title3)
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                         }
 
                         NetworkLogosView(networks: listItem.media?.networks ?? [])
@@ -226,7 +226,7 @@ private struct HeaderImageView: View {
                                 Text(title)
                                     .font(.title2)
                                     .fontWeight(.black)
-                                    .foregroundColor(.white)
+                                    .foregroundStyle(.white)
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 16)
                                     .padding(.bottom, 20)
@@ -240,7 +240,7 @@ private struct HeaderImageView: View {
                                 Text(title)
                                     .font(.title2)
                                     .fontWeight(.semibold)
-                                    .foregroundColor(.white)
+                                    .foregroundStyle(.white)
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 16)
                                     .padding(.bottom, 20)
@@ -258,7 +258,7 @@ private struct HeaderImageView: View {
                         Text(title)
                             .font(.title2)
                             .fontWeight(.semibold)
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 16)
                             .padding(.bottom, 20)
@@ -283,18 +283,18 @@ private struct DescriptionSection: View {
                         .scaleEffect(0.8)
                     Text("Loading details...")
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             } else if let descriptionText, !descriptionText.isEmpty {
                 Text(descriptionText)
                     .font(.body)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             } else {
                 Text(
                     "This is a placeholder for a detailed description, cast, or other information about this media item."
                 )
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -315,7 +315,7 @@ private struct CastSection: View {
                         ForEach(cast.prefix(10), id: \.self) { member in
                             Text(member)
                                 .font(.subheadline)
-                                .foregroundColor(.primary)
+                                .foregroundStyle(.primary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
                                 .background(.ultraThinMaterial)

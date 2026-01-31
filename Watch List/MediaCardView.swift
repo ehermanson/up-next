@@ -36,14 +36,14 @@ struct MediaCardView: View {
                     Spacer()
                     if isWatched {
                         Image(systemName: "checkmark.seal.fill")
-                            .foregroundColor(.green)
+                            .foregroundStyle(.green)
                             .accessibilityLabel("Watched")
                     }
                 }
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 NetworkLogosView(networks: networks, maxVisible: 2, logoSize: 20)
