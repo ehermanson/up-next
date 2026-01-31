@@ -50,8 +50,11 @@ struct ContentView: View {
             SearchView(
                 mediaType: mediaType,
                 existingIDs: existingIDs(for: mediaType),
-                onItemAdded: { newItem in
-                    addItem(newItem, for: mediaType)
+                onTVShowAdded: { tvShow in
+                    viewModel.addTVShow(tvShow)
+                },
+                onMovieAdded: { movie in
+                    viewModel.addMovie(movie)
                 }
             )
         }
@@ -182,10 +185,6 @@ struct ContentView: View {
     private func existingIDs(for mediaType: MediaType) -> Set<String> {
         let items = mediaType == .tvShow ? viewModel.tvShows : viewModel.movies
         return Set(items.compactMap { $0.media?.id })
-    }
-
-    private func addItem(_ item: ListItem, for mediaType: MediaType) {
-        viewModel.add(listItem: item, mediaType: mediaType)
     }
 
     private func movieSubtitle(for item: ListItem) -> String? {

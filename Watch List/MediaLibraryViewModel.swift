@@ -30,57 +30,46 @@ final class MediaLibraryViewModel {
         }
     }
 
-    func add(listItem: ListItem, mediaType: MediaType) {
-        guard
-            let context = modelContext,
-            let user = currentUser
-        else { return }
+    func addTVShow(_ tvShow: TVShow) {
+        guard let context = modelContext, let user = currentUser else { return }
+        guard !containsItem(withID: tvShow.id, mediaType: .tvShow) else { return }
 
-        if let id = listItem.media?.id, containsItem(withID: id, mediaType: mediaType) {
-            return
-        }
+        let list = ensureList(for: .tvShow, using: user)
+        let item = ListItem(
+            tvShow: tvShow,
+            list: list,
+            addedBy: user,
+            addedAt: Date(),
+            isWatched: false,
+            watchedAt: nil,
+            order: nextOrderValue(for: .tvShow)
+        )
+        context.insert(item)
+        tvShows.append(item)
 
-        let list = ensureList(for: mediaType, using: user)
-        let nextOrder = nextOrderValue(for: mediaType)
+        syncUnwatched(for: .tvShow)
+        try? context.save()
+    }
 
-        switch mediaType {
-        case .tvShow:
-            guard let tvShow = listItem.tvShow else { return }
-            let item = ListItem(
-                tvShow: tvShow,
-                list: list,
-                addedBy: user,
-                addedAt: Date(),
-                isWatched: false,
-                watchedAt: nil,
-                order: nextOrder
-            )
-            context.insert(item)
-            tvShows.append(item)
-        case .movie:
-            guard let movie = listItem.movie else { return }
-            let item = ListItem(
-                movie: movie,
-                list: list,
-                addedBy: user,
-                addedAt: Date(),
-                isWatched: false,
-                watchedAt: nil,
-                order: nextOrder
-            )
-            context.insert(item)
-            movies.append(item)
-        }
+    func addMovie(_ movie: Movie) {
+        guard let context = modelContext, let user = currentUser else { return }
+        guard !containsItem(withID: movie.id, mediaType: .movie) else { return }
 
-        syncUnwatched(for: mediaType)
+        let list = ensureList(for: .movie, using: user)
+        let item = ListItem(
+            movie: movie,
+            list: list,
+            addedBy: user,
+            addedAt: Date(),
+            isWatched: false,
+            watchedAt: nil,
+            order: nextOrderValue(for: .movie)
+        )
+        context.insert(item)
+        movies.append(item)
 
-        do {
-            try context.save()
-        } catch {
-            #if DEBUG
-                print("Failed to add item: \(error)")
-            #endif
-        }
+        syncUnwatched(for: .movie)
+        try? context.save()
     }
 
     func removeItem(withID id: String, mediaType: MediaType) {
@@ -317,14 +306,15 @@ final class MediaLibraryViewModel {
             (278, true),     // The Shawshank Redemption
         ]
 
-        // Fetch TV shows concurrently
-        let tvResults = await withTaskGroup(of: (Int, TVShow?).self) { group in
+        // Fetch all TMDB details concurrently (raw Codable structs, not @Model objects)
+        let tvDetails: [(Int, TMDBTVShowDetail?)] = await withTaskGroup(
+            of: (Int, TMDBTVShowDetail?).self
+        ) { group in
             for (index, seed) in tvSeeds.enumerated() {
                 group.addTask {
                     do {
                         let detail = try await service.getTVShowDetails(id: seed.id)
-                        let tvShow = await service.mapToTVShow(detail)
-                        return (index, tvShow)
+                        return (index, detail)
                     } catch {
                         #if DEBUG
                             print("Failed to fetch TV show \(seed.id): \(error)")
@@ -333,16 +323,40 @@ final class MediaLibraryViewModel {
                     }
                 }
             }
-            var results: [(Int, TVShow?)] = []
-            for await result in group {
-                results.append(result)
-            }
+            var results: [(Int, TMDBTVShowDetail?)] = []
+            for await result in group { results.append(result) }
             return results.sorted { $0.0 < $1.0 }
         }
 
+        let movieDetails: [(Int, TMDBMovieDetail?, TMDBWatchProviderCountry?)] = await withTaskGroup(
+            of: (Int, TMDBMovieDetail?, TMDBWatchProviderCountry?).self
+        ) { group in
+            for (index, seed) in movieSeeds.enumerated() {
+                group.addTask {
+                    do {
+                        async let detailTask = service.getMovieDetails(id: seed.id)
+                        async let providersTask = service.getMovieWatchProviders(id: seed.id, countryCode: "US")
+                        let detail = try await detailTask
+                        let providers = try await providersTask
+                        return (index, detail, providers)
+                    } catch {
+                        #if DEBUG
+                            print("Failed to fetch movie \(seed.id): \(error)")
+                        #endif
+                        return (index, nil, nil)
+                    }
+                }
+            }
+            var results: [(Int, TMDBMovieDetail?, TMDBWatchProviderCountry?)] = []
+            for await result in group { results.append(result) }
+            return results.sorted { $0.0 < $1.0 }
+        }
+
+        // Map to @Model objects on the main actor
         var seedTVItems: [ListItem] = []
-        for (index, tvShow) in tvResults {
-            guard let tvShow else { continue }
+        for (index, detail) in tvDetails {
+            guard let detail else { continue }
+            let tvShow = service.mapToTVShow(detail)
             let seed = tvSeeds[index]
             let daysAgo = seed.watched ? Double(30 + index * 15) : 0
             let item = ListItem(
@@ -358,35 +372,10 @@ final class MediaLibraryViewModel {
             seedTVItems.append(item)
         }
 
-        // Fetch movies concurrently
-        let movieResults = await withTaskGroup(of: (Int, Movie?).self) { group in
-            for (index, seed) in movieSeeds.enumerated() {
-                group.addTask {
-                    do {
-                        async let detailTask = service.getMovieDetails(id: seed.id)
-                        async let providersTask = service.getMovieWatchProviders(id: seed.id, countryCode: "US")
-                        let detail = try await detailTask
-                        let providers = try await providersTask
-                        let movie = await service.mapToMovie(detail, providers: providers)
-                        return (index, movie)
-                    } catch {
-                        #if DEBUG
-                            print("Failed to fetch movie \(seed.id): \(error)")
-                        #endif
-                        return (index, nil)
-                    }
-                }
-            }
-            var results: [(Int, Movie?)] = []
-            for await result in group {
-                results.append(result)
-            }
-            return results.sorted { $0.0 < $1.0 }
-        }
-
         var seedMovieItems: [ListItem] = []
-        for (index, movie) in movieResults {
-            guard let movie else { continue }
+        for (index, detail, providers) in movieDetails {
+            guard let detail else { continue }
+            let movie = service.mapToMovie(detail, providers: providers)
             let seed = movieSeeds[index]
             let daysAgo = seed.watched ? Double(30 + index * 15) : 0
             let item = ListItem(

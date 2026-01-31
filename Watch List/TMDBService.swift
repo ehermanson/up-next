@@ -100,7 +100,7 @@ actor TMDBService {
     // MARK: - Mapping Helpers
 
     /// Convert TMDB network to Network model
-    func mapToNetwork(_ network: TMDBNetwork) -> Network {
+    nonisolated func mapToNetwork(_ network: TMDBNetwork) -> Network {
         Network(
             id: network.id,
             name: network.name,
@@ -110,7 +110,7 @@ actor TMDBService {
     }
 
     /// Convert TMDB TV show search result to TVShow model
-    func mapToTVShow(_ result: TMDBTVShowSearchResult) -> TVShow {
+    nonisolated func mapToTVShow(_ result: TMDBTVShowSearchResult) -> TVShow {
         TVShow(
             id: String(result.id),
             title: result.name,
@@ -124,7 +124,7 @@ actor TMDBService {
     }
 
     /// Convert TMDB TV show detail to TVShow model
-    func mapToTVShow(_ detail: TMDBTVShowDetail) -> TVShow {
+    nonisolated func mapToTVShow(_ detail: TMDBTVShowDetail) -> TVShow {
         let cast = detail.credits?.cast?.prefix(10).map { $0.name } ?? []
         let networks = detail.networks?.map { mapToNetwork($0) } ?? []
         return TVShow(
@@ -140,7 +140,7 @@ actor TMDBService {
     }
 
     /// Convert TMDB movie search result to Movie model
-    func mapToMovie(_ result: TMDBMovieSearchResult) -> Movie {
+    nonisolated func mapToMovie(_ result: TMDBMovieSearchResult) -> Movie {
         Movie(
             id: String(result.id),
             title: result.title,
@@ -154,7 +154,7 @@ actor TMDBService {
     }
 
     /// Convert TMDB movie detail + watch providers to Movie model
-    func mapToMovie(_ detail: TMDBMovieDetail, providers: TMDBWatchProviderCountry?) -> Movie {
+    nonisolated func mapToMovie(_ detail: TMDBMovieDetail, providers: TMDBWatchProviderCountry?) -> Movie {
         let cast = detail.credits?.cast?.prefix(10).map { $0.name } ?? []
 
         let rent: [TMDBWatchProviderEntry] = providers?.rent ?? []

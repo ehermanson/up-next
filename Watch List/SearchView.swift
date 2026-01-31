@@ -11,7 +11,8 @@ enum MediaType: Identifiable {
 struct SearchView: View {
     let mediaType: MediaType
     let existingIDs: Set<String>
-    let onItemAdded: (ListItem) -> Void
+    let onTVShowAdded: ((TVShow) -> Void)?
+    let onMovieAdded: ((Movie) -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
@@ -26,14 +27,16 @@ struct SearchView: View {
     init(
         mediaType: MediaType,
         existingIDs: Set<String> = [],
-        onItemAdded: @escaping (ListItem) -> Void,
+        onTVShowAdded: ((TVShow) -> Void)? = nil,
+        onMovieAdded: ((Movie) -> Void)? = nil,
         initialSearchText: String = "",
         initialTVResults: [TMDBTVShowSearchResult] = [],
         initialMovieResults: [TMDBMovieSearchResult] = []
     ) {
         self.mediaType = mediaType
         self.existingIDs = existingIDs
-        self.onItemAdded = onItemAdded
+        self.onTVShowAdded = onTVShowAdded
+        self.onMovieAdded = onMovieAdded
         _searchText = State(initialValue: initialSearchText)
         _tvShowResults = State(initialValue: initialTVResults)
         _movieResults = State(initialValue: initialMovieResults)
@@ -189,21 +192,6 @@ struct SearchView: View {
         isLoading = false
     }
 
-    private func makeListItem(movie: Movie? = nil, tvShow: TVShow? = nil) -> ListItem {
-        let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
-        let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
-        return ListItem(
-            movie: movie,
-            tvShow: tvShow,
-            list: stubList,
-            addedBy: stubUser,
-            addedAt: Date(),
-            isWatched: false,
-            watchedAt: nil,
-            order: 0
-        )
-    }
-
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
@@ -211,11 +199,11 @@ struct SearchView: View {
             let tvShow: TVShow
             do {
                 let detail = try await service.getTVShowDetails(id: result.id)
-                tvShow = await service.mapToTVShow(detail)
+                tvShow = service.mapToTVShow(detail)
             } catch {
-                tvShow = await service.mapToTVShow(result)
+                tvShow = service.mapToTVShow(result)
             }
-            onItemAdded(makeListItem(tvShow: tvShow))
+            onTVShowAdded?(tvShow)
         }
     }
 
@@ -230,11 +218,11 @@ struct SearchView: View {
                     id: result.id, countryCode: "US")
                 let detail = try await detailTask
                 let providers = try await providersTask
-                movie = await service.mapToMovie(detail, providers: providers)
+                movie = service.mapToMovie(detail, providers: providers)
             } catch {
-                movie = await service.mapToMovie(result)
+                movie = service.mapToMovie(result)
             }
-            onItemAdded(makeListItem(movie: movie))
+            onMovieAdded?(movie)
         }
     }
 }
@@ -445,7 +433,7 @@ struct SearchResultRow: View {
         NavigationStack {
             SearchView(
                 mediaType: .tvShow,
-                onItemAdded: { _ in },
+                onTVShowAdded: { _ in },
                 initialSearchText: "Sev",
                 initialTVResults: SearchViewPreviewData.tvShows
             )
@@ -457,7 +445,7 @@ struct SearchResultRow: View {
         NavigationStack {
             SearchView(
                 mediaType: .movie,
-                onItemAdded: { _ in },
+                onMovieAdded: { _ in },
                 initialSearchText: "Dune",
                 initialMovieResults: SearchViewPreviewData.movies
             )
