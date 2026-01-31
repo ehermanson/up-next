@@ -46,20 +46,13 @@ struct ContentView: View {
                 .padding(.trailing, 28)
                 .padding(.bottom, -6)
         }
-        .sheet(
-            isPresented: Binding(
-                get: { activeSearchMediaType != nil },
-                set: { if !$0 { activeSearchMediaType = nil } }
+        .sheet(item: $activeSearchMediaType) { mediaType in
+            SearchView(
+                mediaType: mediaType,
+                onItemAdded: { newItem in
+                    addItem(newItem, for: mediaType)
+                }
             )
-        ) {
-            if let mediaType = activeSearchMediaType {
-                SearchView(
-                    mediaType: mediaType,
-                    onItemAdded: { newItem in
-                        addItem(newItem, for: mediaType)
-                    }
-                )
-            }
         }
         .task {
             await viewModel.configure(modelContext: modelContext)
@@ -90,26 +83,24 @@ struct ContentView: View {
             onSearchTapped: nil
         )
         .sheet(
-            isPresented: Binding(
-                get: { expandedTVShowID != nil },
-                set: { if !$0 { expandedTVShowID = nil } }
+            item: Binding(
+                get: { selectedTVShow },
+                set: { _ in expandedTVShowID = nil }
             )
-        ) {
-            if let item = selectedTVShow {
-                MediaDetailView(
-                    listItem: binding(forItem: item, in: $viewModel.tvShows),
-                    dismiss: {
+        ) { item in
+            MediaDetailView(
+                listItem: binding(forItem: item, in: $viewModel.tvShows),
+                dismiss: {
+                    expandedTVShowID = nil
+                    viewModel.persistChanges(for: .tvShow)
+                },
+                onRemove: {
+                    if let id = item.media?.id {
                         expandedTVShowID = nil
-                        viewModel.persistChanges(for: .tvShow)
-                    },
-                    onRemove: {
-                        if let id = item.media?.id {
-                            expandedTVShowID = nil
-                            viewModel.removeItem(withID: id, mediaType: .tvShow)
-                        }
+                        viewModel.removeItem(withID: id, mediaType: .tvShow)
                     }
-                )
-            }
+                }
+            )
         }
     }
 
@@ -134,26 +125,24 @@ struct ContentView: View {
             onSearchTapped: nil
         )
         .sheet(
-            isPresented: Binding(
-                get: { expandedMovieID != nil },
-                set: { if !$0 { expandedMovieID = nil } }
+            item: Binding(
+                get: { selectedMovie },
+                set: { _ in expandedMovieID = nil }
             )
-        ) {
-            if let item = selectedMovie {
-                MediaDetailView(
-                    listItem: binding(forItem: item, in: $viewModel.movies),
-                    dismiss: {
+        ) { item in
+            MediaDetailView(
+                listItem: binding(forItem: item, in: $viewModel.movies),
+                dismiss: {
+                    expandedMovieID = nil
+                    viewModel.persistChanges(for: .movie)
+                },
+                onRemove: {
+                    if let id = item.media?.id {
                         expandedMovieID = nil
-                        viewModel.persistChanges(for: .movie)
-                    },
-                    onRemove: {
-                        if let id = item.media?.id {
-                            expandedMovieID = nil
-                            viewModel.removeItem(withID: id, mediaType: .movie)
-                        }
+                        viewModel.removeItem(withID: id, mediaType: .movie)
                     }
-                )
-            }
+                }
+            )
         }
     }
 

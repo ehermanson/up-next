@@ -1,9 +1,11 @@
 import SwiftData
 import SwiftUI
 
-enum MediaType {
+enum MediaType: Identifiable {
     case tvShow
     case movie
+
+    var id: Self { self }
 }
 
 struct SearchView: View {
