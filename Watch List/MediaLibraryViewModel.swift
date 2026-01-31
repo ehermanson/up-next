@@ -171,7 +171,7 @@ final class MediaLibraryViewModel {
             movies = try context.fetch(movieDescriptor)
 
             if tvShows.isEmpty && movies.isEmpty {
-                seedStubData()
+                await seedStubData()
             }
 
             syncUnwatched(for: .tvShow)
@@ -250,101 +250,106 @@ final class MediaLibraryViewModel {
         }
     }
 
-    private func seedStubData() {
+    private func seedStubData() async {
         guard let context = modelContext, let user = currentUser else { return }
-        do {
-            let tvList = ensureList(for: .tvShow, using: user)
-            let movieList = ensureList(for: .movie, using: user)
 
-            let stubTV: [ListItem] = [
-                ListItem(
-                    tvShow: TVShow(
-                        id: "tv-1",
-                        title: "Stub TV Show 1",
-                        thumbnailURL: URL(string: "https://example.com/tvshow1.jpg"),
-                        networks: []
-                    ),
+        let service = TMDBService.shared
+        let tvList = ensureList(for: .tvShow, using: user)
+        let movieList = ensureList(for: .movie, using: user)
+
+        // TV show IDs to seed: (tmdbID, isWatched)
+        let tvSeeds: [(id: Int, watched: Bool)] = [
+            (1396, false),   // Breaking Bad
+            (2316, false),   // The Office
+            (97546, false),  // Ted Lasso
+            (76479, false),  // The Boys
+            (82856, false),  // The Mandalorian
+            (94997, false),  // House of the Dragon
+            (103768, false), // Sweet Tooth
+            (95557, false),  // Invincible
+            (1399, true),    // Game of Thrones
+            (66732, true),   // Stranger Things
+            (87108, true),   // Chernobyl
+            (60625, true),   // Rick and Morty
+        ]
+
+        // Movie IDs to seed: (tmdbID, isWatched)
+        let movieSeeds: [(id: Int, watched: Bool)] = [
+            (603692, false), // John Wick: Chapter 4
+            (693134, false), // Dune: Part Two
+            (545611, false), // Everything Everywhere All at Once
+            (346698, false), // Barbie
+            (872585, false), // Oppenheimer
+            (438631, true),  // Dune
+            (299536, true),  // Avengers: Infinity War
+            (550, true),     // Fight Club
+            (278, true),     // The Shawshank Redemption
+        ]
+
+        var seedTVItems: [ListItem] = []
+        var seedMovieItems: [ListItem] = []
+
+        // Fetch TV shows from API
+        for (index, seed) in tvSeeds.enumerated() {
+            do {
+                let detail = try await service.getTVShowDetails(id: seed.id)
+                let tvShow = await service.mapToTVShow(detail)
+                let daysAgo = seed.watched ? Double(30 + index * 15) : 0
+                let item = ListItem(
+                    tvShow: tvShow,
                     list: tvList,
                     addedBy: user,
-                    addedAt: Date(),
-                    isWatched: false,
-                    watchedAt: nil,
-                    order: 0
-                ),
-                ListItem(
-                    tvShow: TVShow(
-                        id: "tv-2",
-                        title: "Stub TV Show 2",
-                        thumbnailURL: URL(string: "https://example.com/tvshow2.jpg"),
-                        networks: []
-                    ),
-                    list: tvList,
-                    addedBy: user,
-                    addedAt: Date(),
-                    isWatched: true,
-                    watchedAt: Date(),
-                    order: 1
-                ),
-                ListItem(
-                    tvShow: TVShow(
-                        id: "tv-3",
-                        title: "Stub TV Show 3",
-                        thumbnailURL: URL(string: "https://example.com/tvshow3.jpg")
-                    ),
-                    list: tvList,
-                    addedBy: user,
-                    addedAt: Date(),
-                    isWatched: false,
-                    watchedAt: nil,
-                    order: 2
-                ),
-            ]
-
-            let stubMovies: [ListItem] = [
-                ListItem(
-                    movie: Movie(
-                        id: "movie-1",
-                        title: "Stub Movie 1",
-                        thumbnailURL: URL(string: "https://example.com/movie1.jpg"),
-                        networks: [],
-                        releaseDate: "2022-01-15"
-                    ),
-                    list: movieList,
-                    addedBy: user,
-                    addedAt: Date(),
-                    isWatched: true,
-                    watchedAt: Date(),
-                    order: 0
-                ),
-                ListItem(
-                    movie: Movie(
-                        id: "movie-2",
-                        title: "Stub Movie 2",
-                        thumbnailURL: URL(string: "https://example.com/movie2.jpg"),
-                        releaseDate: "2021-07-22"
-                    ),
-                    list: movieList,
-                    addedBy: user,
-                    addedAt: Date(),
-                    isWatched: false,
-                    watchedAt: nil,
-                    order: 1
-                ),
-            ]
-
-            for item in stubTV + stubMovies {
+                    addedAt: Date().addingTimeInterval(-86400 * daysAgo),
+                    isWatched: seed.watched,
+                    watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
+                    order: index
+                )
                 context.insert(item)
+                seedTVItems.append(item)
+            } catch {
+                #if DEBUG
+                    print("Failed to fetch TV show \(seed.id): \(error)")
+                #endif
             }
+        }
 
-            tvShows = stubTV
-            movies = stubMovies
-            syncUnwatched(for: .tvShow)
-            syncUnwatched(for: .movie)
+        // Fetch movies from API
+        for (index, seed) in movieSeeds.enumerated() {
+            do {
+                async let detailTask = service.getMovieDetails(id: seed.id)
+                async let providersTask = service.getMovieWatchProviders(id: seed.id, countryCode: "US")
+                let detail = try await detailTask
+                let providers = try await providersTask
+                let movie = await service.mapToMovie(detail, providers: providers)
+                let daysAgo = seed.watched ? Double(30 + index * 15) : 0
+                let item = ListItem(
+                    movie: movie,
+                    list: movieList,
+                    addedBy: user,
+                    addedAt: Date().addingTimeInterval(-86400 * daysAgo),
+                    isWatched: seed.watched,
+                    watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
+                    order: index
+                )
+                context.insert(item)
+                seedMovieItems.append(item)
+            } catch {
+                #if DEBUG
+                    print("Failed to fetch movie \(seed.id): \(error)")
+                #endif
+            }
+        }
 
+        tvShows = seedTVItems
+        movies = seedMovieItems
+        syncUnwatched(for: .tvShow)
+        syncUnwatched(for: .movie)
+
+        do {
             try context.save()
         } catch {
             #if DEBUG
-                print("Failed to seed stub data: \(error)")
+                print("Failed to save seed data: \(error)")
             #endif
         }
     }

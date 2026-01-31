@@ -12,11 +12,9 @@ struct MediaDetailView: View {
 
     private let service = TMDBService.shared
 
-    // Check if we need to fetch full details
     private var needsFullDetails: Bool {
         guard let media = listItem.media else { return false }
 
-        // Ensure id is a valid Int
         _ = Int(media.id)
 
         if let tvShow = listItem.tvShow {
@@ -44,22 +42,15 @@ struct MediaDetailView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
-                    HeaderImageView(
-                        imageURL: listItem.media?.thumbnailURL,
-                        title: listItem.media?.title ?? ""
-                    )
+                VStack(spacing: 0) {
+                    HeaderImageView(imageURL: listItem.media?.thumbnailURL)
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        if let summary = listItem.tvShow?.seasonsEpisodesSummary {
-                            Text(summary)
-                                .font(.title3)
-                                .foregroundStyle(.secondary)
-                        } else if let movie = listItem.movie, let meta = movieMeta(from: movie) {
-                            Text(meta)
-                                .font(.title3)
-                                .foregroundStyle(.secondary)
-                        }
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(listItem.media?.title ?? "")
+                            .font(.title)
+                            .fontWeight(.bold)
+
+                        MetadataRow(listItem: listItem)
 
                         NetworkLogosView(networks: listItem.media?.networks ?? [])
 
@@ -75,29 +66,22 @@ struct MediaDetailView: View {
 
                         Divider().padding(.vertical, 4)
 
-                        Toggle(
-                            isOn: Binding(
-                                get: { listItem.isWatched },
-                                set: { newValue in
-                                    listItem.isWatched = newValue
-                                    if newValue {
-                                        listItem.watchedAt = Date()
-                                    } else {
-                                        listItem.watchedAt = nil
-                                    }
-                                }
-                            )
-                        ) {
-                            Text("Mark as Watched")
-                                .font(.headline)
-                        }
-                        .padding(.top)
+                        WatchedToggleCard(listItem: $listItem)
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                    .padding(.bottom, 24)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 28))
+                    .padding(.horizontal, 12)
+                    .offset(y: -40)
                 }
-                .padding(.vertical)
             }
-            .navigationTitle(listItem.media?.title ?? "")
+            .background(AppBackground())
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(role: .destructive) {
@@ -147,7 +131,6 @@ struct MediaDetailView: View {
                 let detail = try await service.getTVShowDetails(id: id)
                 let updatedTVShow = await service.mapToTVShow(detail)
 
-                // Update the existing TVShow with full details
                 tvShow.numberOfSeasons = updatedTVShow.numberOfSeasons
                 tvShow.numberOfEpisodes = updatedTVShow.numberOfEpisodes
                 tvShow.descriptionText = updatedTVShow.descriptionText
@@ -163,7 +146,6 @@ struct MediaDetailView: View {
                 let providers = try await providersTask
                 let updatedMovie = await service.mapToMovie(detail, providers: providers)
 
-                // Update the existing Movie with full details
                 movie.runtime = updatedMovie.runtime
                 movie.descriptionText = updatedMovie.descriptionText
                 movie.cast = updatedMovie.cast
@@ -188,13 +170,85 @@ struct MediaDetailView: View {
         if let runtime = movie.runtime {
             parts.append("\(runtime) min")
         }
-        return parts.isEmpty ? nil : parts.joined(separator: " • ")
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{2022} ")
+    }
+}
+
+private struct MetadataRow: View {
+    let listItem: ListItem
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let tvShow = listItem.tvShow {
+                if let seasons = tvShow.numberOfSeasons {
+                    MetadataPill(text: "\(seasons) Season\(seasons == 1 ? "" : "s")")
+                }
+                if let episodes = tvShow.numberOfEpisodes {
+                    MetadataPill(text: "\(episodes) Episodes")
+                }
+            } else if let movie = listItem.movie {
+                if let year = movie.releaseYear {
+                    MetadataPill(text: year)
+                }
+                if let runtime = movie.runtime {
+                    MetadataPill(text: "\(runtime) min")
+                }
+            }
+        }
+    }
+}
+
+private struct MetadataPill: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline)
+            .fontWeight(.medium)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .glassEffect(.regular, in: .capsule)
+    }
+}
+
+private struct WatchedToggleCard: View {
+    @Binding var listItem: ListItem
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: listItem.isWatched ? "checkmark.circle.fill" : "circle")
+                .font(.title2)
+                .foregroundStyle(listItem.isWatched ? .green : .secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Mark as Watched")
+                    .font(.headline)
+                if listItem.isWatched {
+                    Text("Watched")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    }
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { listItem.isWatched },
+                set: { newValue in
+                    listItem.isWatched = newValue
+                    listItem.watchedAt = newValue ? Date() : nil
+                }
+            ))
+            .labelsHidden()
+        }
+        .padding(16)
+        .glassEffect(.regular.tint(listItem.isWatched ? .green.opacity(0.1) : .clear), in: .rect(cornerRadius: 20))
     }
 }
 
 private struct HeaderImageView: View {
     let imageURL: URL?
-    let title: String
 
     var body: some View {
         Group {
@@ -203,67 +257,34 @@ private struct HeaderImageView: View {
                     switch phase {
                     case .empty:
                         ProgressView()
-                            .frame(height: 250)
+                            .frame(height: 350)
                     case .success(let image):
                         ZStack(alignment: .bottom) {
                             image
                                 .resizable()
-                                .aspectRatio(contentMode: .fit)
+                                .aspectRatio(contentMode: .fill)
                                 .frame(maxWidth: .infinity)
+                                .frame(height: 350)
+                                .clipped()
 
-                            // Gradient overlay for readability
                             LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color.clear,
-                                    Color.black.opacity(0.7),
-                                ]),
+                                stops: [
+                                    .init(color: .clear, location: 0.0),
+                                    .init(color: Color.black.opacity(0.3), location: 0.4),
+                                    .init(color: Color.black.opacity(0.8), location: 1.0),
+                                ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
-
-                            // Title at bottom
-                            if !title.isEmpty {
-                                Text(title)
-                                    .font(.title2)
-                                    .fontWeight(.black)
-                                    .foregroundStyle(.white)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 16)
-                                    .padding(.bottom, 20)
-                            }
                         }
                     case .failure:
-                        ZStack(alignment: .bottom) {
-                            Color.gray.frame(height: 250)
-
-                            if !title.isEmpty {
-                                Text(title)
-                                    .font(.title2)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.white)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 16)
-                                    .padding(.bottom, 20)
-                            }
-                        }
+                        Color.gray.frame(height: 350)
                     @unknown default:
                         EmptyView()
                     }
                 }
             } else {
-                ZStack(alignment: .bottom) {
-                    Color.gray.frame(height: 250)
-
-                    if !title.isEmpty {
-                        Text(title)
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 20)
-                    }
-                }
+                Color.gray.frame(height: 350)
             }
         }
     }
@@ -315,11 +336,10 @@ private struct CastSection: View {
                         ForEach(cast.prefix(10), id: \.self) { member in
                             Text(member)
                                 .font(.subheadline)
-                                .foregroundStyle(.primary)
+                                            .foregroundStyle(.primary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Capsule())
+                                .glassEffect(.regular.tint(.white.opacity(0.05)), in: .capsule)
                         }
                     }
                     .padding(.horizontal, 1)
@@ -359,7 +379,7 @@ private enum MediaDetailViewPreviewData {
             networks: [netflix],
             descriptionText:
                 "With the price on his head ever increasing, John Wick uncovers a path to defeating the High Table.",
-            cast: ["Keanu Reeves", "Donnie Yen", "Bill Skarsgård", "Ian McShane"],
+            cast: ["Keanu Reeves", "Donnie Yen", "Bill Skarsgard", "Ian McShane"],
             releaseDate: "2023-03-24",
             runtime: 169
         )

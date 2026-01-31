@@ -7,7 +7,7 @@ struct NetworkLogosView: View {
     /// Logo size in points
     let logoSize: CGFloat
 
-    init(networks: [Network], maxVisible: Int = 5, logoSize: CGFloat = 32) {
+    init(networks: [Network], maxVisible: Int = 5, logoSize: CGFloat = 36) {
         self.networks = networks
         self.maxVisible = maxVisible
         self.logoSize = logoSize
@@ -30,6 +30,7 @@ struct NetworkLogosView: View {
                                 image
                                     .resizable()
                                     .scaledToFit()
+                                    .padding(4)
                             case .failure:
                                 Color.gray.opacity(0.1)
                             @unknown default:
@@ -37,6 +38,7 @@ struct NetworkLogosView: View {
                             }
                         }
                         .frame(width: logoSize, height: logoSize)
+                        .background(Color.white.opacity(0.85))
                         .clipShape(.rect(cornerRadius: logoSize * 0.19))
                     }
                 }
@@ -46,6 +48,7 @@ struct NetworkLogosView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .padding(.vertical, 2)
         }
     }
 }
@@ -63,4 +66,3 @@ struct NetworkLogosView: View {
         .padding()
         .previewLayout(.sizeThatFits)
 }
-

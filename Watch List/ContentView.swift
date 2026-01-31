@@ -152,17 +152,11 @@ struct ContentView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
                 .frame(width: 54, height: 54)
-                .foregroundStyle(.primary)
-                .background(.regularMaterial)
-                .clipShape(Circle())
-                .glassEffect()
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.25), lineWidth: 0.8)
-                )
-                .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 5)
+                .glassEffect(.regular.tint(.indigo.opacity(0.5)).interactive(), in: .circle)
         }
+        .shadow(color: Color.indigo.opacity(0.3), radius: 12, x: 0, y: 6)
         .accessibilityLabel("Add \(selectedTab == .tvShows ? "TV show" : "movie")")
     }
 
@@ -197,7 +191,7 @@ struct ContentView: View {
             parts.append("\(runtime) min")
         }
 
-        return parts.isEmpty ? nil : parts.joined(separator: " • ")
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{2022} ")
     }
 }
 

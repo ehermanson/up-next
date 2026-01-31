@@ -43,10 +43,11 @@ struct SearchView: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    VStack(spacing: 12) {
-                        ProgressView("Searching...")
+                    VStack(spacing: 16) {
+                        ShimmerLoadingView()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppBackground())
                 } else if let error = errorMessage {
                     VStack(spacing: 12) {
                         Image(systemName: "exclamationmark.triangle")
@@ -58,51 +59,64 @@ struct SearchView: View {
                             .padding(.horizontal)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppBackground())
                 } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 16) {
                         Image(systemName: "magnifyingglass")
-                            .font(.largeTitle)
+                            .font(.system(size: 40))
                             .foregroundStyle(.secondary)
+                            .frame(width: 80, height: 80)
+                            .glassEffect(.regular, in: .circle)
                         Text("Search for \(mediaType == .tvShow ? "TV shows" : "movies")")
+                            .font(.title3)
+                            .fontDesign(.rounded)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppBackground())
                 } else {
-                    List {
-                        if mediaType == .tvShow {
-                            ForEach(tvShowResults) { result in
-                                SearchResultRowWithImage(
-                                    title: result.name,
-                                    overview: result.overview,
-                                    posterPath: result.posterPath,
-                                    onAdd: {
-                                        addTVShow(result)
-                                    }
-                                )
-                            }
-                        } else {
-                            ForEach(movieResults) { result in
-                                SearchResultRowWithImage(
-                                    title: result.title,
-                                    overview: result.overview,
-                                    posterPath: result.posterPath,
-                                    onAdd: {
-                                        addMovie(result)
-                                    }
-                                )
+                    GlassEffectContainer(spacing: 8) {
+                        List {
+                            if mediaType == .tvShow {
+                                ForEach(tvShowResults) { result in
+                                    SearchResultRowWithImage(
+                                        title: result.name,
+                                        overview: result.overview,
+                                        posterPath: result.posterPath,
+                                        onAdd: {
+                                            addTVShow(result)
+                                        }
+                                    )
+                                }
+                            } else {
+                                ForEach(movieResults) { result in
+                                    SearchResultRowWithImage(
+                                        title: result.title,
+                                        overview: result.overview,
+                                        posterPath: result.posterPath,
+                                        onAdd: {
+                                            addMovie(result)
+                                        }
+                                    )
+                                }
                             }
                         }
+                        .scrollContentBackground(.hidden)
+                        .listStyle(.plain)
                     }
-                    .listStyle(.plain)
+                    .background(AppBackground())
                 }
             }
             .navigationTitle("Search \(mediaType == .tvShow ? "TV Shows" : "Movies")")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .buttonStyle(.glass)
                 }
             }
             .searchable(
@@ -176,12 +190,9 @@ struct SearchView: View {
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
         Task {
             do {
-                // Fetch full details for better data
                 let detail = try await service.getTVShowDetails(id: result.id)
                 let tvShow = await service.mapToTVShow(detail)
 
-                // Create a stub user and list for the ListItem
-                // These will be replaced by the actual values in ContentView
                 let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
                 let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
 
@@ -200,7 +211,6 @@ struct SearchView: View {
                     dismiss()
                 }
             } catch {
-                // If detail fetch fails, use search result data
                 let tvShow = await service.mapToTVShow(result)
                 let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
                 let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
@@ -226,7 +236,6 @@ struct SearchView: View {
     private func addMovie(_ result: TMDBMovieSearchResult) {
         Task {
             do {
-                // Fetch full details and watch providers for richer data
                 async let detailTask = service.getMovieDetails(id: result.id)
                 async let providersTask = service.getMovieWatchProviders(
                     id: result.id, countryCode: "US")
@@ -234,8 +243,6 @@ struct SearchView: View {
                 let providers = try await providersTask
                 let movie = await service.mapToMovie(detail, providers: providers)
 
-                // Create a stub user and list for the ListItem
-                // These will be replaced by the actual values in ContentView
                 let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
                 let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
 
@@ -254,7 +261,6 @@ struct SearchView: View {
                     dismiss()
                 }
             } catch {
-                // If detail fetch fails, fall back to search result data
                 let movie = await service.mapToMovie(result)
                 let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
                 let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
@@ -273,6 +279,56 @@ struct SearchView: View {
                     onItemAdded(listItem)
                     dismiss()
                 }
+            }
+        }
+    }
+}
+
+private struct ShimmerLoadingView: View {
+    @State private var shimmerOffset: CGFloat = -200
+
+    var body: some View {
+        VStack(spacing: 16) {
+            ForEach(0..<4, id: \.self) { _ in
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 60, height: 90)
+                    VStack(alignment: .leading, spacing: 8) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(height: 16)
+                            .frame(maxWidth: 180)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.gray.opacity(0.15))
+                            .frame(height: 12)
+                            .frame(maxWidth: 240)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.gray.opacity(0.1))
+                            .frame(height: 12)
+                            .frame(maxWidth: 200)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .overlay(
+            LinearGradient(
+                colors: [
+                    .clear,
+                    Color.white.opacity(0.08),
+                    .clear,
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .offset(x: shimmerOffset)
+        )
+        .clipped()
+        .onAppear {
+            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                shimmerOffset = 400
             }
         }
     }
@@ -317,17 +373,19 @@ struct SearchResultRow: View {
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: 60, height: 90)
+                        .clipShape(.rect(cornerRadius: 10))
                 case .success(let image):
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 60, height: 90)
-                        .clipShape(.rect(cornerRadius: 8))
+                        .clipShape(.rect(cornerRadius: 10))
                         .clipped()
                 case .failure:
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))
                         .frame(width: 60, height: 90)
+                        .clipShape(.rect(cornerRadius: 10))
                 @unknown default:
                     EmptyView()
                 }
@@ -336,6 +394,7 @@ struct SearchResultRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
+                    .fontDesign(.rounded)
                     .lineLimit(2)
 
                 if let overview = overview, !overview.isEmpty {
@@ -350,13 +409,19 @@ struct SearchResultRow: View {
 
             Button(action: onAdd) {
                 Image(systemName: "plus")
+                    .font(.headline.weight(.semibold))
+                    .frame(width: 44, height: 44)
             }
+            .buttonStyle(.glass)
+            .clipShape(Circle())
             .accessibilityLabel("Add to list")
-            .buttonStyle(LiquidGlassCircleButtonStyle())
-            .contentShape(Circle())
             .hoverEffect(.lift)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))
     }
 }
 

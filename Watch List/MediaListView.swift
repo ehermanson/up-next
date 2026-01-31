@@ -22,45 +22,82 @@ struct MediaListView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if !unwatchedItems.isEmpty {
-                    UnwatchedSection(
-                        items: $unwatchedItems,
-                        allItems: $allItems,
+            GlassEffectContainer(spacing: 10) {
+                List {
+                    if !unwatchedItems.isEmpty {
+                        Section {
+                            UnwatchedSection(
+                                items: $unwatchedItems,
+                                allItems: $allItems,
+                                expandedItemID: $expandedItemID,
+                                subtitleProvider: subtitleProvider,
+                                onItemExpanded: onItemExpanded,
+                                onWatchedToggled: onWatchedToggled,
+                                onOrderChanged: onOrderChanged
+                            )
+                        } header: {
+                            SectionHeader(title: "Up Next", count: unwatchedItems.count)
+                        }
+                    }
+
+                    WatchedSection(
+                        items: $allItems,
                         expandedItemID: $expandedItemID,
                         subtitleProvider: subtitleProvider,
                         onItemExpanded: onItemExpanded,
-                        onWatchedToggled: onWatchedToggled,
-                        onOrderChanged: onOrderChanged
+                        onWatchedToggled: onWatchedToggled
                     )
                 }
-
-                WatchedSection(
-                    items: $allItems,
-                    expandedItemID: $expandedItemID,
-                    subtitleProvider: subtitleProvider,
-                    onItemExpanded: onItemExpanded,
-                    onWatchedToggled: onWatchedToggled
-                )
-            }.scrollContentBackground(.hidden)
-                .background(Color(.systemBackground))
+                .scrollContentBackground(.hidden)
                 .listStyle(.plain)
-                .navigationTitle(navigationTitle)
-                .toolbar {
-                    #if !os(tvOS)
-                        ToolbarItem {
-                            EditButton()
-                        }
-                        if let onSearchTapped {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                Button(action: onSearchTapped) {
-                                    Image(systemName: "magnifyingglass")
-                                }
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: unwatchedItems.count)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: allItems.count)
+            }
+            .background(AppBackground())
+            .navigationTitle(navigationTitle)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                #if !os(tvOS)
+                    ToolbarItem {
+                        EditButton()
+                    }
+                    if let onSearchTapped {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(action: onSearchTapped) {
+                                Image(systemName: "magnifyingglass")
                             }
                         }
-                    #endif
-                }
+                    }
+                #endif
+            }
         }
+        .preferredColorScheme(.dark)
+    }
+}
+
+private struct SectionHeader: View {
+    let title: String
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.title3)
+                .fontWeight(.bold)
+                .fontDesign(.rounded)
+                .foregroundStyle(.white)
+            Text("\(count)")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .fontDesign(.rounded)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .glassEffect(.regular, in: .capsule)
+        }
+        .padding(.vertical, 4)
+        .textCase(nil)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
     }
 }
 
@@ -75,22 +112,19 @@ struct UnwatchedSection: View {
     let onOrderChanged: () -> Void
 
     var body: some View {
-        Section {
-            ForEach($items, id: \.media?.id) { $item in
-                MediaListRow(
-                    item: $item,
-                    itemID: item.media?.id ?? "",
-                    expandedItemID: $expandedItemID,
-                    subtitle: subtitleProvider(item),
-                    onItemExpanded: onItemExpanded,
-                    onWatchedToggled: {
-                        toggleWatched(item)
-                    }
-                )
-            }
-            .onMove(perform: handleMove)
+        ForEach($items, id: \.media?.id) { $item in
+            MediaListRow(
+                item: $item,
+                itemID: item.media?.id ?? "",
+                expandedItemID: $expandedItemID,
+                subtitle: subtitleProvider(item),
+                onItemExpanded: onItemExpanded,
+                onWatchedToggled: {
+                    toggleWatched(item)
+                }
+            )
         }
-        .background(Color.clear)
+        .onMove(perform: handleMove)
     }
 
     private func toggleWatched(_ item: ListItem) {
@@ -127,7 +161,6 @@ struct WatchedSection: View {
     private var watchedItems: [ListItem] {
         items.filter { $0.isWatched }
             .sorted { lhs, rhs in
-                // Sort by watchedAt ascending, nils last
                 switch (lhs.watchedAt, rhs.watchedAt) {
                 case (let l?, let r?):
                     return l < r
@@ -166,6 +199,8 @@ struct WatchedSection: View {
                         }
                     )
                 }
+            } header: {
+                SectionHeader(title: "Watched", count: watchedItems.count)
             }
         }
     }
@@ -206,7 +241,7 @@ struct MediaListRow: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 6)
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)

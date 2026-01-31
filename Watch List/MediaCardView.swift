@@ -11,46 +11,54 @@ struct MediaCardView: View {
     let watchedToggleAction: (Bool) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 14) {
             if let imageURL = imageURL {
                 AsyncImage(url: imageURL) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
                     Color.gray.opacity(0.1)
                 }
-                .frame(width: 60, height: 70)
-                .clipShape(.rect(cornerRadius: 18))
+                .frame(width: 70, height: 100)
+                .clipShape(.rect(cornerRadius: 14))
                 .clipped()
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
-                    .frame(width: 60, height: 70)
-                    .clipShape(.rect(cornerRadius: 18))
+                    .frame(width: 70, height: 100)
+                    .clipShape(.rect(cornerRadius: 14))
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 HStack {
                     Text(title)
                         .font(.headline)
+                        .fontDesign(.rounded)
                         .lineLimit(2)
                     Spacer()
                     if isWatched {
-                        Image(systemName: "checkmark.seal.fill")
+                        Text("Watched")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .fontDesign(.rounded)
                             .foregroundStyle(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .glassEffect(.regular.tint(.green.opacity(0.3)), in: .capsule)
                             .accessibilityLabel("Watched")
                     }
                 }
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.subheadline)
+                        .fontDesign(.rounded)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                NetworkLogosView(networks: networks, maxVisible: 2, logoSize: 20)
+                NetworkLogosView(networks: networks, maxVisible: 2, logoSize: 24)
             }
         }
-        .padding(.all, 12)
-        .glassEffect(in: .rect(cornerRadius: 30))
+        .padding(.all, 14)
+        .glassEffect(.regular.tint(.indigo.opacity(0.12)).interactive(), in: .rect(cornerRadius: 24))
     }
 }
 
@@ -71,7 +79,7 @@ struct MediaCardView: View {
     ]
     MediaCardView(
         title: "Example Movie Title",
-        subtitle: "2022 · Action, Adventure",
+        subtitle: "2022 \u{00b7} Action, Adventure",
         imageURL: nil,
         networks: sampleNetworks,
         isWatched: true,
