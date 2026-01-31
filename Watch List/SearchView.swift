@@ -10,6 +10,7 @@ enum MediaType: Identifiable {
 
 struct SearchView: View {
     let mediaType: MediaType
+    let existingIDs: Set<String>
     let onItemAdded: (ListItem) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -20,19 +21,27 @@ struct SearchView: View {
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
     @State private var isSearchFieldPresented = true
+    @State private var addedIDs: Set<String> = []
 
     init(
         mediaType: MediaType,
+        existingIDs: Set<String> = [],
         onItemAdded: @escaping (ListItem) -> Void,
         initialSearchText: String = "",
         initialTVResults: [TMDBTVShowSearchResult] = [],
         initialMovieResults: [TMDBMovieSearchResult] = []
     ) {
         self.mediaType = mediaType
+        self.existingIDs = existingIDs
         self.onItemAdded = onItemAdded
         _searchText = State(initialValue: initialSearchText)
         _tvShowResults = State(initialValue: initialTVResults)
         _movieResults = State(initialValue: initialMovieResults)
+    }
+
+    private func isAlreadyAdded(id: Int) -> Bool {
+        let stringID = String(id)
+        return existingIDs.contains(stringID) || addedIDs.contains(stringID)
     }
 
     private var service: TMDBService {
@@ -85,6 +94,7 @@ struct SearchView: View {
                                         title: result.name,
                                         overview: result.overview,
                                         posterPath: result.posterPath,
+                                        isAdded: isAlreadyAdded(id: result.id),
                                         onAdd: {
                                             addTVShow(result)
                                         }
@@ -96,6 +106,7 @@ struct SearchView: View {
                                         title: result.title,
                                         overview: result.overview,
                                         posterPath: result.posterPath,
+                                        isAdded: isAlreadyAdded(id: result.id),
                                         onAdd: {
                                             addMovie(result)
                                         }
@@ -118,7 +129,6 @@ struct SearchView: View {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .buttonStyle(.glass)
                 }
             }
             .searchable(
@@ -169,119 +179,62 @@ struct SearchView: View {
     private func performSearch(query: String) async {
         do {
             if mediaType == .tvShow {
-                let results = try await service.searchTVShows(query: query)
-                await MainActor.run {
-                    tvShowResults = results
-                    isLoading = false
-                }
+                tvShowResults = try await service.searchTVShows(query: query)
             } else {
-                let results = try await service.searchMovies(query: query)
-                await MainActor.run {
-                    movieResults = results
-                    isLoading = false
-                }
+                movieResults = try await service.searchMovies(query: query)
             }
         } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                isLoading = false
-            }
+            errorMessage = error.localizedDescription
         }
+        isLoading = false
+    }
+
+    private func makeListItem(movie: Movie? = nil, tvShow: TVShow? = nil) -> ListItem {
+        let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
+        let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
+        return ListItem(
+            movie: movie,
+            tvShow: tvShow,
+            list: stubList,
+            addedBy: stubUser,
+            addedAt: Date(),
+            isWatched: false,
+            watchedAt: nil,
+            order: 0
+        )
     }
 
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
+        guard !isAlreadyAdded(id: result.id) else { return }
+        addedIDs.insert(String(result.id))
         Task {
+            let tvShow: TVShow
             do {
                 let detail = try await service.getTVShowDetails(id: result.id)
-                let tvShow = await service.mapToTVShow(detail)
-
-                let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
-                let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
-
-                let listItem = ListItem(
-                    tvShow: tvShow,
-                    list: stubList,
-                    addedBy: stubUser,
-                    addedAt: Date(),
-                    isWatched: false,
-                    watchedAt: nil,
-                    order: 0
-                )
-
-                await MainActor.run {
-                    onItemAdded(listItem)
-                    dismiss()
-                }
+                tvShow = await service.mapToTVShow(detail)
             } catch {
-                let tvShow = await service.mapToTVShow(result)
-                let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
-                let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
-
-                let listItem = ListItem(
-                    tvShow: tvShow,
-                    list: stubList,
-                    addedBy: stubUser,
-                    addedAt: Date(),
-                    isWatched: false,
-                    watchedAt: nil,
-                    order: 0
-                )
-
-                await MainActor.run {
-                    onItemAdded(listItem)
-                    dismiss()
-                }
+                tvShow = await service.mapToTVShow(result)
             }
+            onItemAdded(makeListItem(tvShow: tvShow))
         }
     }
 
     private func addMovie(_ result: TMDBMovieSearchResult) {
+        guard !isAlreadyAdded(id: result.id) else { return }
+        addedIDs.insert(String(result.id))
         Task {
+            let movie: Movie
             do {
                 async let detailTask = service.getMovieDetails(id: result.id)
                 async let providersTask = service.getMovieWatchProviders(
                     id: result.id, countryCode: "US")
                 let detail = try await detailTask
                 let providers = try await providersTask
-                let movie = await service.mapToMovie(detail, providers: providers)
-
-                let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
-                let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
-
-                let listItem = ListItem(
-                    movie: movie,
-                    list: stubList,
-                    addedBy: stubUser,
-                    addedAt: Date(),
-                    isWatched: false,
-                    watchedAt: nil,
-                    order: 0
-                )
-
-                await MainActor.run {
-                    onItemAdded(listItem)
-                    dismiss()
-                }
+                movie = await service.mapToMovie(detail, providers: providers)
             } catch {
-                let movie = await service.mapToMovie(result)
-                let stubUser = UserIdentity(id: "current-user", displayName: "Current User")
-                let stubList = MediaList(name: "Temp", createdBy: stubUser, createdAt: Date())
-
-                let listItem = ListItem(
-                    movie: movie,
-                    list: stubList,
-                    addedBy: stubUser,
-                    addedAt: Date(),
-                    isWatched: false,
-                    watchedAt: nil,
-                    order: 0
-                )
-
-                await MainActor.run {
-                    onItemAdded(listItem)
-                    dismiss()
-                }
+                movie = await service.mapToMovie(result)
             }
+            onItemAdded(makeListItem(movie: movie))
         }
     }
 }
@@ -342,6 +295,7 @@ struct SearchResultRowWithImage: View {
     let title: String
     let overview: String?
     let posterPath: String?
+    let isAdded: Bool
     let onAdd: () -> Void
 
     @State private var imageURL: URL?
@@ -352,6 +306,7 @@ struct SearchResultRowWithImage: View {
             title: title,
             overview: overview,
             imageURL: imageURL,
+            isAdded: isAdded,
             onAdd: onAdd
         )
         .task {
@@ -367,6 +322,7 @@ struct SearchResultRow: View {
     let title: String
     let overview: String?
     let imageURL: URL?
+    let isAdded: Bool
     let onAdd: () -> Void
 
     var body: some View {
@@ -411,18 +367,26 @@ struct SearchResultRow: View {
 
             Spacer()
 
-            Button(action: onAdd) {
-                Image(systemName: "plus")
+            if isAdded {
+                Image(systemName: "checkmark")
                     .font(.headline.weight(.semibold))
+                    .foregroundStyle(.green)
                     .frame(width: 44, height: 44)
+                    .accessibilityLabel("Already added")
+            } else {
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                        .font(.headline.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.glass)
+                .clipShape(Circle())
+                .accessibilityLabel("Add to list")
+                .hoverEffect(.lift)
             }
-            .buttonStyle(.glass)
-            .clipShape(Circle())
-            .accessibilityLabel("Add to list")
-            .hoverEffect(.lift)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 8)
+        .padding(10)
+        .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))

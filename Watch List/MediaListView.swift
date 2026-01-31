@@ -11,6 +11,7 @@ import SwiftUI
 struct MediaListView: View {
     @Binding var allItems: [ListItem]
     @Binding var unwatchedItems: [ListItem]
+    @Binding var watchedItems: [ListItem]
     @Binding var expandedItemID: String?
 
     let navigationTitle: String
@@ -20,38 +21,64 @@ struct MediaListView: View {
     let onOrderChanged: () -> Void
     let onSearchTapped: (() -> Void)?
 
+    private var isEmpty: Bool {
+        unwatchedItems.isEmpty && watchedItems.isEmpty
+    }
+
     var body: some View {
         NavigationStack {
-            GlassEffectContainer(spacing: 10) {
-                List {
-                    if !unwatchedItems.isEmpty {
-                        Section {
-                            UnwatchedSection(
-                                items: $unwatchedItems,
-                                allItems: $allItems,
+            Group {
+                if isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "popcorn")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 96, height: 96)
+                            .glassEffect(.regular, in: .circle)
+                        Text("Your list is empty")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .fontDesign(.rounded)
+                        Text("Tap + to add your first title")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fontDesign(.rounded)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    GlassEffectContainer(spacing: 10) {
+                        List {
+                            if !unwatchedItems.isEmpty {
+                                Section {
+                                    UnwatchedSection(
+                                        items: $unwatchedItems,
+                                        allItems: $allItems,
+                                        expandedItemID: $expandedItemID,
+                                        subtitleProvider: subtitleProvider,
+                                        onItemExpanded: onItemExpanded,
+                                        onWatchedToggled: onWatchedToggled,
+                                        onOrderChanged: onOrderChanged
+                                    )
+                                } header: {
+                                    SectionHeader(title: "Up Next", count: unwatchedItems.count)
+                                }
+                            }
+
+                            WatchedSection(
+                                items: $watchedItems,
                                 expandedItemID: $expandedItemID,
                                 subtitleProvider: subtitleProvider,
                                 onItemExpanded: onItemExpanded,
-                                onWatchedToggled: onWatchedToggled,
-                                onOrderChanged: onOrderChanged
+                                onWatchedToggled: onWatchedToggled
                             )
-                        } header: {
-                            SectionHeader(title: "Up Next", count: unwatchedItems.count)
                         }
+                        .scrollContentBackground(.hidden)
+                        .listStyle(.plain)
+                        .contentMargins(.bottom, 80, for: .scrollContent)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: unwatchedItems.count)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: allItems.count)
                     }
-
-                    WatchedSection(
-                        items: $allItems,
-                        expandedItemID: $expandedItemID,
-                        subtitleProvider: subtitleProvider,
-                        onItemExpanded: onItemExpanded,
-                        onWatchedToggled: onWatchedToggled
-                    )
                 }
-                .scrollContentBackground(.hidden)
-                .listStyle(.plain)
-                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: unwatchedItems.count)
-                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: allItems.count)
             }
             .background(AppBackground())
             .navigationTitle(navigationTitle)
@@ -158,59 +185,27 @@ struct WatchedSection: View {
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
 
-    private var watchedItems: [ListItem] {
-        items.filter { $0.isWatched }
-            .sorted { lhs, rhs in
-                switch (lhs.watchedAt, rhs.watchedAt) {
-                case (let l?, let r?):
-                    return l < r
-                case (nil, _?):
-                    return false
-                case (_?, nil):
-                    return true
-                case (nil, nil):
-                    return false
-                }
-            }
-    }
-
     var body: some View {
-        if !watchedItems.isEmpty {
+        if !items.isEmpty {
             Section {
-                ForEach(watchedItems, id: \.media?.id) { item in
-                    let itemBinding = Binding(
-                        get: {
-                            items.first(where: { $0.media?.id == item.media?.id }) ?? item
-                        },
-                        set: { newValue in
-                            if let index = items.firstIndex(where: { $0.media?.id == item.media?.id }) {
-                                items[index] = newValue
-                            }
-                        }
-                    )
+                ForEach($items, id: \.media?.id) { $item in
                     MediaListRow(
-                        item: itemBinding,
+                        item: $item,
                         itemID: item.media?.id ?? "",
                         expandedItemID: $expandedItemID,
                         subtitle: subtitleProvider(item),
                         onItemExpanded: onItemExpanded,
                         onWatchedToggled: {
-                            toggleWatched(item)
+                            item.isWatched.toggle()
+                            item.watchedAt = item.isWatched ? Date() : nil
+                            onWatchedToggled()
                         }
                     )
                 }
             } header: {
-                SectionHeader(title: "Watched", count: watchedItems.count)
+                SectionHeader(title: "Watched", count: items.count)
             }
         }
-    }
-
-    private func toggleWatched(_ item: ListItem) {
-        if let index = items.firstIndex(where: { $0.media?.id == item.media?.id }) {
-            items[index].isWatched.toggle()
-            items[index].watchedAt = items[index].isWatched ? Date() : nil
-        }
-        onWatchedToggled()
     }
 }
 
@@ -312,6 +307,7 @@ struct MediaListRow: View {
     MediaListView(
         allItems: .constant(stubItems),
         unwatchedItems: .constant(stubItems.filter { !$0.isWatched }),
+        watchedItems: .constant(stubItems.filter { $0.isWatched }),
         expandedItemID: .constant("tv-1"),
         navigationTitle: "TV Shows",
         subtitleProvider: { item in

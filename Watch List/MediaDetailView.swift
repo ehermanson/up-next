@@ -13,9 +13,7 @@ struct MediaDetailView: View {
     private let service = TMDBService.shared
 
     private var needsFullDetails: Bool {
-        guard let media = listItem.media else { return false }
-
-        _ = Int(media.id)
+        guard let media = listItem.media, Int(media.id) != nil else { return false }
 
         if let tvShow = listItem.tvShow {
             let missingSeasons = (tvShow.numberOfSeasons == nil)
@@ -59,7 +57,8 @@ struct MediaDetailView: View {
 
                             DescriptionSection(
                                 isLoading: isLoadingDetails,
-                                descriptionText: listItem.media?.descriptionText)
+                                descriptionText: listItem.media?.descriptionText,
+                                errorMessage: detailError)
 
                             Divider().padding(.vertical, 4)
 
@@ -164,16 +163,6 @@ struct MediaDetailView: View {
         isLoadingDetails = false
     }
 
-    private func movieMeta(from movie: Movie) -> String? {
-        var parts: [String] = []
-        if let year = movie.releaseYear {
-            parts.append(year)
-        }
-        if let runtime = movie.runtime {
-            parts.append("\(runtime) min")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " \u{2022} ")
-    }
 }
 
 private struct MetadataRow: View {
@@ -295,6 +284,7 @@ private struct HeaderImageView: View {
 private struct DescriptionSection: View {
     let isLoading: Bool
     let descriptionText: String?
+    let errorMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -308,16 +298,22 @@ private struct DescriptionSection: View {
                         .font(.body)
                         .foregroundStyle(.secondary)
                 }
+            } else if let errorMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                    Text(errorMessage)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
             } else if let descriptionText, !descriptionText.isEmpty {
                 Text(descriptionText)
                     .font(.body)
                     .foregroundStyle(.secondary)
             } else {
-                Text(
-                    "This is a placeholder for a detailed description, cast, or other information about this media item."
-                )
-                .font(.body)
-                .foregroundStyle(.secondary)
+                Text("No description available.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
             }
         }
     }

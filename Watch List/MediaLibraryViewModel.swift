@@ -8,6 +8,8 @@ final class MediaLibraryViewModel {
     var movies: [ListItem] = []
     var unwatchedTVShows: [ListItem] = []
     var unwatchedMovies: [ListItem] = []
+    var watchedTVShows: [ListItem] = []
+    var watchedMovies: [ListItem] = []
 
     private var modelContext: ModelContext?
     private var tvList: MediaList?
@@ -21,11 +23,22 @@ final class MediaLibraryViewModel {
         await loadItems()
     }
 
+    func containsItem(withID id: String, mediaType: MediaType) -> Bool {
+        switch mediaType {
+        case .tvShow: return tvShows.contains { $0.media?.id == id }
+        case .movie: return movies.contains { $0.media?.id == id }
+        }
+    }
+
     func add(listItem: ListItem, mediaType: MediaType) {
         guard
             let context = modelContext,
             let user = currentUser
         else { return }
+
+        if let id = listItem.media?.id, containsItem(withID: id, mediaType: mediaType) {
+            return
+        }
 
         let list = ensureList(for: mediaType, using: user)
         let nextOrder = nextOrderValue(for: mediaType)
@@ -116,11 +129,29 @@ final class MediaLibraryViewModel {
                 allItems: tvShows,
                 currentUnwatched: unwatchedTVShows
             )
+            watchedTVShows = tvShows.filter { $0.isWatched }
+                .sorted { lhs, rhs in
+                    switch (lhs.watchedAt, rhs.watchedAt) {
+                    case (let l?, let r?): return l < r
+                    case (nil, _?): return false
+                    case (_?, nil): return true
+                    case (nil, nil): return false
+                    }
+                }
         case .movie:
             unwatchedMovies = syncUnwatchedItems(
                 allItems: movies,
                 currentUnwatched: unwatchedMovies
             )
+            watchedMovies = movies.filter { $0.isWatched }
+                .sorted { lhs, rhs in
+                    switch (lhs.watchedAt, rhs.watchedAt) {
+                    case (let l?, let r?): return l < r
+                    case (nil, _?): return false
+                    case (_?, nil): return true
+                    case (nil, nil): return false
+                    }
+                }
         }
     }
 
@@ -286,58 +317,89 @@ final class MediaLibraryViewModel {
             (278, true),     // The Shawshank Redemption
         ]
 
-        var seedTVItems: [ListItem] = []
-        var seedMovieItems: [ListItem] = []
-
-        // Fetch TV shows from API
-        for (index, seed) in tvSeeds.enumerated() {
-            do {
-                let detail = try await service.getTVShowDetails(id: seed.id)
-                let tvShow = await service.mapToTVShow(detail)
-                let daysAgo = seed.watched ? Double(30 + index * 15) : 0
-                let item = ListItem(
-                    tvShow: tvShow,
-                    list: tvList,
-                    addedBy: user,
-                    addedAt: Date().addingTimeInterval(-86400 * daysAgo),
-                    isWatched: seed.watched,
-                    watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
-                    order: index
-                )
-                context.insert(item)
-                seedTVItems.append(item)
-            } catch {
-                #if DEBUG
-                    print("Failed to fetch TV show \(seed.id): \(error)")
-                #endif
+        // Fetch TV shows concurrently
+        let tvResults = await withTaskGroup(of: (Int, TVShow?).self) { group in
+            for (index, seed) in tvSeeds.enumerated() {
+                group.addTask {
+                    do {
+                        let detail = try await service.getTVShowDetails(id: seed.id)
+                        let tvShow = await service.mapToTVShow(detail)
+                        return (index, tvShow)
+                    } catch {
+                        #if DEBUG
+                            print("Failed to fetch TV show \(seed.id): \(error)")
+                        #endif
+                        return (index, nil)
+                    }
+                }
             }
+            var results: [(Int, TVShow?)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results.sorted { $0.0 < $1.0 }
         }
 
-        // Fetch movies from API
-        for (index, seed) in movieSeeds.enumerated() {
-            do {
-                async let detailTask = service.getMovieDetails(id: seed.id)
-                async let providersTask = service.getMovieWatchProviders(id: seed.id, countryCode: "US")
-                let detail = try await detailTask
-                let providers = try await providersTask
-                let movie = await service.mapToMovie(detail, providers: providers)
-                let daysAgo = seed.watched ? Double(30 + index * 15) : 0
-                let item = ListItem(
-                    movie: movie,
-                    list: movieList,
-                    addedBy: user,
-                    addedAt: Date().addingTimeInterval(-86400 * daysAgo),
-                    isWatched: seed.watched,
-                    watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
-                    order: index
-                )
-                context.insert(item)
-                seedMovieItems.append(item)
-            } catch {
-                #if DEBUG
-                    print("Failed to fetch movie \(seed.id): \(error)")
-                #endif
+        var seedTVItems: [ListItem] = []
+        for (index, tvShow) in tvResults {
+            guard let tvShow else { continue }
+            let seed = tvSeeds[index]
+            let daysAgo = seed.watched ? Double(30 + index * 15) : 0
+            let item = ListItem(
+                tvShow: tvShow,
+                list: tvList,
+                addedBy: user,
+                addedAt: Date().addingTimeInterval(-86400 * daysAgo),
+                isWatched: seed.watched,
+                watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
+                order: index
+            )
+            context.insert(item)
+            seedTVItems.append(item)
+        }
+
+        // Fetch movies concurrently
+        let movieResults = await withTaskGroup(of: (Int, Movie?).self) { group in
+            for (index, seed) in movieSeeds.enumerated() {
+                group.addTask {
+                    do {
+                        async let detailTask = service.getMovieDetails(id: seed.id)
+                        async let providersTask = service.getMovieWatchProviders(id: seed.id, countryCode: "US")
+                        let detail = try await detailTask
+                        let providers = try await providersTask
+                        let movie = await service.mapToMovie(detail, providers: providers)
+                        return (index, movie)
+                    } catch {
+                        #if DEBUG
+                            print("Failed to fetch movie \(seed.id): \(error)")
+                        #endif
+                        return (index, nil)
+                    }
+                }
             }
+            var results: [(Int, Movie?)] = []
+            for await result in group {
+                results.append(result)
+            }
+            return results.sorted { $0.0 < $1.0 }
+        }
+
+        var seedMovieItems: [ListItem] = []
+        for (index, movie) in movieResults {
+            guard let movie else { continue }
+            let seed = movieSeeds[index]
+            let daysAgo = seed.watched ? Double(30 + index * 15) : 0
+            let item = ListItem(
+                movie: movie,
+                list: movieList,
+                addedBy: user,
+                addedAt: Date().addingTimeInterval(-86400 * daysAgo),
+                isWatched: seed.watched,
+                watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
+                order: index
+            )
+            context.insert(item)
+            seedMovieItems.append(item)
         }
 
         tvShows = seedTVItems

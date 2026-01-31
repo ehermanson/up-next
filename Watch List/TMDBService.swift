@@ -7,6 +7,11 @@ actor TMDBService {
 
     private let baseURL = "https://api.themoviedb.org/3"
     private let imageBaseURL = "https://image.tmdb.org/t/p"
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }()
 
     private var apiKey: String {
         guard let key = Bundle.main.infoDictionary?["TMDB_API_KEY"] as? String,
@@ -207,8 +212,6 @@ actor TMDBService {
         }
 
         do {
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
             return try decoder.decode(T.self, from: data)
         } catch {
             throw TMDBError.decodingError(error)

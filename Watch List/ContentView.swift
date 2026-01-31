@@ -34,12 +34,12 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            tvShowsTab
-                .tabItem { Label("TV Shows", systemImage: "tv") }
-                .tag(MediaTab.tvShows)
-            moviesTab
-                .tabItem { Label("Movies", systemImage: "film") }
-                .tag(MediaTab.movies)
+            Tab("TV Shows", systemImage: "tv", value: .tvShows) {
+                tvShowsTab
+            }
+            Tab("Movies", systemImage: "film", value: .movies) {
+                moviesTab
+            }
         }
         .overlay(alignment: .bottomTrailing) {
             addButton
@@ -49,6 +49,7 @@ struct ContentView: View {
         .sheet(item: $activeSearchMediaType) { mediaType in
             SearchView(
                 mediaType: mediaType,
+                existingIDs: existingIDs(for: mediaType),
                 onItemAdded: { newItem in
                     addItem(newItem, for: mediaType)
                 }
@@ -63,6 +64,7 @@ struct ContentView: View {
         MediaListView(
             allItems: $viewModel.tvShows,
             unwatchedItems: $viewModel.unwatchedTVShows,
+            watchedItems: $viewModel.watchedTVShows,
             expandedItemID: $expandedTVShowID,
             navigationTitle: "TV Shows",
             subtitleProvider: { item in
@@ -108,6 +110,7 @@ struct ContentView: View {
         MediaListView(
             allItems: $viewModel.movies,
             unwatchedItems: $viewModel.unwatchedMovies,
+            watchedItems: $viewModel.watchedMovies,
             expandedItemID: $expandedMovieID,
             navigationTitle: "Movies",
             subtitleProvider: { item in
@@ -174,6 +177,11 @@ struct ContentView: View {
                 array.wrappedValue[index] = newValue
             }
         )
+    }
+
+    private func existingIDs(for mediaType: MediaType) -> Set<String> {
+        let items = mediaType == .tvShow ? viewModel.tvShows : viewModel.movies
+        return Set(items.compactMap { $0.media?.id })
     }
 
     private func addItem(_ item: ListItem, for mediaType: MediaType) {
