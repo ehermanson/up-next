@@ -278,74 +278,6 @@ struct SearchView: View {
     }
 }
 
-struct SearchBar: View {
-    @Binding var text: String
-    let onSearchButtonClicked: () -> Void
-    @FocusState private var isSearchFieldFocused: Bool
-    @State private var hasAppliedInitialFocus = false
-
-    var body: some View {
-        HStack(spacing: 22) {
-            HStack(spacing: 12) {
-                TextField("Search...", text: $text)
-                    .focused($isSearchFieldFocused)
-                    .textInputAutocapitalization(.never)
-                    .disableAutocorrection(true)
-                    .onSubmit {
-                        onSearchButtonClicked()
-                    }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            )
-            .buttonStyle(LiquidGlassCircleButtonStyle())
-            .contentShape(Circle())
-            .hoverEffect(.lift)
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.12), .clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .allowsHitTesting(false)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [.white.opacity(0.5), .white.opacity(0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-                    .blendMode(.overlay)
-            )
-            .shadow(color: .black.opacity(0.2), radius: 18, x: 0, y: 10)
-            .shadow(color: .blue.opacity(0.18), radius: 8, x: 0, y: 2)
-            .onAppear {
-                guard !hasAppliedInitialFocus else { return }
-                hasAppliedInitialFocus = true
-                // Defer to next runloop so focus applies after presentation
-                DispatchQueue.main.async {
-                    isSearchFieldFocused = true
-                }
-            }
-            Button(action: onSearchButtonClicked) {
-                Image(systemName: "arrow.right")
-            }.buttonStyle(LiquidGlassCircleButtonStyle())
-                .contentShape(Circle())
-                .hoverEffect(.lift)
-        }
-    }
-}
-
 struct SearchResultRowWithImage: View {
     let title: String
     let overview: String?
@@ -419,6 +351,7 @@ struct SearchResultRow: View {
             Button(action: onAdd) {
                 Image(systemName: "plus")
             }
+            .accessibilityLabel("Add to list")
             .buttonStyle(LiquidGlassCircleButtonStyle())
             .contentShape(Circle())
             .hoverEffect(.lift)

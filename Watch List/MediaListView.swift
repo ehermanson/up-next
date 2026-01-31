@@ -84,40 +84,35 @@ struct UnwatchedSection: View {
                     subtitle: subtitleProvider(item),
                     onItemExpanded: onItemExpanded,
                     onWatchedToggled: {
-                        item.isWatched.toggle()
-                        if item.isWatched {
-                            item.watchedAt = Date()
-                        } else {
-                            item.watchedAt = nil
-                        }
-                        // Update order in allItems array
-                        if let index = allItems.firstIndex(where: {
-                            $0.media?.id == item.media?.id
-                        }) {
-                            allItems[index] = item
-                        }
-                        onWatchedToggled()
+                        toggleWatched(item)
                     }
                 )
             }
-            .onMove { source, destination in
-                items.move(fromOffsets: source, toOffset: destination)
-                // Update order values after reordering
-                for (index, item) in items.enumerated() {
-                    item.order = index
-                }
-                // Also update in the main array to ensure persistence
-                for item in items {
-                    if let index = allItems.firstIndex(where: {
-                        $0.media?.id == item.media?.id
-                    }) {
-                        allItems[index].order = item.order
-                    }
-                }
-                onOrderChanged()
-            }
+            .onMove(perform: handleMove)
         }
         .background(Color.clear)
+    }
+
+    private func toggleWatched(_ item: ListItem) {
+        item.isWatched.toggle()
+        item.watchedAt = item.isWatched ? Date() : nil
+        if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
+            allItems[index] = item
+        }
+        onWatchedToggled()
+    }
+
+    private func handleMove(from source: IndexSet, to destination: Int) {
+        items.move(fromOffsets: source, toOffset: destination)
+        for (index, item) in items.enumerated() {
+            item.order = index
+        }
+        for item in items {
+            if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
+                allItems[index].order = item.order
+            }
+        }
+        onOrderChanged()
     }
 }
 
@@ -167,20 +162,20 @@ struct WatchedSection: View {
                         subtitle: subtitleProvider(item),
                         onItemExpanded: onItemExpanded,
                         onWatchedToggled: {
-                            if let index = items.firstIndex(where: { $0.media?.id == item.media?.id }) {
-                                items[index].isWatched.toggle()
-                                if items[index].isWatched {
-                                    items[index].watchedAt = Date()
-                                } else {
-                                    items[index].watchedAt = nil
-                                }
-                            }
-                            onWatchedToggled()
+                            toggleWatched(item)
                         }
                     )
                 }
             }
         }
+    }
+
+    private func toggleWatched(_ item: ListItem) {
+        if let index = items.firstIndex(where: { $0.media?.id == item.media?.id }) {
+            items[index].isWatched.toggle()
+            items[index].watchedAt = items[index].isWatched ? Date() : nil
+        }
+        onWatchedToggled()
     }
 }
 
