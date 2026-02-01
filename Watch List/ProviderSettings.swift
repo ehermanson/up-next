@@ -32,6 +32,14 @@ final class ProviderSettings {
         }
     }
 
+    func setHidden(_ hidden: Bool, for ids: Set<Int>) {
+        if hidden {
+            hiddenProviderIDs.formUnion(ids)
+        } else {
+            hiddenProviderIDs.subtract(ids)
+        }
+    }
+
     private func save() {
         if let data = try? JSONEncoder().encode(hiddenProviderIDs) {
             UserDefaults.standard.set(data, forKey: Self.storageKey)

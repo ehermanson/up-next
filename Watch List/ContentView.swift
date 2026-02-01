@@ -98,18 +98,33 @@ struct ContentView: View {
     }
 
     private var allProviderInfo: [ProviderInfo] {
-        var counts: [Int: (name: String, logoPath: String?, count: Int)] = [:]
+        var groups: [String: (ids: Set<Int>, logoPath: String?, titleIDs: Set<String>)] = [:]
         for item in viewModel.tvShows + viewModel.movies {
+            let itemID = item.media?.id ?? UUID().uuidString
             for network in item.media?.networks ?? [] {
-                if let existing = counts[network.id] {
-                    counts[network.id] = (existing.name, existing.logoPath, existing.count + 1)
+                if var existing = groups[network.name] {
+                    existing.ids.insert(network.id)
+                    existing.titleIDs.insert(itemID)
+                    groups[network.name] = existing
                 } else {
-                    counts[network.id] = (network.name, network.logoPath, 1)
+                    groups[network.name] = (
+                        ids: [network.id],
+                        logoPath: network.logoPath,
+                        titleIDs: [itemID]
+                    )
                 }
             }
         }
-        return counts.map { ProviderInfo(id: $0.key, name: $0.value.name, logoPath: $0.value.logoPath, titleCount: $0.value.count) }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return groups.map { name, value in
+            ProviderInfo(
+                id: value.ids.min() ?? 0,
+                name: name,
+                logoPath: value.logoPath,
+                titleCount: value.titleIDs.count,
+                allIDs: value.ids
+            )
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {

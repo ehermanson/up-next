@@ -10,8 +10,13 @@ struct ProviderSettingsView: View {
         NavigationStack {
             List {
                 ForEach(allProviders) { provider in
-                    ProviderRow(provider: provider, isVisible: !settings.isHidden(provider.id)) {
-                        settings.toggleProvider(provider.id)
+                    ProviderRow(
+                        provider: provider,
+                        isVisible: !provider.allIDs.contains(where: { settings.isHidden($0) })
+                    ) {
+                        let ids = provider.allIDs.isEmpty ? Set([provider.id]) : provider.allIDs
+                        let shouldHide = !ids.contains(where: { settings.isHidden($0) })
+                        settings.setHidden(shouldHide, for: ids)
                     }
                 }
             }
@@ -36,6 +41,8 @@ struct ProviderInfo: Identifiable {
     let name: String
     let logoPath: String?
     let titleCount: Int
+    /// All provider IDs that share this display name (for grouped duplicates like HBO / HBO Max)
+    var allIDs: Set<Int> = []
 }
 
 private struct ProviderRow: View {
