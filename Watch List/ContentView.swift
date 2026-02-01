@@ -23,6 +23,8 @@ struct ContentView: View {
     @State private var activeSearchMediaType: MediaType?
     @State private var selectedTVGenre: String? = nil
     @State private var selectedMovieGenre: String? = nil
+    @State private var selectedTVProviderCategory: String? = nil
+    @State private var selectedMovieProviderCategory: String? = nil
     @State private var showingSettings = false
 
     private var selectedTVShow: ListItem? {
@@ -43,14 +45,56 @@ struct ContentView: View {
         Array(Set(viewModel.unwatchedMovies.flatMap { $0.media?.genres ?? [] })).sorted()
     }
 
+    private var availableTVProviderCategories: [String] {
+        providerCategoryLabels(from: viewModel.unwatchedTVShows)
+    }
+
+    private var availableMovieProviderCategories: [String] {
+        providerCategoryLabels(from: viewModel.unwatchedMovies)
+    }
+
     private var filteredUnwatchedTVShows: [ListItem] {
-        guard let genre = selectedTVGenre else { return viewModel.unwatchedTVShows }
-        return viewModel.unwatchedTVShows.filter { $0.media?.genres.contains(genre) == true }
+        filterItems(viewModel.unwatchedTVShows, genre: selectedTVGenre, providerCategory: selectedTVProviderCategory)
     }
 
     private var filteredUnwatchedMovies: [ListItem] {
-        guard let genre = selectedMovieGenre else { return viewModel.unwatchedMovies }
-        return viewModel.unwatchedMovies.filter { $0.media?.genres.contains(genre) == true }
+        filterItems(viewModel.unwatchedMovies, genre: selectedMovieGenre, providerCategory: selectedMovieProviderCategory)
+    }
+
+    private func providerCategoryLabels(from items: [ListItem]) -> [String] {
+        var rawCategories = Set<String>()
+        for item in items {
+            guard let categories = item.media?.providerCategories else { continue }
+            for category in categories.values {
+                rawCategories.insert(category)
+            }
+        }
+        var labels: [String] = []
+        if rawCategories.contains("stream") { labels.append("Stream") }
+        if rawCategories.contains("ads") { labels.append("Free with Ads") }
+        if rawCategories.contains("rent") || rawCategories.contains("buy") { labels.append("Rent or Buy") }
+        return labels
+    }
+
+    private func filterItems(_ items: [ListItem], genre: String?, providerCategory: String?) -> [ListItem] {
+        var result = items
+        if let genre {
+            result = result.filter { $0.media?.genres.contains(genre) == true }
+        }
+        if let providerCategory {
+            let rawCategories: Set<String>
+            switch providerCategory {
+            case "Stream": rawCategories = ["stream"]
+            case "Free with Ads": rawCategories = ["ads"]
+            case "Rent or Buy": rawCategories = ["rent", "buy"]
+            default: rawCategories = []
+            }
+            result = result.filter { item in
+                guard let categories = item.media?.providerCategories.values else { return false }
+                return categories.contains(where: { rawCategories.contains($0) })
+            }
+        }
+        return result
     }
 
     private var allProviderInfo: [ProviderInfo] {
@@ -110,6 +154,16 @@ struct ContentView: View {
                 selectedMovieGenre = nil
             }
         }
+        .onChange(of: availableTVProviderCategories) {
+            if let cat = selectedTVProviderCategory, !availableTVProviderCategories.contains(cat) {
+                selectedTVProviderCategory = nil
+            }
+        }
+        .onChange(of: availableMovieProviderCategories) {
+            if let cat = selectedMovieProviderCategory, !availableMovieProviderCategories.contains(cat) {
+                selectedMovieProviderCategory = nil
+            }
+        }
     }
 
     private var tvShowsTab: some View {
@@ -121,6 +175,8 @@ struct ContentView: View {
             expandedItemID: $expandedTVShowID,
             availableGenres: availableTVGenres,
             selectedGenre: $selectedTVGenre,
+            availableProviderCategories: availableTVProviderCategories,
+            selectedProviderCategory: $selectedTVProviderCategory,
             navigationTitle: "TV Shows",
             subtitleProvider: { item in
                 guard let tvShow = item.tvShow else { return nil }
@@ -191,6 +247,8 @@ struct ContentView: View {
             expandedItemID: $expandedMovieID,
             availableGenres: availableMovieGenres,
             selectedGenre: $selectedMovieGenre,
+            availableProviderCategories: availableMovieProviderCategories,
+            selectedProviderCategory: $selectedMovieProviderCategory,
             navigationTitle: "Movies",
             subtitleProvider: { item in
                 movieSubtitle(for: item)

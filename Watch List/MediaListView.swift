@@ -16,6 +16,8 @@ struct MediaListView: View {
     @Binding var expandedItemID: String?
     var availableGenres: [String]
     @Binding var selectedGenre: String?
+    var availableProviderCategories: [String]
+    @Binding var selectedProviderCategory: String?
 
     let navigationTitle: String
     let subtitleProvider: (ListItem) -> String?
@@ -57,11 +59,13 @@ struct MediaListView: View {
                                     title: "Up Next",
                                     count: filteredUnwatchedItems.count,
                                     availableGenres: availableGenres,
-                                    selectedGenre: $selectedGenre
+                                    selectedGenre: $selectedGenre,
+                                    availableProviderCategories: availableProviderCategories,
+                                    selectedProviderCategory: $selectedProviderCategory
                                 )
 
                                 if !filteredUnwatchedItems.isEmpty {
-                                    if selectedGenre == nil {
+                                    if selectedGenre == nil && selectedProviderCategory == nil {
                                         UnwatchedSection(
                                             items: $unwatchedItems,
                                             allItems: $allItems,
@@ -166,12 +170,27 @@ private struct SectionHeader: View {
     let count: Int
     var availableGenres: [String] = []
     @Binding var selectedGenre: String?
+    var availableProviderCategories: [String] = []
+    @Binding var selectedProviderCategory: String?
 
-    init(title: String, count: Int, availableGenres: [String] = [], selectedGenre: Binding<String?> = .constant(nil)) {
+    init(
+        title: String,
+        count: Int,
+        availableGenres: [String] = [],
+        selectedGenre: Binding<String?> = .constant(nil),
+        availableProviderCategories: [String] = [],
+        selectedProviderCategory: Binding<String?> = .constant(nil)
+    ) {
         self.title = title
         self.count = count
         self.availableGenres = availableGenres
         self._selectedGenre = selectedGenre
+        self.availableProviderCategories = availableProviderCategories
+        self._selectedProviderCategory = selectedProviderCategory
+    }
+
+    private var hasActiveFilter: Bool {
+        selectedGenre != nil || selectedProviderCategory != nil
     }
 
     var body: some View {
@@ -190,35 +209,62 @@ private struct SectionHeader: View {
                 .padding(.vertical, 2)
                 .glassEffect(.regular, in: .capsule)
             Spacer()
-            if !availableGenres.isEmpty {
+            if !availableGenres.isEmpty || !availableProviderCategories.isEmpty {
                 Menu {
-                    Button {
-                        selectedGenre = nil
-                    } label: {
-                        if selectedGenre == nil {
-                            Label("All", systemImage: "checkmark")
-                        } else {
-                            Text("All")
+                    if availableProviderCategories.count > 1 {
+                        Section("Watch Option") {
+                            Button {
+                                selectedProviderCategory = nil
+                            } label: {
+                                if selectedProviderCategory == nil {
+                                    Label("All", systemImage: "checkmark")
+                                } else {
+                                    Text("All")
+                                }
+                            }
+                            ForEach(availableProviderCategories, id: \.self) { category in
+                                Button {
+                                    selectedProviderCategory = category
+                                } label: {
+                                    if selectedProviderCategory == category {
+                                        Label(category, systemImage: "checkmark")
+                                    } else {
+                                        Text(category)
+                                    }
+                                }
+                            }
                         }
                     }
-                    Divider()
-                    ForEach(availableGenres, id: \.self) { genre in
-                        Button {
-                            selectedGenre = genre
-                        } label: {
-                            if selectedGenre == genre {
-                                Label(genre, systemImage: "checkmark")
-                            } else {
-                                Text(genre)
+                    if !availableGenres.isEmpty {
+                        Section("Genre") {
+                            Button {
+                                selectedGenre = nil
+                            } label: {
+                                if selectedGenre == nil {
+                                    Label("All", systemImage: "checkmark")
+                                } else {
+                                    Text("All")
+                                }
+                            }
+                            ForEach(availableGenres, id: \.self) { genre in
+                                Button {
+                                    selectedGenre = genre
+                                } label: {
+                                    if selectedGenre == genre {
+                                        Label(genre, systemImage: "checkmark")
+                                    } else {
+                                        Text(genre)
+                                    }
+                                }
                             }
                         }
                     }
                 } label: {
-                    Image(systemName: selectedGenre != nil
+                    Image(systemName: hasActiveFilter
                         ? "line.3.horizontal.decrease.circle.fill"
                         : "line.3.horizontal.decrease.circle")
                         .font(.system(size: 18))
-                        .foregroundStyle(selectedGenre != nil ? .white : .secondary)
+                        .foregroundStyle(hasActiveFilter ? .white : .secondary)
                         .frame(width: 32, height: 32)
                         .glassEffect(.regular, in: .circle)
                 }
@@ -423,6 +469,8 @@ struct MediaListRow: View {
         expandedItemID: .constant("tv-1"),
         availableGenres: [],
         selectedGenre: .constant(nil),
+        availableProviderCategories: [],
+        selectedProviderCategory: .constant(nil),
         navigationTitle: "TV Shows",
         subtitleProvider: { item in
             if let summary = item.tvShow?.seasonsEpisodesSummary {
