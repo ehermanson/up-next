@@ -47,10 +47,13 @@ struct MediaDetailView: View {
 
                             MetadataRow(listItem: listItem)
 
+                            GenreSection(genres: listItem.media?.genres ?? [])
+
                             ScrollView(.horizontal) {
                                 NetworkLogosView(
                                     networks: listItem.media?.networks ?? [],
-                                    maxVisible: .max
+                                    maxVisible: .max,
+                                    logoSize: 44
                                 )
                             }
                             .scrollIndicators(.hidden)
@@ -319,6 +322,29 @@ private struct DescriptionSection: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+private struct GenreSection: View {
+    let genres: [String]
+
+    var body: some View {
+        if !genres.isEmpty {
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(genres, id: \.self) { genre in
+                        Text(genre)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .glassEffect(.regular, in: .capsule)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+            .scrollIndicators(.hidden)
         }
     }
 }
