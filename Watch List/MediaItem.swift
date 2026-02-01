@@ -34,6 +34,8 @@ protocol MediaItemProtocol {
     var providerCategories: [Int: String] { get set }
     var descriptionText: String? { get }
     var cast: [String] { get }
+    var castImagePaths: [String] { get }
+    var castCharacters: [String] { get }
     var genres: [String] { get }
 }
 
@@ -54,6 +56,8 @@ final class Movie: MediaItemProtocol {
     /// Additional optional metadata
     var descriptionText: String?
     var cast: [String]
+    var castImagePaths: [String]
+    var castCharacters: [String]
     var genres: [String]
 
     /// Provider ID → category ("stream", "ads", "rent", "buy")
@@ -72,6 +76,8 @@ final class Movie: MediaItemProtocol {
         networks: [Network] = [],
         descriptionText: String? = nil,
         cast: [String] = [],
+        castImagePaths: [String] = [],
+        castCharacters: [String] = [],
         genres: [String] = [],
         providerCategories: [Int: String] = [:],
         releaseDate: String? = nil,
@@ -83,6 +89,8 @@ final class Movie: MediaItemProtocol {
         self.networks = networks
         self.descriptionText = descriptionText
         self.cast = cast
+        self.castImagePaths = castImagePaths
+        self.castCharacters = castCharacters
         self.genres = genres
         self.providerCategories = providerCategories
         self.releaseDate = releaseDate
@@ -107,6 +115,8 @@ final class TVShow: MediaItemProtocol {
     /// Additional optional metadata
     var descriptionText: String?
     var cast: [String]
+    var castImagePaths: [String]
+    var castCharacters: [String]
     var genres: [String]
 
     /// Provider ID → category ("stream", "ads", "rent", "buy")
@@ -125,6 +135,8 @@ final class TVShow: MediaItemProtocol {
         networks: [Network] = [],
         descriptionText: String? = nil,
         cast: [String] = [],
+        castImagePaths: [String] = [],
+        castCharacters: [String] = [],
         genres: [String] = [],
         providerCategories: [Int: String] = [:],
         numberOfSeasons: Int? = nil,
@@ -136,6 +148,8 @@ final class TVShow: MediaItemProtocol {
         self.networks = networks
         self.descriptionText = descriptionText
         self.cast = cast
+        self.castImagePaths = castImagePaths
+        self.castCharacters = castCharacters
         self.genres = genres
         self.providerCategories = providerCategories
         self.numberOfSeasons = numberOfSeasons

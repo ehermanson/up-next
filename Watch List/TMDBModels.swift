@@ -97,6 +97,7 @@ struct TMDBCastMember: Codable {
     let name: String
     let character: String?
     let order: Int?
+    let profilePath: String?
 }
 
 struct TMDBNetwork: Codable {

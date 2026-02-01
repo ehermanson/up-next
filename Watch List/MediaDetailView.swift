@@ -84,7 +84,11 @@ struct MediaDetailView: View {
 
                             Divider().padding(.vertical, 4)
 
-                            CastSection(cast: listItem.media?.cast ?? [])
+                            CastSection(
+                                cast: listItem.media?.cast ?? [],
+                                castImagePaths: listItem.media?.castImagePaths ?? [],
+                                castCharacters: listItem.media?.castCharacters ?? []
+                            )
 
                             if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 0 {
                                 Divider().padding(.vertical, 4)
@@ -192,6 +196,8 @@ struct MediaDetailView: View {
                 tvShow.numberOfEpisodes = updatedTVShow.numberOfEpisodes
                 tvShow.descriptionText = updatedTVShow.descriptionText
                 tvShow.cast = updatedTVShow.cast
+                tvShow.castImagePaths = updatedTVShow.castImagePaths
+                tvShow.castCharacters = updatedTVShow.castCharacters
                 tvShow.genres = updatedTVShow.genres
                 tvShow.networks = updatedTVShow.networks
                 tvShow.providerCategories = updatedTVShow.providerCategories
@@ -214,6 +220,8 @@ struct MediaDetailView: View {
                 movie.runtime = updatedMovie.runtime
                 movie.descriptionText = updatedMovie.descriptionText
                 movie.cast = updatedMovie.cast
+                movie.castImagePaths = updatedMovie.castImagePaths
+                movie.castCharacters = updatedMovie.castCharacters
                 movie.genres = updatedMovie.genres
                 movie.networks = updatedMovie.networks
                 movie.providerCategories = updatedMovie.providerCategories
@@ -675,6 +683,11 @@ private struct GenreSection: View {
 
 private struct CastSection: View {
     let cast: [String]
+    let castImagePaths: [String]
+    let castCharacters: [String]
+
+    private let imageSize: CGFloat = 64
+    private let itemWidth: CGFloat = 80
 
     var body: some View {
         if cast.isEmpty {
@@ -684,21 +697,69 @@ private struct CastSection: View {
                 Text("Cast")
                     .font(.headline)
                 ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(cast.prefix(10), id: \.self) { member in
-                            Text(member)
-                                .font(.subheadline)
-                                            .foregroundStyle(.primary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .glassEffect(.regular.tint(.white.opacity(0.05)), in: .capsule)
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(Array(cast.prefix(10).enumerated()), id: \.offset) { index, member in
+                            castItem(index: index, name: member)
                         }
                     }
                     .padding(.horizontal, 1)
+                    .padding(.vertical, 2)
                 }
                 .scrollIndicators(.hidden)
             }
         }
+    }
+
+    private func castItem(index: Int, name: String) -> some View {
+        VStack(spacing: 6) {
+            castImage(index: index)
+                .frame(width: imageSize, height: imageSize)
+                .clipShape(Circle())
+
+            Text(name)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+
+            let character = index < castCharacters.count ? castCharacters[index] : ""
+            if !character.isEmpty {
+                Text(character)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(width: itemWidth)
+    }
+
+    @ViewBuilder
+    private func castImage(index: Int) -> some View {
+        let path = index < castImagePaths.count ? castImagePaths[index] : ""
+        if let url = TMDBService.shared.imageURL(path: path.isEmpty ? nil : path, size: .w185) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    castPlaceholder
+                }
+            }
+        } else {
+            castPlaceholder
+        }
+    }
+
+    private var castPlaceholder: some View {
+        Image(systemName: "person.fill")
+            .font(.title2)
+            .foregroundStyle(.tertiary)
+            .frame(width: imageSize, height: imageSize)
+            .background(Color.gray.opacity(0.2))
     }
 }
 

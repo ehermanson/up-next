@@ -137,7 +137,10 @@ actor TMDBService {
 
     /// Convert TMDB TV show detail + optional watch providers to TVShow model
     nonisolated func mapToTVShow(_ detail: TMDBTVShowDetail, providers: TMDBWatchProviderCountry? = nil) -> TVShow {
-        let cast = detail.credits?.cast?.prefix(10).map { $0.name } ?? []
+        let castMembers = detail.credits?.cast?.prefix(10) ?? []
+        let cast = castMembers.map { $0.name }
+        let castImagePaths = castMembers.map { $0.profilePath ?? "" }
+        let castCharacters = castMembers.map { $0.character ?? "" }
         let genres = detail.genres?.map { $0.name } ?? []
 
         // Start with originating networks (category "stream"), applying aliases
@@ -177,6 +180,8 @@ actor TMDBService {
             networks: allNetworks,
             descriptionText: detail.overview,
             cast: cast,
+            castImagePaths: castImagePaths,
+            castCharacters: castCharacters,
             genres: genres,
             providerCategories: categories,
             numberOfSeasons: detail.numberOfSeasons,
@@ -256,7 +261,10 @@ actor TMDBService {
 
     /// Convert TMDB movie detail + watch providers to Movie model
     nonisolated func mapToMovie(_ detail: TMDBMovieDetail, providers: TMDBWatchProviderCountry?) -> Movie {
-        let cast = detail.credits?.cast?.prefix(10).map { $0.name } ?? []
+        let castMembers = detail.credits?.cast?.prefix(10) ?? []
+        let cast = castMembers.map { $0.name }
+        let castImagePaths = castMembers.map { $0.profilePath ?? "" }
+        let castCharacters = castMembers.map { $0.character ?? "" }
         let (networks, categories) = mapProviders(providers)
         let genres = detail.genres?.map { $0.name } ?? []
 
@@ -267,6 +275,8 @@ actor TMDBService {
             networks: networks,
             descriptionText: detail.overview,
             cast: cast,
+            castImagePaths: castImagePaths,
+            castCharacters: castCharacters,
             genres: genres,
             providerCategories: categories,
             releaseDate: detail.releaseDate,
