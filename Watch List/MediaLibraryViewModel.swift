@@ -167,6 +167,22 @@ final class MediaLibraryViewModel {
         }
     }
 
+    func handleSeasonCountUpdate(for listItem: ListItem, previousSeasonCount: Int?) {
+        guard let previous = previousSeasonCount,
+              let current = listItem.tvShow?.numberOfSeasons,
+              current > previous
+        else { return }
+
+        // If all previous seasons were watched, the show was "complete" — move it back to Up Next
+        let allPreviousWatched = (1...previous).allSatisfy { listItem.watchedSeasons.contains($0) }
+        if allPreviousWatched {
+            listItem.isWatched = false
+            listItem.watchedAt = nil
+        }
+        listItem.syncWatchedStateFromSeasons()
+        persistChanges(for: .tvShow)
+    }
+
     // MARK: - Private helpers
 
     private func loadItems() async {

@@ -32,6 +32,9 @@ final class ListItem {
     /// The order of this item within the media list for sorting purposes
     var order: Int
 
+    /// Which seasons the user has watched (1-based season numbers)
+    var watchedSeasons: [Int] = []
+
     /// Computed property to access the media item as a protocol type
     var media: (any MediaItemProtocol)? {
         if let movie = movie {
@@ -50,7 +53,8 @@ final class ListItem {
         addedAt: Date,
         isWatched: Bool,
         watchedAt: Date?,
-        order: Int
+        order: Int,
+        watchedSeasons: [Int] = []
     ) {
         // Ensure exactly one media type is provided
         guard (movie != nil) != (tvShow != nil) else {
@@ -65,6 +69,34 @@ final class ListItem {
         self.isWatched = isWatched
         self.watchedAt = watchedAt
         self.order = order
+        self.watchedSeasons = watchedSeasons
+    }
+
+    /// The next season number the user should watch, or nil if all watched / no season data
+    var nextSeasonToWatch: Int? {
+        guard let tvShow = tvShow, let total = tvShow.numberOfSeasons, total > 0 else { return nil }
+        for season in 1...total {
+            if !watchedSeasons.contains(season) {
+                return season
+            }
+        }
+        return nil
+    }
+
+    /// Syncs `isWatched` / `watchedAt` based on whether all seasons are in `watchedSeasons`.
+    /// No-op for movies or shows without `numberOfSeasons`.
+    func syncWatchedStateFromSeasons() {
+        guard let tvShow = tvShow, let total = tvShow.numberOfSeasons, total > 0 else { return }
+        let allWatched = (1...total).allSatisfy { watchedSeasons.contains($0) }
+        if allWatched {
+            if !isWatched {
+                isWatched = true
+                watchedAt = Date()
+            }
+        } else {
+            isWatched = false
+            watchedAt = nil
+        }
     }
 
     /// Convenience initializer for creating a ListItem with a Movie
@@ -75,7 +107,8 @@ final class ListItem {
         addedAt: Date,
         isWatched: Bool,
         watchedAt: Date?,
-        order: Int
+        order: Int,
+        watchedSeasons: [Int] = []
     ) {
         self.init(
             movie: movie,
@@ -85,7 +118,8 @@ final class ListItem {
             addedAt: addedAt,
             isWatched: isWatched,
             watchedAt: watchedAt,
-            order: order
+            order: order,
+            watchedSeasons: watchedSeasons
         )
     }
 
@@ -97,7 +131,8 @@ final class ListItem {
         addedAt: Date,
         isWatched: Bool,
         watchedAt: Date?,
-        order: Int
+        order: Int,
+        watchedSeasons: [Int] = []
     ) {
         self.init(
             movie: nil,
@@ -107,7 +142,8 @@ final class ListItem {
             addedAt: addedAt,
             isWatched: isWatched,
             watchedAt: watchedAt,
-            order: order
+            order: order,
+            watchedSeasons: watchedSeasons
         )
     }
 }

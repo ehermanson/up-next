@@ -52,7 +52,7 @@ struct MediaCardView: View {
                         .font(.subheadline)
                         .fontDesign(.rounded)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
                 NetworkLogosView(networks: networks, maxVisible: 4, logoSize: 28)
             }

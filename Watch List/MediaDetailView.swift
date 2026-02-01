@@ -5,6 +5,7 @@ struct MediaDetailView: View {
     @Binding var listItem: ListItem
     let dismiss: () -> Void
     let onRemove: () -> Void
+    var onSeasonCountChanged: ((ListItem, Int?) -> Void)?
 
     @State private var isLoadingDetails = false
     @State private var detailError: String?
@@ -68,6 +69,11 @@ struct MediaDetailView: View {
                             Divider().padding(.vertical, 4)
 
                             CastSection(cast: listItem.media?.cast ?? [])
+
+                            if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 0 {
+                                Divider().padding(.vertical, 4)
+                                SeasonChecklistCard(listItem: $listItem)
+                            }
 
                             Divider().padding(.vertical, 4)
 
@@ -134,6 +140,7 @@ struct MediaDetailView: View {
 
         do {
             if let tvShow = listItem.tvShow {
+                let previousSeasonCount = tvShow.numberOfSeasons
                 let detail = try await service.getTVShowDetails(id: id)
                 let updatedTVShow = service.mapToTVShow(detail)
 
@@ -145,6 +152,12 @@ struct MediaDetailView: View {
                 tvShow.networks = updatedTVShow.networks
                 if updatedTVShow.thumbnailURL != nil {
                     tvShow.thumbnailURL = updatedTVShow.thumbnailURL
+                }
+
+                if let newCount = updatedTVShow.numberOfSeasons,
+                   previousSeasonCount != nil,
+                   newCount > (previousSeasonCount ?? 0) {
+                    onSeasonCountChanged?(listItem, previousSeasonCount)
                 }
             } else if let movie = listItem.movie {
                 async let detailTask = service.getMovieDetails(id: id)
@@ -213,6 +226,19 @@ private struct MetadataPill: View {
 private struct WatchedToggleCard: View {
     @Binding var listItem: ListItem
 
+    private var seasonSubtitle: String? {
+        guard let tvShow = listItem.tvShow,
+              let total = tvShow.numberOfSeasons, total > 0
+        else { return nil }
+        let count = listItem.watchedSeasons.count
+        if listItem.isWatched {
+            return "Watched"
+        } else if count > 0 {
+            return "\(count) of \(total) seasons"
+        }
+        return nil
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: listItem.isWatched ? "checkmark.circle.fill" : "circle")
@@ -222,11 +248,15 @@ private struct WatchedToggleCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mark as Watched")
                     .font(.headline)
-                if listItem.isWatched {
+                if let subtitle = seasonSubtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                } else if listItem.isWatched {
                     Text("Watched")
                         .font(.caption)
                         .foregroundStyle(.green)
-                    }
+                }
             }
 
             Spacer()
@@ -234,14 +264,70 @@ private struct WatchedToggleCard: View {
             Toggle("", isOn: Binding(
                 get: { listItem.isWatched },
                 set: { newValue in
-                    listItem.isWatched = newValue
-                    listItem.watchedAt = newValue ? Date() : nil
+                    if let tvShow = listItem.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
+                        if newValue {
+                            listItem.watchedSeasons = Array(1...total)
+                        } else {
+                            listItem.watchedSeasons = []
+                        }
+                        listItem.isWatched = newValue
+                        listItem.watchedAt = newValue ? Date() : nil
+                    } else {
+                        listItem.isWatched = newValue
+                        listItem.watchedAt = newValue ? Date() : nil
+                    }
                 }
             ))
             .labelsHidden()
         }
         .padding(16)
         .glassEffect(.regular.tint(listItem.isWatched ? .green.opacity(0.1) : .clear), in: .rect(cornerRadius: 20))
+    }
+}
+
+private struct SeasonChecklistCard: View {
+    @Binding var listItem: ListItem
+
+    private var totalSeasons: Int {
+        listItem.tvShow?.numberOfSeasons ?? 0
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Seasons")
+                .font(.headline)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 70), spacing: 8)], spacing: 8) {
+                ForEach(1...max(totalSeasons, 1), id: \.self) { season in
+                    let isWatched = listItem.watchedSeasons.contains(season)
+                    Button {
+                        if isWatched {
+                            listItem.watchedSeasons.removeAll { $0 == season }
+                        } else {
+                            listItem.watchedSeasons.append(season)
+                        }
+                        listItem.syncWatchedStateFromSeasons()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isWatched ? "checkmark" : "")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                            Text("S\(season)")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .glassEffect(
+                            .regular.tint(isWatched ? .green.opacity(0.2) : .clear),
+                            in: .capsule
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(isWatched ? .green : .secondary)
+                }
+            }
+        }
     }
 }
 

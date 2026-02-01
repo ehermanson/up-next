@@ -157,6 +157,12 @@ struct UnwatchedSection: View {
     private func toggleWatched(_ item: ListItem) {
         item.isWatched.toggle()
         item.watchedAt = item.isWatched ? Date() : nil
+
+        // Sync season tracking for TV shows
+        if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
+            item.watchedSeasons = item.isWatched ? Array(1...total) : []
+        }
+
         if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
             allItems[index] = item
         }
@@ -198,6 +204,9 @@ struct WatchedSection: View {
                         onWatchedToggled: {
                             item.isWatched.toggle()
                             item.watchedAt = item.isWatched ? Date() : nil
+                            if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
+                                item.watchedSeasons = item.isWatched ? Array(1...total) : []
+                            }
                             onWatchedToggled()
                         }
                     )
