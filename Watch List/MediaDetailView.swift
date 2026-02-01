@@ -11,8 +11,15 @@ struct MediaDetailView: View {
     @State private var detailError: String?
     @State private var isConfirmingRemoval = false
     @State private var showingHiddenProviders = false
+    @State private var showingTMDBPage = false
 
     private let service = TMDBService.shared
+
+    private var tmdbURL: URL? {
+        guard let media = listItem.media else { return nil }
+        let type = listItem.tvShow != nil ? "tv" : "movie"
+        return URL(string: "https://www.themoviedb.org/\(type)/\(media.id)")
+    }
 
     private var visibleNetworks: [Network] {
         (listItem.media?.networks ?? []).filter { !ProviderSettings.shared.isHidden($0.id) }
@@ -87,6 +94,31 @@ struct MediaDetailView: View {
                             Divider().padding(.vertical, 4)
 
                             WatchedToggleCard(listItem: $listItem)
+
+                            if let tmdbURL {
+                                Divider().padding(.vertical, 4)
+
+                                Button {
+                                    showingTMDBPage = true
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "film")
+                                            .font(.body)
+                                        Text("View on TMDB")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .sheet(isPresented: $showingTMDBPage) {
+                                    SafariView(url: tmdbURL)
+                                        .ignoresSafeArea()
+                                }
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
