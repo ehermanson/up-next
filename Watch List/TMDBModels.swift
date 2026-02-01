@@ -35,6 +35,13 @@ struct TMDBTVShowDetail: Codable {
     let genres: [TMDBGenre]?
     let credits: TMDBCredits?
     let networks: [TMDBNetwork]?
+    let seasons: [TMDBSeason]?
+}
+
+struct TMDBSeason: Codable {
+    let seasonNumber: Int
+    let name: String?
+    let episodeCount: Int?
 }
 
 // MARK: - Movie Models

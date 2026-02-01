@@ -128,6 +128,9 @@ final class TVShow: MediaItemProtocol {
     /// Number of episodes (specific to TV shows)
     var numberOfEpisodes: Int?
 
+    /// Episode count per season (index 0 = season 1)
+    var seasonEpisodeCounts: [Int]
+
     init(
         id: String,
         title: String,
@@ -140,7 +143,8 @@ final class TVShow: MediaItemProtocol {
         genres: [String] = [],
         providerCategories: [Int: String] = [:],
         numberOfSeasons: Int? = nil,
-        numberOfEpisodes: Int? = nil
+        numberOfEpisodes: Int? = nil,
+        seasonEpisodeCounts: [Int] = []
     ) {
         self.id = id
         self.title = title
@@ -154,6 +158,7 @@ final class TVShow: MediaItemProtocol {
         self.providerCategories = providerCategories
         self.numberOfSeasons = numberOfSeasons
         self.numberOfEpisodes = numberOfEpisodes
+        self.seasonEpisodeCounts = seasonEpisodeCounts
     }
 }
 

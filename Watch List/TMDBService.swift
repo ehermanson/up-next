@@ -143,6 +143,15 @@ actor TMDBService {
         let castCharacters = castMembers.map { $0.character ?? "" }
         let genres = detail.genres?.map { $0.name } ?? []
 
+        // Build per-season episode counts (skip specials with seasonNumber == 0)
+        let seasonEpisodeCounts: [Int] = {
+            guard let seasons = detail.seasons else { return [] }
+            let numbered = seasons
+                .filter { $0.seasonNumber > 0 }
+                .sorted { $0.seasonNumber < $1.seasonNumber }
+            return numbered.map { $0.episodeCount ?? 0 }
+        }()
+
         // Start with originating networks (category "stream"), applying aliases
         var seenNames = Set<String>()
         var categories: [Int: String] = [:]
@@ -185,7 +194,8 @@ actor TMDBService {
             genres: genres,
             providerCategories: categories,
             numberOfSeasons: detail.numberOfSeasons,
-            numberOfEpisodes: detail.numberOfEpisodes
+            numberOfEpisodes: detail.numberOfEpisodes,
+            seasonEpisodeCounts: seasonEpisodeCounts
         )
     }
 

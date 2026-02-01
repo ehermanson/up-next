@@ -201,6 +201,7 @@ struct MediaDetailView: View {
                 tvShow.genres = updatedTVShow.genres
                 tvShow.networks = updatedTVShow.networks
                 tvShow.providerCategories = updatedTVShow.providerCategories
+                tvShow.seasonEpisodeCounts = updatedTVShow.seasonEpisodeCounts
                 if updatedTVShow.thumbnailURL != nil {
                     tvShow.thumbnailURL = updatedTVShow.thumbnailURL
                 }
@@ -538,42 +539,66 @@ private struct SeasonChecklistCard: View {
         listItem.tvShow?.numberOfSeasons ?? 0
     }
 
+    private var episodeCounts: [Int] {
+        listItem.tvShow?.seasonEpisodeCounts ?? []
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Seasons")
                 .font(.headline)
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 70), spacing: 8)], spacing: 8) {
+            VStack(spacing: 0) {
                 ForEach(1...max(totalSeasons, 1), id: \.self) { season in
-                    let isWatched = listItem.watchedSeasons.contains(season)
-                    Button {
-                        if isWatched {
-                            listItem.watchedSeasons.removeAll { $0 == season }
-                        } else {
-                            listItem.watchedSeasons.append(season)
-                        }
-                        listItem.syncWatchedStateFromSeasons()
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: isWatched ? "checkmark" : "")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                            Text("S\(season)")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .glassEffect(
-                            .regular.tint(isWatched ? .green.opacity(0.2) : .clear),
-                            in: .capsule
-                        )
+                    seasonRow(season: season)
+
+                    if season < totalSeasons {
+                        Divider()
+                            .padding(.leading, 44)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(isWatched ? .green : .secondary)
                 }
             }
+            .glassEffect(.regular, in: .rect(cornerRadius: 16))
         }
+    }
+
+    private func seasonRow(season: Int) -> some View {
+        let isWatched = listItem.watchedSeasons.contains(season)
+        let episodeCount = season <= episodeCounts.count ? episodeCounts[season - 1] : nil
+
+        return Button {
+            if isWatched {
+                listItem.watchedSeasons.removeAll { $0 == season }
+            } else {
+                listItem.watchedSeasons.append(season)
+            }
+            listItem.syncWatchedStateFromSeasons()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isWatched ? .green : .secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Season \(season)")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+
+                    if let count = episodeCount, count > 0 {
+                        Text("\(count) episode\(count == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
