@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "65E41CF52EEC5BF60028C00A"
-               BuildableName = "Watch List.app"
-               BlueprintName = "Watch List"
-               ReferencedContainer = "container:Watch List.xcodeproj">
+               BuildableName = "Up Next.app"
+               BlueprintName = "Up Next"
+               ReferencedContainer = "container:Up Next.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "65E41CF52EEC5BF60028C00A"
-            BuildableName = "Watch List.app"
-            BlueprintName = "Watch List"
-            ReferencedContainer = "container:Watch List.xcodeproj">
+            BuildableName = "Up Next.app"
+            BlueprintName = "Up Next"
+            ReferencedContainer = "container:Up Next.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,9 +62,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "65E41CF52EEC5BF60028C00A"
-            BuildableName = "Watch List.app"
-            BlueprintName = "Watch List"
-            ReferencedContainer = "container:Watch List.xcodeproj">
+            BuildableName = "Up Next.app"
+            BlueprintName = "Up Next"
+            ReferencedContainer = "container:Up Next.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

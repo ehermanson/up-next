@@ -8,12 +8,5 @@
 	</array>
 	<key>TMDB_API_KEY</key>
 	<string>b40fa92d7307fa0dbe5ffb7ec0f06c17</string>
-	<key>UILaunchScreen</key>                                                                                                         
-	<dict>                                                                                                                            
-       <key>UIImageName</key>                                                                                                          
-       <string>LaunchIcon</string>                                                                                                     
-       <key>UIColorName</key>                                                                                                          
-       <string>LaunchBackground</string>                                                                                               
-	</dict>        
 </dict>
 </plist>
