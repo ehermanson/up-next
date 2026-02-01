@@ -106,7 +106,7 @@ struct MediaListView: View {
                         }
                         .scrollContentBackground(.hidden)
                         .listStyle(.plain)
-                        .contentMargins(.bottom, 80, for: .scrollContent)
+                        .contentMargins(.bottom, 20, for: .scrollContent)
                         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: filteredUnwatchedItems.count)
                         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: allItems.count)
                     }

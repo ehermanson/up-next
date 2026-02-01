@@ -12,6 +12,8 @@ struct Watch_ListApp: App {
             ListItem.self,
             UserIdentity.self,
             WatchListGroup.self,
+            CustomList.self,
+            CustomListItem.self,
         ])
         let configuration = ModelConfiguration("Watch_List")
         do {

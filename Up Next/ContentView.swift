@@ -12,15 +12,17 @@ struct ContentView: View {
     private enum MediaTab: Hashable {
         case tvShows
         case movies
+        case myLists
+        case search
     }
 
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel = MediaLibraryViewModel()
+    @State private var customListViewModel = CustomListViewModel()
 
     @State private var expandedTVShowID: String? = nil
     @State private var expandedMovieID: String? = nil
     @State private var selectedTab: MediaTab = .tvShows
-    @State private var activeSearchMediaType: MediaType?
     @State private var selectedTVGenre: String? = nil
     @State private var selectedMovieGenre: String? = nil
     @State private var selectedTVProviderCategory: String? = nil
@@ -128,6 +130,37 @@ struct ContentView: View {
     }
 
     var body: some View {
+        mainTabView
+            .sheet(isPresented: $showingSettings) {
+                ProviderSettingsView(allProviders: allProviderInfo)
+            }
+            .task {
+                await viewModel.configure(modelContext: modelContext)
+                customListViewModel.configure(modelContext: modelContext)
+            }
+            .onChange(of: availableTVGenres) {
+                if let genre = selectedTVGenre, !availableTVGenres.contains(genre) {
+                    selectedTVGenre = nil
+                }
+            }
+            .onChange(of: availableMovieGenres) {
+                if let genre = selectedMovieGenre, !availableMovieGenres.contains(genre) {
+                    selectedMovieGenre = nil
+                }
+            }
+            .onChange(of: availableTVProviderCategories) {
+                if let cat = selectedTVProviderCategory, !availableTVProviderCategories.contains(cat) {
+                    selectedTVProviderCategory = nil
+                }
+            }
+            .onChange(of: availableMovieProviderCategories) {
+                if let cat = selectedMovieProviderCategory, !availableMovieProviderCategories.contains(cat) {
+                    selectedMovieProviderCategory = nil
+                }
+            }
+    }
+
+    private var mainTabView: some View {
         TabView(selection: $selectedTab) {
             Tab("TV Shows", systemImage: "tv", value: .tvShows) {
                 tvShowsTab
@@ -135,48 +168,11 @@ struct ContentView: View {
             Tab("Movies", systemImage: "film", value: .movies) {
                 moviesTab
             }
-        }
-        .overlay(alignment: .bottomTrailing) {
-            addButton
-                .padding(.trailing, 28)
-                .padding(.bottom, -6)
-        }
-        .sheet(isPresented: $showingSettings) {
-            ProviderSettingsView(allProviders: allProviderInfo)
-        }
-        .sheet(item: $activeSearchMediaType) { mediaType in
-            SearchView(
-                mediaType: mediaType,
-                existingIDs: existingIDs(for: mediaType),
-                onTVShowAdded: { tvShow in
-                    viewModel.addTVShow(tvShow)
-                },
-                onMovieAdded: { movie in
-                    viewModel.addMovie(movie)
-                }
-            )
-        }
-        .task {
-            await viewModel.configure(modelContext: modelContext)
-        }
-        .onChange(of: availableTVGenres) {
-            if let genre = selectedTVGenre, !availableTVGenres.contains(genre) {
-                selectedTVGenre = nil
+            Tab("My Lists", systemImage: "tray.full", value: .myLists) {
+                MyListsView(viewModel: customListViewModel)
             }
-        }
-        .onChange(of: availableMovieGenres) {
-            if let genre = selectedMovieGenre, !availableMovieGenres.contains(genre) {
-                selectedMovieGenre = nil
-            }
-        }
-        .onChange(of: availableTVProviderCategories) {
-            if let cat = selectedTVProviderCategory, !availableTVProviderCategories.contains(cat) {
-                selectedTVProviderCategory = nil
-            }
-        }
-        .onChange(of: availableMovieProviderCategories) {
-            if let cat = selectedMovieProviderCategory, !availableMovieProviderCategories.contains(cat) {
-                selectedMovieProviderCategory = nil
+            Tab("Search", systemImage: "magnifyingglass", value: .search, role: .search) {
+                searchTab
             }
         }
     }
@@ -249,7 +245,8 @@ struct ContentView: View {
                 },
                 onSeasonCountChanged: { listItem, previousCount in
                     viewModel.handleSeasonCountUpdate(for: listItem, previousSeasonCount: previousCount)
-                }
+                },
+                customListViewModel: customListViewModel
             )
         }
     }
@@ -299,23 +296,19 @@ struct ContentView: View {
                         expandedMovieID = nil
                         viewModel.removeItem(withID: id, mediaType: .movie)
                     }
-                }
+                },
+                customListViewModel: customListViewModel
             )
         }
     }
 
-    private var addButton: some View {
-        Button {
-            activeSearchMediaType = selectedTab == .tvShows ? .tvShow : .movie
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 54, height: 54)
-                .glassEffect(.regular.tint(.indigo.opacity(0.5)).interactive(), in: .circle)
-        }
-        .shadow(color: Color.indigo.opacity(0.3), radius: 12, x: 0, y: 6)
-        .accessibilityLabel("Add \(selectedTab == .tvShows ? "TV show" : "movie")")
+    private var searchTab: some View {
+        WatchlistSearchView(
+            existingTVShowIDs: existingIDs(for: .tvShow),
+            existingMovieIDs: existingIDs(for: .movie),
+            onTVShowAdded: { viewModel.addTVShow($0) },
+            onMovieAdded: { viewModel.addMovie($0) }
+        )
     }
 
     private func binding(forItem item: ListItem, in array: Binding<[ListItem]>) -> Binding<ListItem>

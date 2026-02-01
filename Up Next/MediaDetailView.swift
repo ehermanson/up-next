@@ -6,12 +6,14 @@ struct MediaDetailView: View {
     let dismiss: () -> Void
     let onRemove: () -> Void
     var onSeasonCountChanged: ((ListItem, Int?) -> Void)?
+    var customListViewModel: CustomListViewModel?
 
     @State private var isLoadingDetails = false
     @State private var detailError: String?
     @State private var isConfirmingRemoval = false
     @State private var showingHiddenProviders = false
     @State private var showingTMDBPage = false
+    @State private var showingAddToList = false
 
     private let service = TMDBService.shared
 
@@ -98,6 +100,34 @@ struct MediaDetailView: View {
                             Divider().padding(.vertical, 4)
 
                             WatchedToggleCard(listItem: $listItem)
+
+                            if let customListVM = customListViewModel, !customListVM.customLists.isEmpty {
+                                Divider().padding(.vertical, 4)
+
+                                Button {
+                                    showingAddToList = true
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "tray.full")
+                                            .font(.body)
+                                        Text("Add to List")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(.regular.tint(.indigo.opacity(0.15)).interactive(), in: .rect(cornerRadius: 16))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .sheet(isPresented: $showingAddToList) {
+                                    AddToListSheet(
+                                        viewModel: customListVM,
+                                        movie: listItem.movie,
+                                        tvShow: listItem.tvShow
+                                    )
+                                }
+                            }
 
                             if let tmdbURL {
                                 Divider().padding(.vertical, 4)
