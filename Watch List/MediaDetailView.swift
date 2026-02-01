@@ -10,8 +10,17 @@ struct MediaDetailView: View {
     @State private var isLoadingDetails = false
     @State private var detailError: String?
     @State private var isConfirmingRemoval = false
+    @State private var showingHiddenProviders = false
 
     private let service = TMDBService.shared
+
+    private var visibleNetworks: [Network] {
+        (listItem.media?.networks ?? []).filter { !ProviderSettings.shared.isHidden($0.id) }
+    }
+
+    private var hiddenNetworks: [Network] {
+        (listItem.media?.networks ?? []).filter { ProviderSettings.shared.isHidden($0.id) }
+    }
 
     private var needsFullDetails: Bool {
         guard let media = listItem.media, Int(media.id) != nil else { return false }
@@ -20,6 +29,7 @@ struct MediaDetailView: View {
             if tvShow.numberOfSeasons == nil { return true }
             if tvShow.cast.isEmpty { return true }
             if tvShow.genres.isEmpty { return true }
+            if tvShow.providerCategories.isEmpty { return true }
             return false
         }
 
@@ -28,6 +38,7 @@ struct MediaDetailView: View {
             if movie.cast.isEmpty { return true }
             if movie.genres.isEmpty { return true }
             if movie.releaseDate == nil || movie.releaseDate?.isEmpty == true { return true }
+            if movie.providerCategories.isEmpty { return true }
             return false
         }
 
@@ -50,14 +61,12 @@ struct MediaDetailView: View {
 
                             GenreSection(genres: listItem.media?.genres ?? [])
 
-                            ScrollView(.horizontal) {
-                                NetworkLogosView(
-                                    networks: listItem.media?.networks ?? [],
-                                    maxVisible: .max,
-                                    logoSize: 44
-                                )
-                            }
-                            .scrollIndicators(.hidden)
+                            DetailProviderRow(
+                                visibleNetworks: visibleNetworks,
+                                hiddenNetworks: hiddenNetworks,
+                                providerCategories: listItem.media?.providerCategories ?? [:],
+                                showingHiddenProviders: $showingHiddenProviders
+                            )
 
                             Divider().padding(.vertical, 4)
 
@@ -141,8 +150,11 @@ struct MediaDetailView: View {
         do {
             if let tvShow = listItem.tvShow {
                 let previousSeasonCount = tvShow.numberOfSeasons
-                let detail = try await service.getTVShowDetails(id: id)
-                let updatedTVShow = service.mapToTVShow(detail)
+                async let detailTask = service.getTVShowDetails(id: id)
+                async let providersTask = service.getTVShowWatchProviders(id: id, countryCode: "US")
+                let detail = try await detailTask
+                let providers = try await providersTask
+                let updatedTVShow = service.mapToTVShow(detail, providers: providers)
 
                 tvShow.numberOfSeasons = updatedTVShow.numberOfSeasons
                 tvShow.numberOfEpisodes = updatedTVShow.numberOfEpisodes
@@ -150,6 +162,7 @@ struct MediaDetailView: View {
                 tvShow.cast = updatedTVShow.cast
                 tvShow.genres = updatedTVShow.genres
                 tvShow.networks = updatedTVShow.networks
+                tvShow.providerCategories = updatedTVShow.providerCategories
                 if updatedTVShow.thumbnailURL != nil {
                     tvShow.thumbnailURL = updatedTVShow.thumbnailURL
                 }
@@ -171,6 +184,7 @@ struct MediaDetailView: View {
                 movie.cast = updatedMovie.cast
                 movie.genres = updatedMovie.genres
                 movie.networks = updatedMovie.networks
+                movie.providerCategories = updatedMovie.providerCategories
                 movie.releaseDate = updatedMovie.releaseDate
                 if updatedMovie.thumbnailURL != nil {
                     movie.thumbnailURL = updatedMovie.thumbnailURL
@@ -183,6 +197,198 @@ struct MediaDetailView: View {
         isLoadingDetails = false
     }
 
+}
+
+private struct DetailProviderRow: View {
+    let visibleNetworks: [Network]
+    let hiddenNetworks: [Network]
+    let providerCategories: [Int: String]
+    @Binding var showingHiddenProviders: Bool
+    @State private var tooltipNetworkID: Int?
+
+    private let logoSize: CGFloat = 44
+
+    private var hasCategories: Bool {
+        !providerCategories.isEmpty
+    }
+
+    private var streamNetworks: [Network] {
+        visibleNetworks.filter { providerCategories[$0.id] == "stream" }
+    }
+
+    private var adsNetworks: [Network] {
+        visibleNetworks.filter { providerCategories[$0.id] == "ads" }
+    }
+
+    private var rentOrBuyNetworks: [Network] {
+        visibleNetworks.filter { providerCategories[$0.id] == "rent" || providerCategories[$0.id] == "buy" }
+    }
+
+    var body: some View {
+        if visibleNetworks.isEmpty && !hiddenNetworks.isEmpty {
+            Button {
+                showingHiddenProviders = true
+            } label: {
+                Text("Available on \(hiddenNetworks.count) provider\(hiddenNetworks.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .popover(isPresented: $showingHiddenProviders) {
+                HiddenProvidersPopover(networks: hiddenNetworks, providerCategories: providerCategories)
+            }
+        } else if !visibleNetworks.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                if hasCategories {
+                    providerSection("Stream", networks: streamNetworks)
+                    providerSection("Free with Ads", networks: adsNetworks)
+                    providerSection("Rent or Buy", networks: rentOrBuyNetworks)
+                } else {
+                    providerLogoRow(networks: visibleNetworks)
+                }
+
+                if !hiddenNetworks.isEmpty {
+                    Button {
+                        showingHiddenProviders = true
+                    } label: {
+                        Text("+\(hiddenNetworks.count) hidden provider\(hiddenNetworks.count == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .popover(isPresented: $showingHiddenProviders) {
+                        HiddenProvidersPopover(networks: hiddenNetworks, providerCategories: providerCategories)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func providerSection(_ title: String, networks: [Network]) -> some View {
+        if !networks.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                providerLogoRow(networks: networks)
+            }
+        }
+    }
+
+    private func providerLogoRow(networks: [Network]) -> some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(networks, id: \.id) { network in
+                    providerLogo(for: network)
+                        .onTapGesture {
+                            tooltipNetworkID = tooltipNetworkID == network.id ? nil : network.id
+                        }
+                        .popover(isPresented: Binding(
+                            get: { tooltipNetworkID == network.id },
+                            set: { if !$0 { tooltipNetworkID = nil } }
+                        )) {
+                            Text(network.name)
+                                .font(.subheadline)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .presentationCompactAdaptation(.popover)
+                        }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func providerLogo(for network: Network) -> some View {
+        Group {
+            if let logoURL = TMDBService.shared.imageURL(path: network.logoPath, size: .w92) {
+                AsyncImage(url: logoURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFit().padding(4)
+                    default:
+                        Color.gray.opacity(0.1)
+                    }
+                }
+            } else {
+                Color.gray.opacity(0.1)
+            }
+        }
+        .frame(width: logoSize, height: logoSize)
+        .background(Color.white.opacity(0.85), in: .rect(cornerRadius: logoSize * 0.19))
+        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.19))
+    }
+}
+
+private struct HiddenProvidersPopover: View {
+    let networks: [Network]
+    let providerCategories: [Int: String]
+
+    private var hasCategories: Bool { !providerCategories.isEmpty }
+
+    private func networksFor(_ categories: Set<String>) -> [Network] {
+        networks.filter { categories.contains(providerCategories[$0.id] ?? "") }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Hidden Providers")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            if hasCategories {
+                hiddenSection("Stream", networks: networksFor(["stream"]))
+                hiddenSection("Free with Ads", networks: networksFor(["ads"]))
+                hiddenSection("Rent or Buy", networks: networksFor(["rent", "buy"]))
+            } else {
+                ForEach(networks, id: \.id) { network in
+                    hiddenProviderRow(network)
+                }
+            }
+
+            Text("Update your providers in Settings")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .padding(.top, 4)
+        }
+        .padding(16)
+        .presentationCompactAdaptation(.popover)
+    }
+
+    @ViewBuilder
+    private func hiddenSection(_ title: String, networks: [Network]) -> some View {
+        if !networks.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                ForEach(networks, id: \.id) { network in
+                    hiddenProviderRow(network)
+                }
+            }
+        }
+    }
+
+    private func hiddenProviderRow(_ network: Network) -> some View {
+        HStack(spacing: 10) {
+            if let logoURL = TMDBService.shared.imageURL(path: network.logoPath, size: .w92) {
+                AsyncImage(url: logoURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFit().padding(3)
+                    default:
+                        Color.gray.opacity(0.1)
+                    }
+                }
+                .frame(width: 30, height: 30)
+                .background(Color.white.opacity(0.85), in: .rect(cornerRadius: 6))
+            }
+            Text(network.name)
+                .font(.subheadline)
+        }
+    }
 }
 
 private struct MetadataRow: View {

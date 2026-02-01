@@ -23,6 +23,7 @@ struct MediaListView: View {
     let onWatchedToggled: () -> Void
     let onOrderChanged: () -> Void
     let onSearchTapped: (() -> Void)?
+    var onSettingsTapped: (() -> Void)?
 
     private var isEmpty: Bool {
         unwatchedItems.isEmpty && watchedItems.isEmpty
@@ -108,6 +109,13 @@ struct MediaListView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 #if !os(tvOS)
+                    if let onSettingsTapped {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button(action: onSettingsTapped) {
+                                Image(systemName: "gearshape")
+                            }
+                        }
+                    }
                     ToolbarItem {
                         EditButton()
                     }

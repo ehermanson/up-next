@@ -78,6 +78,18 @@ actor TMDBService {
         return response.results?[countryCode]
     }
 
+    /// Get watch providers for a TV show (per country). Returns the US entry when available.
+    func getTVShowWatchProviders(id: Int, countryCode: String = "US") async throws
+        -> TMDBWatchProviderCountry?
+    {
+        let endpoint = "/tv/\(id)/watch/providers"
+        let response: TMDBWatchProvidersResponse = try await performRequest(
+            endpoint: endpoint,
+            queryItems: []
+        )
+        return response.results?[countryCode]
+    }
+
     // MARK: - Image URLs
 
     /// Construct full image URL from TMDB image path
@@ -123,19 +135,50 @@ actor TMDBService {
         )
     }
 
-    /// Convert TMDB TV show detail to TVShow model
-    nonisolated func mapToTVShow(_ detail: TMDBTVShowDetail) -> TVShow {
+    /// Convert TMDB TV show detail + optional watch providers to TVShow model
+    nonisolated func mapToTVShow(_ detail: TMDBTVShowDetail, providers: TMDBWatchProviderCountry? = nil) -> TVShow {
         let cast = detail.credits?.cast?.prefix(10).map { $0.name } ?? []
-        let networks = detail.networks?.map { mapToNetwork($0) } ?? []
         let genres = detail.genres?.map { $0.name } ?? []
+
+        // Start with originating networks (category "stream"), applying aliases
+        var seenNames = Set<String>()
+        var categories: [Int: String] = [:]
+        var allNetworks: [Network] = []
+        for tmdbNetwork in detail.networks ?? [] {
+            let canonical = Self.providerAliases[tmdbNetwork.name] ?? tmdbNetwork.name
+            guard !seenNames.contains(canonical) else { continue }
+            seenNames.insert(canonical)
+            let network = Network(
+                id: tmdbNetwork.id,
+                name: canonical,
+                logoPath: tmdbNetwork.logoPath,
+                originCountry: tmdbNetwork.originCountry
+            )
+            allNetworks.append(network)
+            categories[network.id] = "stream"
+        }
+
+        // Merge watch providers (deduplicating against originating networks)
+        let (watchNetworks, watchCategories) = mapProviders(providers)
+        var seenIDs = Set(allNetworks.map { $0.id })
+        for network in watchNetworks {
+            guard !seenIDs.contains(network.id) else { continue }
+            guard !seenNames.contains(network.name) else { continue }
+            seenIDs.insert(network.id)
+            seenNames.insert(network.name)
+            allNetworks.append(network)
+            categories[network.id] = watchCategories[network.id] ?? "stream"
+        }
+
         return TVShow(
             id: String(detail.id),
             title: detail.name,
             thumbnailURL: imageURL(path: detail.posterPath),
-            networks: networks,
+            networks: allNetworks,
             descriptionText: detail.overview,
             cast: cast,
             genres: genres,
+            providerCategories: categories,
             numberOfSeasons: detail.numberOfSeasons,
             numberOfEpisodes: detail.numberOfEpisodes
         )
@@ -155,27 +198,66 @@ actor TMDBService {
         )
     }
 
+    /// Suffixes that indicate a resold channel variant (e.g. "HBO Max Amazon Channel").
+    private static let channelSuffixes = [" Amazon Channel", " Apple TV Channel", " Roku Premium Channel"]
+
+    /// Maps variant provider names to a canonical name so duplicates collapse.
+    /// The first entry encountered keeps its ID, logo, and category.
+    private static let providerAliases: [String: String] = [
+        "Peacock Premium": "Peacock",
+        "Peacock Premium Plus": "Peacock",
+        "HBO Max": "HBO",
+        "Max": "HBO",
+        "Disney Plus": "Disney+",
+        "AMC+ Roku Premium Channel": "AMC+",
+    ]
+
+    /// Build networks and provider categories from a watch provider response.
+    /// Priority: flatrate > ads > rent > buy (first occurrence wins).
+    /// Filters out resold channel variants and merges known aliases.
+    nonisolated func mapProviders(_ providers: TMDBWatchProviderCountry?) -> (networks: [Network], categories: [Int: String]) {
+        guard let providers else { return ([], [:]) }
+
+        let categorized: [(String, [TMDBWatchProviderEntry])] = [
+            ("stream", providers.flatrate ?? []),
+            ("ads", providers.ads ?? []),
+            ("rent", providers.rent ?? []),
+            ("buy", providers.buy ?? []),
+        ]
+
+        var seenIDs = Set<Int>()
+        var seenNames = Set<String>()
+        var networks: [Network] = []
+        var categories: [Int: String] = [:]
+
+        for (category, entries) in categorized {
+            for entry in entries {
+                guard !seenIDs.contains(entry.providerId) else { continue }
+                let isChannel = Self.channelSuffixes.contains { entry.providerName.hasSuffix($0) }
+                guard !isChannel else { continue }
+
+                let canonicalName = Self.providerAliases[entry.providerName] ?? entry.providerName
+                guard !seenNames.contains(canonicalName) else { continue }
+
+                seenIDs.insert(entry.providerId)
+                seenNames.insert(canonicalName)
+                networks.append(Network(
+                    id: entry.providerId,
+                    name: canonicalName,
+                    logoPath: entry.logoPath,
+                    originCountry: "US"
+                ))
+                categories[entry.providerId] = category
+            }
+        }
+
+        return (networks, categories)
+    }
+
     /// Convert TMDB movie detail + watch providers to Movie model
     nonisolated func mapToMovie(_ detail: TMDBMovieDetail, providers: TMDBWatchProviderCountry?) -> Movie {
         let cast = detail.credits?.cast?.prefix(10).map { $0.name } ?? []
-
-        let rent: [TMDBWatchProviderEntry] = providers?.rent ?? []
-        let buy: [TMDBWatchProviderEntry] = providers?.buy ?? []
-        let providerEntries: [TMDBWatchProviderEntry] = rent + buy
-
-        // Deduplicate providers by providerId, keeping first occurrence
-        var seen = Set<Int>()
-        let networks = providerEntries.compactMap { entry -> Network? in
-            guard !seen.contains(entry.providerId) else { return nil }
-            seen.insert(entry.providerId)
-            return Network(
-                id: entry.providerId,
-                name: entry.providerName,
-                logoPath: entry.logoPath,
-                originCountry: "US"
-            )
-        }
-
+        let (networks, categories) = mapProviders(providers)
         let genres = detail.genres?.map { $0.name } ?? []
 
         return Movie(
@@ -186,6 +268,7 @@ actor TMDBService {
             descriptionText: detail.overview,
             cast: cast,
             genres: genres,
+            providerCategories: categories,
             releaseDate: detail.releaseDate,
             runtime: detail.runtime
         )

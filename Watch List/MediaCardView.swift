@@ -10,6 +10,14 @@ struct MediaCardView: View {
     let isWatched: Bool
     let watchedToggleAction: (Bool) -> Void
 
+    private var visibleNetworks: [Network] {
+        networks.filter { !ProviderSettings.shared.isHidden($0.id) }
+    }
+
+    private var hiddenCount: Int {
+        networks.count - visibleNetworks.count
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             if let imageURL = imageURL {
@@ -54,7 +62,7 @@ struct MediaCardView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
-                NetworkLogosView(networks: networks, maxVisible: 4, logoSize: 28)
+                NetworkLogosView(networks: visibleNetworks, maxVisible: 4, logoSize: 28, hiddenCount: hiddenCount)
             }
         }
         .padding(.all, 14)

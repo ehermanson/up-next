@@ -31,6 +31,7 @@ protocol MediaItemProtocol {
     var title: String { get }
     var thumbnailURL: URL? { get }
     var networks: [Network] { get }
+    var providerCategories: [Int: String] { get set }
     var descriptionText: String? { get }
     var cast: [String] { get }
     var genres: [String] { get }
@@ -55,6 +56,9 @@ final class Movie: MediaItemProtocol {
     var cast: [String]
     var genres: [String]
 
+    /// Provider ID → category ("stream", "ads", "rent", "buy")
+    var providerCategories: [Int: String]
+
     /// Release date in "YYYY-MM-DD" format (if known)
     var releaseDate: String?
 
@@ -69,6 +73,7 @@ final class Movie: MediaItemProtocol {
         descriptionText: String? = nil,
         cast: [String] = [],
         genres: [String] = [],
+        providerCategories: [Int: String] = [:],
         releaseDate: String? = nil,
         runtime: Int? = nil
     ) {
@@ -79,6 +84,7 @@ final class Movie: MediaItemProtocol {
         self.descriptionText = descriptionText
         self.cast = cast
         self.genres = genres
+        self.providerCategories = providerCategories
         self.releaseDate = releaseDate
         self.runtime = runtime
     }
@@ -103,6 +109,9 @@ final class TVShow: MediaItemProtocol {
     var cast: [String]
     var genres: [String]
 
+    /// Provider ID → category ("stream", "ads", "rent", "buy")
+    var providerCategories: [Int: String]
+
     /// Number of seasons (specific to TV shows)
     var numberOfSeasons: Int?
 
@@ -117,6 +126,7 @@ final class TVShow: MediaItemProtocol {
         descriptionText: String? = nil,
         cast: [String] = [],
         genres: [String] = [],
+        providerCategories: [Int: String] = [:],
         numberOfSeasons: Int? = nil,
         numberOfEpisodes: Int? = nil
     ) {
@@ -127,6 +137,7 @@ final class TVShow: MediaItemProtocol {
         self.descriptionText = descriptionText
         self.cast = cast
         self.genres = genres
+        self.providerCategories = providerCategories
         self.numberOfSeasons = numberOfSeasons
         self.numberOfEpisodes = numberOfEpisodes
     }

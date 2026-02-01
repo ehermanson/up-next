@@ -6,17 +6,23 @@ struct NetworkLogosView: View {
     let maxVisible: Int
     /// Logo size in points
     let logoSize: CGFloat
+    /// Number of providers hidden by user settings (not included in networks)
+    let hiddenCount: Int
 
-    init(networks: [Network], maxVisible: Int = 5, logoSize: CGFloat = 36) {
+    init(networks: [Network], maxVisible: Int = 5, logoSize: CGFloat = 36, hiddenCount: Int = 0) {
         self.networks = networks
         self.maxVisible = maxVisible
         self.logoSize = logoSize
+        self.hiddenCount = hiddenCount
     }
 
     var body: some View {
-        if networks.isEmpty {
-            EmptyView()
-        } else {
+        if networks.isEmpty && hiddenCount > 0 {
+            Text("Available on \(hiddenCount) provider\(hiddenCount == 1 ? "" : "s")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 2)
+        } else if !networks.isEmpty {
             HStack(spacing: 8) {
                 ForEach(Array(networks.prefix(maxVisible)), id: \.id) { network in
                     if let logoURL = TMDBService.shared.imageURL(
@@ -42,8 +48,12 @@ struct NetworkLogosView: View {
                         .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.19))
                     }
                 }
-                if networks.count > maxVisible {
-                    Text("+\(networks.count - maxVisible)")
+
+                let overflowFromMax = networks.count > maxVisible ? networks.count - maxVisible : 0
+                let totalOverflow = overflowFromMax + hiddenCount
+
+                if totalOverflow > 0 {
+                    Text("+\(totalOverflow)")
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundStyle(.secondary)

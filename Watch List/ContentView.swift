@@ -23,6 +23,7 @@ struct ContentView: View {
     @State private var activeSearchMediaType: MediaType?
     @State private var selectedTVGenre: String? = nil
     @State private var selectedMovieGenre: String? = nil
+    @State private var showingSettings = false
 
     private var selectedTVShow: ListItem? {
         guard let id = expandedTVShowID else { return nil }
@@ -52,6 +53,21 @@ struct ContentView: View {
         return viewModel.unwatchedMovies.filter { $0.media?.genres.contains(genre) == true }
     }
 
+    private var allProviderInfo: [ProviderInfo] {
+        var counts: [Int: (name: String, logoPath: String?, count: Int)] = [:]
+        for item in viewModel.tvShows + viewModel.movies {
+            for network in item.media?.networks ?? [] {
+                if let existing = counts[network.id] {
+                    counts[network.id] = (existing.name, existing.logoPath, existing.count + 1)
+                } else {
+                    counts[network.id] = (network.name, network.logoPath, 1)
+                }
+            }
+        }
+        return counts.map { ProviderInfo(id: $0.key, name: $0.value.name, logoPath: $0.value.logoPath, titleCount: $0.value.count) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("TV Shows", systemImage: "tv", value: .tvShows) {
@@ -65,6 +81,9 @@ struct ContentView: View {
             addButton
                 .padding(.trailing, 28)
                 .padding(.bottom, -6)
+        }
+        .sheet(isPresented: $showingSettings) {
+            ProviderSettingsView(allProviders: allProviderInfo)
         }
         .sheet(item: $activeSearchMediaType) { mediaType in
             SearchView(
@@ -135,7 +154,8 @@ struct ContentView: View {
             onOrderChanged: {
                 viewModel.updateOrderAfterUnwatchedMove(mediaType: .tvShow)
             },
-            onSearchTapped: nil
+            onSearchTapped: nil,
+            onSettingsTapped: { showingSettings = true }
         )
         .sheet(
             item: Binding(
@@ -184,7 +204,8 @@ struct ContentView: View {
             onOrderChanged: {
                 viewModel.updateOrderAfterUnwatchedMove(mediaType: .movie)
             },
-            onSearchTapped: nil
+            onSearchTapped: nil,
+            onSettingsTapped: { showingSettings = true }
         )
         .sheet(
             item: Binding(
