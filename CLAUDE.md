@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Native iOS app (Swift/SwiftUI, iOS 17+) for managing movie and TV show watchlists. Uses TMDB API for metadata and SwiftData for local persistence. No external dependencies.
+Native iOS app (Swift/SwiftUI, iOS 26+) for managing movie and TV show watchlists. Uses TMDB API for metadata, SwiftData for local persistence, and Liquid Glass for UI surfaces. No external dependencies.
 
 ## Build & Run
 

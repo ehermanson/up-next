@@ -114,7 +114,7 @@ struct MediaDetailView: View {
                                     }
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
-                                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
+                                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
                                 }
                                 .buttonStyle(.plain)
                                 .foregroundStyle(.secondary)
@@ -548,17 +548,11 @@ private struct SeasonChecklistCard: View {
             Text("Seasons")
                 .font(.headline)
 
-            VStack(spacing: 0) {
+            VStack(spacing: 6) {
                 ForEach(1...max(totalSeasons, 1), id: \.self) { season in
                     seasonRow(season: season)
-
-                    if season < totalSeasons {
-                        Divider()
-                            .padding(.leading, 44)
-                    }
                 }
             }
-            .glassEffect(.regular, in: .rect(cornerRadius: 16))
         }
     }
 
@@ -596,6 +590,7 @@ private struct SeasonChecklistCard: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
+            .glassEffect(.regular.tint(isWatched ? .green.opacity(0.1) : .indigo.opacity(0.07)).interactive(), in: .capsule)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -784,7 +779,7 @@ private struct CastSection: View {
             .font(.title2)
             .foregroundStyle(.tertiary)
             .frame(width: imageSize, height: imageSize)
-            .background(Color.gray.opacity(0.2))
+            .glassEffect(.regular, in: .circle)
     }
 }
 
