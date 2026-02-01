@@ -54,7 +54,7 @@ struct MediaCardView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                NetworkLogosView(networks: networks, maxVisible: 2, logoSize: 24)
+                NetworkLogosView(networks: networks, maxVisible: 4, logoSize: 28)
             }
         }
         .padding(.all, 14)

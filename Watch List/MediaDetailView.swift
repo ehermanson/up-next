@@ -16,21 +16,17 @@ struct MediaDetailView: View {
         guard let media = listItem.media, Int(media.id) != nil else { return false }
 
         if let tvShow = listItem.tvShow {
-            let missingSeasons = (tvShow.numberOfSeasons == nil)
-            let missingCast = tvShow.cast.isEmpty
-            if missingSeasons { return true }
-            if missingCast { return true }
+            if tvShow.numberOfSeasons == nil { return true }
+            if tvShow.cast.isEmpty { return true }
+            if tvShow.genres.isEmpty { return true }
             return false
         }
 
         if let movie = listItem.movie {
-            let missingRuntime = (movie.runtime == nil)
-            let missingCast = movie.cast.isEmpty
-            let missingReleaseDate =
-                (movie.releaseDate == nil || movie.releaseDate?.isEmpty == true)
-            if missingRuntime { return true }
-            if missingCast { return true }
-            if missingReleaseDate { return true }
+            if movie.runtime == nil { return true }
+            if movie.cast.isEmpty { return true }
+            if movie.genres.isEmpty { return true }
+            if movie.releaseDate == nil || movie.releaseDate?.isEmpty == true { return true }
             return false
         }
 
@@ -51,7 +47,13 @@ struct MediaDetailView: View {
 
                             MetadataRow(listItem: listItem)
 
-                            NetworkLogosView(networks: listItem.media?.networks ?? [])
+                            ScrollView(.horizontal) {
+                                NetworkLogosView(
+                                    networks: listItem.media?.networks ?? [],
+                                    maxVisible: .max
+                                )
+                            }
+                            .scrollIndicators(.hidden)
 
                             Divider().padding(.vertical, 4)
 
@@ -136,6 +138,7 @@ struct MediaDetailView: View {
                 tvShow.numberOfEpisodes = updatedTVShow.numberOfEpisodes
                 tvShow.descriptionText = updatedTVShow.descriptionText
                 tvShow.cast = updatedTVShow.cast
+                tvShow.genres = updatedTVShow.genres
                 tvShow.networks = updatedTVShow.networks
                 if updatedTVShow.thumbnailURL != nil {
                     tvShow.thumbnailURL = updatedTVShow.thumbnailURL
@@ -150,6 +153,7 @@ struct MediaDetailView: View {
                 movie.runtime = updatedMovie.runtime
                 movie.descriptionText = updatedMovie.descriptionText
                 movie.cast = updatedMovie.cast
+                movie.genres = updatedMovie.genres
                 movie.networks = updatedMovie.networks
                 movie.releaseDate = updatedMovie.releaseDate
                 if updatedMovie.thumbnailURL != nil {

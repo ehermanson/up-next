@@ -127,6 +127,7 @@ actor TMDBService {
     nonisolated func mapToTVShow(_ detail: TMDBTVShowDetail) -> TVShow {
         let cast = detail.credits?.cast?.prefix(10).map { $0.name } ?? []
         let networks = detail.networks?.map { mapToNetwork($0) } ?? []
+        let genres = detail.genres?.map { $0.name } ?? []
         return TVShow(
             id: String(detail.id),
             title: detail.name,
@@ -134,6 +135,7 @@ actor TMDBService {
             networks: networks,
             descriptionText: detail.overview,
             cast: cast,
+            genres: genres,
             numberOfSeasons: detail.numberOfSeasons,
             numberOfEpisodes: detail.numberOfEpisodes
         )
@@ -174,6 +176,8 @@ actor TMDBService {
             )
         }
 
+        let genres = detail.genres?.map { $0.name } ?? []
+
         return Movie(
             id: String(detail.id),
             title: detail.title,
@@ -181,6 +185,7 @@ actor TMDBService {
             networks: networks,
             descriptionText: detail.overview,
             cast: cast,
+            genres: genres,
             releaseDate: detail.releaseDate,
             runtime: detail.runtime
         )

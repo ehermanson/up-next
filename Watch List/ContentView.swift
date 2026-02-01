@@ -71,10 +71,15 @@ struct ContentView: View {
             expandedItemID: $expandedTVShowID,
             navigationTitle: "TV Shows",
             subtitleProvider: { item in
-                if let summary = item.tvShow?.seasonsEpisodesSummary {
-                    return summary
+                guard let tvShow = item.tvShow else { return nil }
+                var parts: [String] = []
+                if let summary = tvShow.seasonsEpisodesSummary {
+                    parts.append(summary)
                 }
-                return nil
+                if !tvShow.genres.isEmpty {
+                    parts.append(tvShow.genres.prefix(2).joined(separator: ", "))
+                }
+                return parts.isEmpty ? nil : parts.joined(separator: " \u{2022} ")
             },
             onItemExpanded: { id in
                 expandedTVShowID = id
@@ -196,6 +201,9 @@ struct ContentView: View {
         }
         if let runtime = movie.runtime {
             parts.append("\(runtime) min")
+        }
+        if !movie.genres.isEmpty {
+            parts.append(movie.genres.prefix(2).joined(separator: ", "))
         }
 
         return parts.isEmpty ? nil : parts.joined(separator: " \u{2022} ")

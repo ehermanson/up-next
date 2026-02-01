@@ -33,6 +33,7 @@ protocol MediaItemProtocol {
     var networks: [Network] { get }
     var descriptionText: String? { get }
     var cast: [String] { get }
+    var genres: [String] { get }
 }
 
 @Model
@@ -52,6 +53,7 @@ final class Movie: MediaItemProtocol {
     /// Additional optional metadata
     var descriptionText: String?
     var cast: [String]
+    var genres: [String]
 
     /// Release date in "YYYY-MM-DD" format (if known)
     var releaseDate: String?
@@ -66,6 +68,7 @@ final class Movie: MediaItemProtocol {
         networks: [Network] = [],
         descriptionText: String? = nil,
         cast: [String] = [],
+        genres: [String] = [],
         releaseDate: String? = nil,
         runtime: Int? = nil
     ) {
@@ -75,6 +78,7 @@ final class Movie: MediaItemProtocol {
         self.networks = networks
         self.descriptionText = descriptionText
         self.cast = cast
+        self.genres = genres
         self.releaseDate = releaseDate
         self.runtime = runtime
     }
@@ -97,6 +101,7 @@ final class TVShow: MediaItemProtocol {
     /// Additional optional metadata
     var descriptionText: String?
     var cast: [String]
+    var genres: [String]
 
     /// Number of seasons (specific to TV shows)
     var numberOfSeasons: Int?
@@ -111,6 +116,7 @@ final class TVShow: MediaItemProtocol {
         networks: [Network] = [],
         descriptionText: String? = nil,
         cast: [String] = [],
+        genres: [String] = [],
         numberOfSeasons: Int? = nil,
         numberOfEpisodes: Int? = nil
     ) {
@@ -120,6 +126,7 @@ final class TVShow: MediaItemProtocol {
         self.networks = networks
         self.descriptionText = descriptionText
         self.cast = cast
+        self.genres = genres
         self.numberOfSeasons = numberOfSeasons
         self.numberOfEpisodes = numberOfEpisodes
     }
