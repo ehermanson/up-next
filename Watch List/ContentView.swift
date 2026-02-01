@@ -226,7 +226,8 @@ struct ContentView: View {
                 viewModel.updateOrderAfterUnwatchedMove(mediaType: .tvShow)
             },
             onSearchTapped: nil,
-            onSettingsTapped: { showingSettings = true }
+            onSettingsTapped: { showingSettings = true },
+            isLoaded: viewModel.isLoaded
         )
         .sheet(
             item: Binding(
@@ -278,7 +279,8 @@ struct ContentView: View {
                 viewModel.updateOrderAfterUnwatchedMove(mediaType: .movie)
             },
             onSearchTapped: nil,
-            onSettingsTapped: { showingSettings = true }
+            onSettingsTapped: { showingSettings = true },
+            isLoaded: viewModel.isLoaded
         )
         .sheet(
             item: Binding(

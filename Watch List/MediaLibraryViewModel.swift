@@ -10,6 +10,7 @@ final class MediaLibraryViewModel {
     var unwatchedMovies: [ListItem] = []
     var watchedTVShows: [ListItem] = []
     var watchedMovies: [ListItem] = []
+    var isLoaded = false
 
     private var modelContext: ModelContext?
     private var tvList: MediaList?
@@ -21,6 +22,7 @@ final class MediaLibraryViewModel {
         self.modelContext = modelContext
         await ensureDefaults()
         await loadItems()
+        isLoaded = true
     }
 
     func containsItem(withID id: String, mediaType: MediaType) -> Bool {

@@ -26,6 +26,7 @@ struct MediaListView: View {
     let onOrderChanged: () -> Void
     let onSearchTapped: (() -> Void)?
     var onSettingsTapped: (() -> Void)?
+    var isLoaded: Bool = true
 
     private var isEmpty: Bool {
         unwatchedItems.isEmpty && watchedItems.isEmpty
@@ -34,7 +35,10 @@ struct MediaListView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if isEmpty {
+                if !isLoaded {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if isEmpty {
                     VStack(spacing: 16) {
                         Image(systemName: "popcorn")
                             .font(.system(size: 48))
