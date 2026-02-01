@@ -11,8 +11,11 @@ import SwiftUI
 struct MediaListView: View {
     @Binding var allItems: [ListItem]
     @Binding var unwatchedItems: [ListItem]
+    var filteredUnwatchedItems: [ListItem]
     @Binding var watchedItems: [ListItem]
     @Binding var expandedItemID: String?
+    var availableGenres: [String]
+    @Binding var selectedGenre: String?
 
     let navigationTitle: String
     let subtitleProvider: (ListItem) -> String?
@@ -49,18 +52,38 @@ struct MediaListView: View {
                     GlassEffectContainer(spacing: 10) {
                         List {
                             if !unwatchedItems.isEmpty {
-                                Section {
-                                    UnwatchedSection(
-                                        items: $unwatchedItems,
-                                        allItems: $allItems,
-                                        expandedItemID: $expandedItemID,
-                                        subtitleProvider: subtitleProvider,
-                                        onItemExpanded: onItemExpanded,
-                                        onWatchedToggled: onWatchedToggled,
-                                        onOrderChanged: onOrderChanged
-                                    )
-                                } header: {
-                                    SectionHeader(title: "Up Next", count: unwatchedItems.count)
+                                SectionHeader(
+                                    title: "Up Next",
+                                    count: filteredUnwatchedItems.count,
+                                    availableGenres: availableGenres,
+                                    selectedGenre: $selectedGenre
+                                )
+
+                                if !filteredUnwatchedItems.isEmpty {
+                                    if selectedGenre == nil {
+                                        UnwatchedSection(
+                                            items: $unwatchedItems,
+                                            allItems: $allItems,
+                                            expandedItemID: $expandedItemID,
+                                            subtitleProvider: subtitleProvider,
+                                            onItemExpanded: onItemExpanded,
+                                            onWatchedToggled: onWatchedToggled,
+                                            onOrderChanged: onOrderChanged
+                                        )
+                                    } else {
+                                        ForEach(filteredUnwatchedItems, id: \.media?.id) { item in
+                                            MediaListRow(
+                                                item: binding(for: item),
+                                                itemID: item.media?.id ?? "",
+                                                expandedItemID: $expandedItemID,
+                                                subtitle: subtitleProvider(item),
+                                                onItemExpanded: onItemExpanded,
+                                                onWatchedToggled: {
+                                                    toggleWatched(item)
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
@@ -75,7 +98,7 @@ struct MediaListView: View {
                         .scrollContentBackground(.hidden)
                         .listStyle(.plain)
                         .contentMargins(.bottom, 80, for: .scrollContent)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: unwatchedItems.count)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: filteredUnwatchedItems.count)
                         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: allItems.count)
                     }
                 }
@@ -100,11 +123,48 @@ struct MediaListView: View {
         }
         .preferredColorScheme(.dark)
     }
+
+    private func binding(for item: ListItem) -> Binding<ListItem> {
+        Binding(
+            get: {
+                unwatchedItems.first(where: { $0.media?.id == item.media?.id }) ?? item
+            },
+            set: { newValue in
+                guard let id = item.media?.id,
+                      let index = unwatchedItems.firstIndex(where: { $0.media?.id == id })
+                else { return }
+                unwatchedItems[index] = newValue
+            }
+        )
+    }
+
+    private func toggleWatched(_ item: ListItem) {
+        item.isWatched.toggle()
+        item.watchedAt = item.isWatched ? Date() : nil
+
+        if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
+            item.watchedSeasons = item.isWatched ? Array(1...total) : []
+        }
+
+        if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
+            allItems[index] = item
+        }
+        onWatchedToggled()
+    }
 }
 
 private struct SectionHeader: View {
     let title: String
     let count: Int
+    var availableGenres: [String] = []
+    @Binding var selectedGenre: String?
+
+    init(title: String, count: Int, availableGenres: [String] = [], selectedGenre: Binding<String?> = .constant(nil)) {
+        self.title = title
+        self.count = count
+        self.availableGenres = availableGenres
+        self._selectedGenre = selectedGenre
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -121,10 +181,46 @@ private struct SectionHeader: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
                 .glassEffect(.regular, in: .capsule)
+            Spacer()
+            if !availableGenres.isEmpty {
+                Menu {
+                    Button {
+                        selectedGenre = nil
+                    } label: {
+                        if selectedGenre == nil {
+                            Label("All", systemImage: "checkmark")
+                        } else {
+                            Text("All")
+                        }
+                    }
+                    Divider()
+                    ForEach(availableGenres, id: \.self) { genre in
+                        Button {
+                            selectedGenre = genre
+                        } label: {
+                            if selectedGenre == genre {
+                                Label(genre, systemImage: "checkmark")
+                            } else {
+                                Text(genre)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: selectedGenre != nil
+                        ? "line.3.horizontal.decrease.circle.fill"
+                        : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(selectedGenre != nil ? .white : .secondary)
+                        .frame(width: 32, height: 32)
+                        .glassEffect(.regular, in: .circle)
+                }
+            }
         }
         .padding(.vertical, 4)
         .textCase(nil)
         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 }
 
@@ -193,26 +289,24 @@ struct WatchedSection: View {
 
     var body: some View {
         if !items.isEmpty {
-            Section {
-                ForEach($items, id: \.media?.id) { $item in
-                    MediaListRow(
-                        item: $item,
-                        itemID: item.media?.id ?? "",
-                        expandedItemID: $expandedItemID,
-                        subtitle: subtitleProvider(item),
-                        onItemExpanded: onItemExpanded,
-                        onWatchedToggled: {
-                            item.isWatched.toggle()
-                            item.watchedAt = item.isWatched ? Date() : nil
-                            if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
-                                item.watchedSeasons = item.isWatched ? Array(1...total) : []
-                            }
-                            onWatchedToggled()
+            SectionHeader(title: "Watched", count: items.count)
+
+            ForEach($items, id: \.media?.id) { $item in
+                MediaListRow(
+                    item: $item,
+                    itemID: item.media?.id ?? "",
+                    expandedItemID: $expandedItemID,
+                    subtitle: subtitleProvider(item),
+                    onItemExpanded: onItemExpanded,
+                    onWatchedToggled: {
+                        item.isWatched.toggle()
+                        item.watchedAt = item.isWatched ? Date() : nil
+                        if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
+                            item.watchedSeasons = item.isWatched ? Array(1...total) : []
                         }
-                    )
-                }
-            } header: {
-                SectionHeader(title: "Watched", count: items.count)
+                        onWatchedToggled()
+                    }
+                )
             }
         }
     }
@@ -316,8 +410,11 @@ struct MediaListRow: View {
     MediaListView(
         allItems: .constant(stubItems),
         unwatchedItems: .constant(stubItems.filter { !$0.isWatched }),
+        filteredUnwatchedItems: stubItems.filter { !$0.isWatched },
         watchedItems: .constant(stubItems.filter { $0.isWatched }),
         expandedItemID: .constant("tv-1"),
+        availableGenres: [],
+        selectedGenre: .constant(nil),
         navigationTitle: "TV Shows",
         subtitleProvider: { item in
             if let summary = item.tvShow?.seasonsEpisodesSummary {

@@ -21,6 +21,8 @@ struct ContentView: View {
     @State private var expandedMovieID: String? = nil
     @State private var selectedTab: MediaTab = .tvShows
     @State private var activeSearchMediaType: MediaType?
+    @State private var selectedTVGenre: String? = nil
+    @State private var selectedMovieGenre: String? = nil
 
     private var selectedTVShow: ListItem? {
         guard let id = expandedTVShowID else { return nil }
@@ -30,6 +32,24 @@ struct ContentView: View {
     private var selectedMovie: ListItem? {
         guard let id = expandedMovieID else { return nil }
         return viewModel.movies.first(where: { $0.media?.id == id })
+    }
+
+    private var availableTVGenres: [String] {
+        Array(Set(viewModel.unwatchedTVShows.flatMap { $0.media?.genres ?? [] })).sorted()
+    }
+
+    private var availableMovieGenres: [String] {
+        Array(Set(viewModel.unwatchedMovies.flatMap { $0.media?.genres ?? [] })).sorted()
+    }
+
+    private var filteredUnwatchedTVShows: [ListItem] {
+        guard let genre = selectedTVGenre else { return viewModel.unwatchedTVShows }
+        return viewModel.unwatchedTVShows.filter { $0.media?.genres.contains(genre) == true }
+    }
+
+    private var filteredUnwatchedMovies: [ListItem] {
+        guard let genre = selectedMovieGenre else { return viewModel.unwatchedMovies }
+        return viewModel.unwatchedMovies.filter { $0.media?.genres.contains(genre) == true }
     }
 
     var body: some View {
@@ -61,14 +81,27 @@ struct ContentView: View {
         .task {
             await viewModel.configure(modelContext: modelContext)
         }
+        .onChange(of: availableTVGenres) {
+            if let genre = selectedTVGenre, !availableTVGenres.contains(genre) {
+                selectedTVGenre = nil
+            }
+        }
+        .onChange(of: availableMovieGenres) {
+            if let genre = selectedMovieGenre, !availableMovieGenres.contains(genre) {
+                selectedMovieGenre = nil
+            }
+        }
     }
 
     private var tvShowsTab: some View {
         MediaListView(
             allItems: $viewModel.tvShows,
             unwatchedItems: $viewModel.unwatchedTVShows,
+            filteredUnwatchedItems: filteredUnwatchedTVShows,
             watchedItems: $viewModel.watchedTVShows,
             expandedItemID: $expandedTVShowID,
+            availableGenres: availableTVGenres,
+            selectedGenre: $selectedTVGenre,
             navigationTitle: "TV Shows",
             subtitleProvider: { item in
                 guard let tvShow = item.tvShow else { return nil }
@@ -133,8 +166,11 @@ struct ContentView: View {
         MediaListView(
             allItems: $viewModel.movies,
             unwatchedItems: $viewModel.unwatchedMovies,
+            filteredUnwatchedItems: filteredUnwatchedMovies,
             watchedItems: $viewModel.watchedMovies,
             expandedItemID: $expandedMovieID,
+            availableGenres: availableMovieGenres,
+            selectedGenre: $selectedMovieGenre,
             navigationTitle: "Movies",
             subtitleProvider: { item in
                 movieSubtitle(for: item)
