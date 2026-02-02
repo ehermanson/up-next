@@ -14,6 +14,7 @@ struct WatchlistSearchView: View {
     let onTVShowAdded: (TVShow) -> Void
     let onMovieAdded: (Movie) -> Void
     var customListViewModel: CustomListViewModel?
+    var onDone: (() -> Void)?
 
     @State private var searchText = ""
     @State private var selectedMediaType: MediaType = .tvShow
@@ -145,6 +146,13 @@ struct WatchlistSearchView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .preferredColorScheme(.dark)
+            .toolbar {
+                if let onDone {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done", action: onDone)
+                    }
+                }
+            }
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .automatic),
@@ -328,9 +336,8 @@ struct WatchlistSearchView: View {
 
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
-        if !isMyListsMode {
-            addedIDs.insert(String(result.id))
-        }
+        addedIDs.insert(String(result.id))
+        let done = onDone
         Task {
             let tvShow: TVShow
             do {
@@ -344,14 +351,14 @@ struct WatchlistSearchView: View {
             } else {
                 onTVShowAdded(tvShow)
             }
+            done?()
         }
     }
 
     private func addMovie(_ result: TMDBMovieSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
-        if !isMyListsMode {
-            addedIDs.insert(String(result.id))
-        }
+        addedIDs.insert(String(result.id))
+        let done = onDone
         Task {
             let movie: Movie
             do {
@@ -368,6 +375,7 @@ struct WatchlistSearchView: View {
             } else {
                 onMovieAdded(movie)
             }
+            done?()
         }
     }
 }

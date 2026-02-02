@@ -324,7 +324,8 @@ struct ContentView: View {
             existingMovieIDs: existingIDs(for: .movie),
             onTVShowAdded: { viewModel.addTVShow($0) },
             onMovieAdded: { viewModel.addMovie($0) },
-            customListViewModel: customListViewModel
+            customListViewModel: customListViewModel,
+            onDone: { selectedTab = previousTab }
         )
     }
 

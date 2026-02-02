@@ -314,65 +314,67 @@ struct SearchResultRow: View {
     let onAdd: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            AsyncImage(url: imageURL) { phase in
-                switch phase {
-                case .empty:
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 60, height: 90)
-                        .clipShape(.rect(cornerRadius: 10))
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 60, height: 90)
-                        .clipShape(.rect(cornerRadius: 10))
-                        .clipped()
-                case .failure:
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 60, height: 90)
-                        .clipShape(.rect(cornerRadius: 10))
-                @unknown default:
-                    EmptyView()
-                }
+        Button {
+            if !isAdded {
+                onAdd()
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .fontDesign(.rounded)
-                    .lineLimit(2)
-
-                if let overview = overview, !overview.isEmpty {
-                    Text(overview)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
+        } label: {
+            HStack(spacing: 12) {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .empty:
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 60, height: 90)
+                            .clipShape(.rect(cornerRadius: 10))
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 60, height: 90)
+                            .clipShape(.rect(cornerRadius: 10))
+                            .clipped()
+                    case .failure:
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 60, height: 90)
+                            .clipShape(.rect(cornerRadius: 10))
+                    @unknown default:
+                        EmptyView()
+                    }
                 }
-            }
 
-            Spacer()
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                        .fontDesign(.rounded)
+                        .lineLimit(2)
 
-            if isAdded {
-                Image(systemName: "checkmark")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.green)
-                    .frame(width: 44, height: 44)
-                    .accessibilityLabel("Already added")
-            } else {
-                Button(action: onAdd) {
+                    if let overview = overview, !overview.isEmpty {
+                        Text(overview)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                }
+
+                Spacer()
+
+                if isAdded {
+                    Image(systemName: "checkmark")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .frame(width: 44, height: 44)
+                        .accessibilityLabel("Already added")
+                } else {
                     Image(systemName: "plus")
                         .font(.headline.weight(.semibold))
                         .frame(width: 44, height: 44)
+                        .accessibilityLabel("Add to list")
                 }
-                .buttonStyle(.glass)
-                .clipShape(Circle())
-                .accessibilityLabel("Add to list")
-                .hoverEffect(.lift)
             }
         }
+        .buttonStyle(.plain)
         .padding(10)
         .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
         .listRowBackground(Color.clear)

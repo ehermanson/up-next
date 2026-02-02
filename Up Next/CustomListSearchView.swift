@@ -3,7 +3,7 @@ import SwiftUI
 struct CustomListSearchView: View {
     let viewModel: CustomListViewModel
     let list: CustomList
-    @Environment(\.dismiss) private var dismiss
+    @Binding var isPresented: Bool
 
     @State private var searchText = ""
     @State private var selectedMediaType: MediaType = .movie
@@ -97,7 +97,7 @@ struct CustomListSearchView: View {
             .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { isPresented = false }
                 }
             }
             .searchable(
@@ -162,6 +162,9 @@ struct CustomListSearchView: View {
 
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
         guard !viewModel.containsItem(mediaID: String(result.id), in: list) else { return }
+        let capturedList = list
+        let capturedViewModel = viewModel
+        isPresented = false
         Task {
             let tvShow: TVShow
             do {
@@ -170,12 +173,15 @@ struct CustomListSearchView: View {
             } catch {
                 tvShow = service.mapToTVShow(result)
             }
-            viewModel.addItem(tvShow: tvShow, to: list)
+            capturedViewModel.addItem(tvShow: tvShow, to: capturedList)
         }
     }
 
     private func addMovie(_ result: TMDBMovieSearchResult) {
         guard !viewModel.containsItem(mediaID: String(result.id), in: list) else { return }
+        let capturedList = list
+        let capturedViewModel = viewModel
+        isPresented = false
         Task {
             let movie: Movie
             do {
@@ -187,7 +193,7 @@ struct CustomListSearchView: View {
             } catch {
                 movie = service.mapToMovie(result)
             }
-            viewModel.addItem(movie: movie, to: list)
+            capturedViewModel.addItem(movie: movie, to: capturedList)
         }
     }
 }

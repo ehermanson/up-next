@@ -73,7 +73,7 @@ struct CustomListDetailView: View {
             }
         }
         .sheet(isPresented: $showingAddItems) {
-            CustomListSearchView(viewModel: viewModel, list: list)
+            CustomListSearchView(viewModel: viewModel, list: list, isPresented: $showingAddItems)
         }
         .sheet(item: $selectedItem) { item in
             CustomListItemDetailView(item: item)
