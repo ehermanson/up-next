@@ -29,6 +29,7 @@ struct ContentView: View {
     @State private var selectedTVProviderCategory: String? = nil
     @State private var selectedMovieProviderCategory: String? = nil
     @State private var showingSettings = false
+    @State private var toastMessage: String?
 
     private var selectedTVShow: ListItem? {
         guard let id = expandedTVShowID else { return nil }
@@ -132,6 +133,27 @@ struct ContentView: View {
 
     var body: some View {
         mainTabView
+            .overlay(alignment: .bottom) {
+                if let message = toastMessage {
+                    Text(message)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .fontDesign(.rounded)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .glassEffect(.regular.tint(.green.opacity(0.2)), in: .capsule)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, 100)
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    toastMessage = nil
+                                }
+                            }
+                        }
+                }
+            }
+            .animation(.spring(duration: 0.4), value: toastMessage)
             .sheet(isPresented: $showingSettings) {
                 ProviderSettingsView(allProviders: allProviderInfo)
             }
@@ -325,7 +347,10 @@ struct ContentView: View {
             onTVShowAdded: { viewModel.addTVShow($0) },
             onMovieAdded: { viewModel.addMovie($0) },
             customListViewModel: customListViewModel,
-            onDone: { selectedTab = previousTab }
+            onDone: { selectedTab = previousTab },
+            onItemAdded: { title in
+                toastMessage = "\(title) has been added"
+            }
         )
     }
 

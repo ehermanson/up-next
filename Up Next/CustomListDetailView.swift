@@ -5,6 +5,7 @@ struct CustomListDetailView: View {
     let list: CustomList
     @State private var showingAddItems = false
     @State private var selectedItem: CustomListItem?
+    @State private var toastMessage: String?
 
     var body: some View {
         Group {
@@ -72,8 +73,39 @@ struct CustomListDetailView: View {
                 }
             }
         }
+        .overlay(alignment: .bottom) {
+            if let message = toastMessage {
+                Text(message)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .fontDesign(.rounded)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular.tint(.green.opacity(0.2)), in: .capsule)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 20)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                toastMessage = nil
+                            }
+                        }
+                    }
+            }
+        }
+        .animation(.spring(duration: 0.4), value: toastMessage)
         .sheet(isPresented: $showingAddItems) {
-            CustomListSearchView(viewModel: viewModel, list: list, isPresented: $showingAddItems)
+            WatchlistSearchView(
+                context: .specificList(list),
+                existingTVShowIDs: [],
+                existingMovieIDs: [],
+                onTVShowAdded: { _ in },
+                onMovieAdded: { _ in },
+                customListViewModel: viewModel,
+                onItemAdded: { title in
+                    toastMessage = "\(title) has been added"
+                }
+            )
         }
         .sheet(item: $selectedItem) { item in
             CustomListItemDetailView(item: item)

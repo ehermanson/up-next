@@ -6,6 +6,7 @@ struct WatchlistSearchView: View {
         case tvShows
         case movies
         case myLists
+        case specificList(CustomList)
     }
 
     var context: SearchContext = .all
@@ -15,6 +16,9 @@ struct WatchlistSearchView: View {
     let onMovieAdded: (Movie) -> Void
     var customListViewModel: CustomListViewModel?
     var onDone: (() -> Void)?
+    var onItemAdded: ((String) -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
     @State private var selectedMediaType: MediaType = .tvShow
@@ -29,32 +33,46 @@ struct WatchlistSearchView: View {
     private let service = TMDBService.shared
 
     private var showMediaTypePicker: Bool {
-        context == .all || context == .myLists
+        switch context {
+        case .all, .myLists, .specificList: return true
+        case .tvShows, .movies: return false
+        }
     }
 
     private var effectiveMediaType: MediaType {
         switch context {
         case .tvShows: .tvShow
         case .movies: .movie
-        case .all, .myLists: selectedMediaType
+        case .all, .myLists, .specificList: selectedMediaType
         }
     }
 
-    private var isMyListsMode: Bool {
-        context == .myLists
+    private var isListMode: Bool {
+        switch context {
+        case .myLists, .specificList: return true
+        default: return false
+        }
     }
 
     private var hasScopedList: Bool {
-        customListViewModel?.activeListID != nil
+        switch context {
+        case .specificList: return true
+        default: return customListViewModel?.activeListID != nil
+        }
     }
 
     private var selectedList: CustomList? {
-        guard let id = selectedListID else { return nil }
-        return customListViewModel?.customLists.first(where: { $0.id == id })
+        switch context {
+        case .specificList(let list):
+            return list
+        default:
+            guard let id = selectedListID else { return nil }
+            return customListViewModel?.customLists.first(where: { $0.id == id })
+        }
     }
 
     private var navigationTitleText: String {
-        if isMyListsMode {
+        if isListMode {
             if let list = selectedList {
                 return "Add to \(list.name)"
             }
@@ -68,7 +86,7 @@ struct WatchlistSearchView: View {
     }
 
     private var emptyPromptText: String {
-        if isMyListsMode {
+        if isListMode {
             return "Search to add to your list"
         }
         switch context {
@@ -80,17 +98,25 @@ struct WatchlistSearchView: View {
 
     private func isAlreadyAdded(id: Int) -> Bool {
         let stringID = String(id)
-        if isMyListsMode, let list = selectedList {
+        if isListMode, let list = selectedList {
             return customListViewModel?.containsItem(mediaID: stringID, in: list) == true
         }
         let existingIDs = effectiveMediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
         return existingIDs.contains(stringID) || addedIDs.contains(stringID)
     }
 
+    private func performDone() {
+        if let onDone {
+            onDone()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if isMyListsMode && !hasScopedList {
+                if context == .myLists && !hasScopedList {
                     listPickerSection
                 }
 
@@ -105,18 +131,19 @@ struct WatchlistSearchView: View {
                 }
 
                 Group {
-                    if isMyListsMode && selectedList == nil {
+                    if context == .myLists && selectedList == nil {
                         noListSelectedView
                     } else if isLoading {
-                        VStack {
-                            ProgressView()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        ShimmerLoadingView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(AppBackground())
                     } else if let error = errorMessage {
                         VStack(spacing: 12) {
                             Image(systemName: "exclamationmark.triangle")
                                 .font(.system(size: 40))
                                 .foregroundStyle(.orange)
+                                .frame(width: 80, height: 80)
+                                .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .circle)
                             Text(error)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -147,10 +174,8 @@ struct WatchlistSearchView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .preferredColorScheme(.dark)
             .toolbar {
-                if let onDone {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done", action: onDone)
-                    }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { performDone() }
                 }
             }
             .searchable(
@@ -281,8 +306,15 @@ struct WatchlistSearchView: View {
     // MARK: - Search
 
     private func syncActiveList() {
-        if isMyListsMode, let activeID = customListViewModel?.activeListID {
-            selectedListID = activeID
+        switch context {
+        case .specificList(let list):
+            selectedListID = list.id
+        case .myLists:
+            if let activeID = customListViewModel?.activeListID {
+                selectedListID = activeID
+            }
+        default:
+            break
         }
     }
 
@@ -337,7 +369,8 @@ struct WatchlistSearchView: View {
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
-        let done = onDone
+        onItemAdded?(result.name)
+        performDone()
         Task {
             let tvShow: TVShow
             do {
@@ -346,19 +379,19 @@ struct WatchlistSearchView: View {
             } catch {
                 tvShow = service.mapToTVShow(result)
             }
-            if isMyListsMode, let list = selectedList {
+            if isListMode, let list = selectedList {
                 customListViewModel?.addItem(tvShow: tvShow, to: list)
             } else {
                 onTVShowAdded(tvShow)
             }
-            done?()
         }
     }
 
     private func addMovie(_ result: TMDBMovieSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
-        let done = onDone
+        onItemAdded?(result.title)
+        performDone()
         Task {
             let movie: Movie
             do {
@@ -370,12 +403,11 @@ struct WatchlistSearchView: View {
             } catch {
                 movie = service.mapToMovie(result)
             }
-            if isMyListsMode, let list = selectedList {
+            if isListMode, let list = selectedList {
                 customListViewModel?.addItem(movie: movie, to: list)
             } else {
                 onMovieAdded(movie)
             }
-            done?()
         }
     }
 }
