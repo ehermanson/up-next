@@ -47,6 +47,7 @@ struct MyListsView: View {
                         List {
                             ForEach(viewModel.customLists, id: \.id) { list in
                                 Button {
+                                    viewModel.activeListID = list.id
                                     navigationPath.append(list.id)
                                 } label: {
                                     HStack(spacing: 14) {
@@ -114,6 +115,11 @@ struct MyListsView: View {
             .navigationDestination(for: UUID.self) { listID in
                 if let list = viewModel.customLists.first(where: { $0.id == listID }) {
                     CustomListDetailView(viewModel: viewModel, list: list)
+                        .onDisappear {
+                            if navigationPath.isEmpty {
+                                viewModel.activeListID = nil
+                            }
+                        }
                 }
             }
             .sheet(isPresented: $showingCreateList) {

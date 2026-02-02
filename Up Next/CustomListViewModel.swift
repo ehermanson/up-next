@@ -5,6 +5,7 @@ import SwiftData
 @Observable
 final class CustomListViewModel {
     var customLists: [CustomList] = []
+    var activeListID: UUID?
 
     private var modelContext: ModelContext?
 

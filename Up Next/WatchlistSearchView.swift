@@ -43,6 +43,10 @@ struct WatchlistSearchView: View {
         context == .myLists
     }
 
+    private var hasScopedList: Bool {
+        customListViewModel?.activeListID != nil
+    }
+
     private var selectedList: CustomList? {
         guard let id = selectedListID else { return nil }
         return customListViewModel?.customLists.first(where: { $0.id == id })
@@ -85,7 +89,7 @@ struct WatchlistSearchView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if isMyListsMode {
+                if isMyListsMode && !hasScopedList {
                     listPickerSection
                 }
 
@@ -158,6 +162,10 @@ struct WatchlistSearchView: View {
             }
             .onChange(of: context) { _, _ in
                 resetSearch()
+                syncActiveList()
+            }
+            .onAppear {
+                syncActiveList()
             }
             .onDisappear {
                 searchTask?.cancel()
@@ -263,6 +271,12 @@ struct WatchlistSearchView: View {
     }
 
     // MARK: - Search
+
+    private func syncActiveList() {
+        if isMyListsMode, let activeID = customListViewModel?.activeListID {
+            selectedListID = activeID
+        }
+    }
 
     private func resetSearch() {
         searchTask?.cancel()
