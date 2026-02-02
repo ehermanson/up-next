@@ -23,6 +23,7 @@ struct ContentView: View {
     @State private var expandedTVShowID: String? = nil
     @State private var expandedMovieID: String? = nil
     @State private var selectedTab: MediaTab = .tvShows
+    @State private var previousTab: MediaTab = .tvShows
     @State private var selectedTVGenre: String? = nil
     @State private var selectedMovieGenre: String? = nil
     @State private var selectedTVProviderCategory: String? = nil
@@ -156,6 +157,11 @@ struct ContentView: View {
             .onChange(of: availableMovieProviderCategories) {
                 if let cat = selectedMovieProviderCategory, !availableMovieProviderCategories.contains(cat) {
                     selectedMovieProviderCategory = nil
+                }
+            }
+            .onChange(of: selectedTab) { oldValue, _ in
+                if oldValue != .search {
+                    previousTab = oldValue
                 }
             }
     }
@@ -302,12 +308,23 @@ struct ContentView: View {
         }
     }
 
+    private var searchContext: WatchlistSearchView.SearchContext {
+        switch previousTab {
+        case .tvShows: .tvShows
+        case .movies: .movies
+        case .myLists: .myLists
+        default: .all
+        }
+    }
+
     private var searchTab: some View {
         WatchlistSearchView(
+            context: searchContext,
             existingTVShowIDs: existingIDs(for: .tvShow),
             existingMovieIDs: existingIDs(for: .movie),
             onTVShowAdded: { viewModel.addTVShow($0) },
-            onMovieAdded: { viewModel.addMovie($0) }
+            onMovieAdded: { viewModel.addMovie($0) },
+            customListViewModel: customListViewModel
         )
     }
 
