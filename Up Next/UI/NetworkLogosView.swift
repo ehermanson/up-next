@@ -28,18 +28,14 @@ struct NetworkLogosView: View {
                     if let logoURL = TMDBService.shared.imageURL(
                         path: network.logoPath, size: .w92)
                     {
-                        AsyncImage(url: logoURL) { phase in
+                        CachedAsyncImage(url: logoURL) { phase in
                             switch phase {
-                            case .empty:
-                                Color.gray.opacity(0.1)
                             case .success(let image):
                                 image
                                     .resizable()
                                     .scaledToFit()
                                     .padding(4)
-                            case .failure:
-                                Color.gray.opacity(0.1)
-                            @unknown default:
+                            default:
                                 Color.gray.opacity(0.1)
                             }
                         }

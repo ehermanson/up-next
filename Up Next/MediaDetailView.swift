@@ -374,7 +374,7 @@ private struct DetailProviderRow: View {
     private func providerLogo(for network: Network) -> some View {
         Group {
             if let logoURL = TMDBService.shared.imageURL(path: network.logoPath, size: .w92) {
-                AsyncImage(url: logoURL) { phase in
+                CachedAsyncImage(url: logoURL) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFit().padding(4)
@@ -445,7 +445,7 @@ private struct HiddenProvidersPopover: View {
     private func hiddenProviderRow(_ network: Network) -> some View {
         HStack(spacing: 10) {
             if let logoURL = TMDBService.shared.imageURL(path: network.logoPath, size: .w92) {
-                AsyncImage(url: logoURL) { phase in
+                CachedAsyncImage(url: logoURL) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFit().padding(3)
@@ -633,7 +633,7 @@ private struct HeaderImageView: View {
     var body: some View {
         Group {
             if let imageURL {
-                AsyncImage(url: imageURL) { phase in
+                CachedAsyncImage(url: imageURL) { phase in
                     switch phase {
                     case .empty:
                         ProgressView()
@@ -789,7 +789,7 @@ private struct CastSection: View {
     private func castImage(index: Int) -> some View {
         let path = index < castImagePaths.count ? castImagePaths[index] : ""
         if let url = TMDBService.shared.imageURL(path: path.isEmpty ? nil : path, size: .w185) {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
                     image

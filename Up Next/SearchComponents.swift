@@ -100,7 +100,7 @@ struct SearchResultRow: View {
             }
         } label: {
             HStack(spacing: 12) {
-                AsyncImage(url: imageURL) { phase in
+                CachedAsyncImage(url: imageURL) { phase in
                     switch phase {
                     case .empty:
                         Rectangle()

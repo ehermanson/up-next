@@ -190,7 +190,7 @@ private struct CustomListItemDetailView: View {
     @ViewBuilder
     private var headerImage: some View {
         if let imageURL = item.media?.thumbnailURL {
-            AsyncImage(url: imageURL) { phase in
+            CachedAsyncImage(url: imageURL) { phase in
                 switch phase {
                 case .empty:
                     ProgressView().frame(height: 350)
@@ -330,7 +330,7 @@ private struct CustomListItemDetailView: View {
     @ViewBuilder
     private func castImage(path: String) -> some View {
         if let url = service.imageURL(path: path.isEmpty ? nil : path, size: .w185) {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().scaledToFill()
@@ -442,7 +442,7 @@ private struct CustomListItemRow: View {
     @ViewBuilder
     private var posterImage: some View {
         if let url = item.media?.thumbnailURL {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().aspectRatio(contentMode: .fill)

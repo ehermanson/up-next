@@ -21,10 +21,13 @@ struct MediaCardView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             if let imageURL = imageURL {
-                AsyncImage(url: imageURL) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color.gray.opacity(0.1)
+                CachedAsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Color.gray.opacity(0.1)
+                    }
                 }
                 .frame(width: 70, height: 100)
                 .clipShape(.rect(cornerRadius: 14))
