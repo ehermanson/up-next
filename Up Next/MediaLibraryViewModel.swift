@@ -208,9 +208,11 @@ final class MediaLibraryViewModel {
             tvShows = try context.fetch(tvDescriptor)
             movies = try context.fetch(movieDescriptor)
 
+            #if DEBUG
             if tvShows.isEmpty && movies.isEmpty {
                 await seedStubData()
             }
+            #endif
 
             syncUnwatched(for: .tvShow)
             syncUnwatched(for: .movie)
