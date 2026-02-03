@@ -116,25 +116,23 @@ struct MediaListView: View {
             .navigationTitle(navigationTitle)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                #if !os(tvOS)
-                    if let onSettingsTapped {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button(action: onSettingsTapped) {
-                                Image(systemName: "gearshape")
-                            }
+                if let onSettingsTapped {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: onSettingsTapped) {
+                            Image(systemName: "gearshape")
                         }
                     }
-                    ToolbarItem {
-                        EditButton()
-                    }
-                    if let onSearchTapped {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button(action: onSearchTapped) {
-                                Image(systemName: "magnifyingglass")
-                            }
+                }
+                ToolbarItem {
+                    EditButton()
+                }
+                if let onSearchTapped {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: onSearchTapped) {
+                            Image(systemName: "magnifyingglass")
                         }
                     }
-                #endif
+                }
             }
         }
         .preferredColorScheme(.dark)
