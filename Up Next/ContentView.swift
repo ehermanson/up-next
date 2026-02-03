@@ -1,10 +1,3 @@
-//
-//  ContentView.swift
-//  Watch List
-//
-//  Created by Eric Hermanson on 12/12/25.
-//
-
 import SwiftData
 import SwiftUI
 
@@ -246,9 +239,6 @@ struct ContentView: View {
             onWatchedToggled: {
                 viewModel.persistChanges(for: .tvShow)
             },
-            onOrderChanged: {
-                viewModel.updateOrderAfterUnwatchedMove(mediaType: .tvShow)
-            },
             onSearchTapped: nil,
             onSettingsTapped: { showingSettings = true },
             isLoaded: viewModel.isLoaded
@@ -299,9 +289,6 @@ struct ContentView: View {
             },
             onWatchedToggled: {
                 viewModel.persistChanges(for: .movie)
-            },
-            onOrderChanged: {
-                viewModel.updateOrderAfterUnwatchedMove(mediaType: .movie)
             },
             onSearchTapped: nil,
             onSettingsTapped: { showingSettings = true },

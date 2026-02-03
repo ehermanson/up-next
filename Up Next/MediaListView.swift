@@ -16,7 +16,6 @@ struct MediaListView: View {
     let subtitleProvider: (ListItem) -> String?
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
-    let onOrderChanged: () -> Void
     let onSearchTapped: (() -> Void)?
     var onSettingsTapped: (() -> Void)?
     var isLoaded: Bool = true
@@ -61,47 +60,41 @@ struct MediaListView: View {
                                     selectedProviderCategory: $selectedProviderCategory
                                 )
 
-                                if !filteredUnwatchedItems.isEmpty {
-                                    if selectedGenre == nil && selectedProviderCategory == nil {
-                                        UnwatchedSection(
-                                            items: $unwatchedItems,
-                                            allItems: $allItems,
-                                            expandedItemID: $expandedItemID,
-                                            subtitleProvider: subtitleProvider,
-                                            onItemExpanded: onItemExpanded,
-                                            onWatchedToggled: onWatchedToggled,
-                                            onOrderChanged: onOrderChanged
-                                        )
-                                    } else {
-                                        ForEach(filteredUnwatchedItems, id: \.media?.id) { item in
-                                            MediaListRow(
-                                                item: binding(for: item),
-                                                itemID: item.media?.id ?? "",
-                                                expandedItemID: $expandedItemID,
-                                                subtitle: subtitleProvider(item),
-                                                onItemExpanded: onItemExpanded,
-                                                onWatchedToggled: {
-                                                    toggleWatched(item)
-                                                }
-                                            )
+                                ForEach(filteredUnwatchedItems, id: \.media?.id) { item in
+                                    MediaListRow(
+                                        item: binding(for: item),
+                                        itemID: item.media?.id ?? "",
+                                        expandedItemID: $expandedItemID,
+                                        subtitle: subtitleProvider(item),
+                                        onItemExpanded: onItemExpanded,
+                                        onWatchedToggled: {
+                                            toggleWatched(item)
                                         }
-                                    }
+                                    )
                                 }
                             }
 
-                            WatchedSection(
-                                items: $watchedItems,
-                                expandedItemID: $expandedItemID,
-                                subtitleProvider: subtitleProvider,
-                                onItemExpanded: onItemExpanded,
-                                onWatchedToggled: onWatchedToggled
-                            )
+                            if !watchedItems.isEmpty {
+                                SectionHeader(title: "Watched", count: watchedItems.count)
+
+                                ForEach(watchedItems, id: \.media?.id) { item in
+                                    MediaListRow(
+                                        item: binding(for: item, in: $watchedItems),
+                                        itemID: item.media?.id ?? "",
+                                        expandedItemID: $expandedItemID,
+                                        subtitle: subtitleProvider(item),
+                                        onItemExpanded: onItemExpanded,
+                                        onWatchedToggled: {
+                                            toggleWatched(item)
+                                        }
+                                    )
+                                }
+                            }
                         }
                         .scrollContentBackground(.hidden)
                         .listStyle(.plain)
                         .contentMargins(.bottom, 20, for: .scrollContent)
                         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: filteredUnwatchedItems.count)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: allItems.count)
                     }
                 }
             }
@@ -116,9 +109,6 @@ struct MediaListView: View {
                         }
                     }
                 }
-                ToolbarItem {
-                    EditButton()
-                }
                 if let onSearchTapped {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button(action: onSearchTapped) {
@@ -132,15 +122,19 @@ struct MediaListView: View {
     }
 
     private func binding(for item: ListItem) -> Binding<ListItem> {
+        binding(for: item, in: $unwatchedItems)
+    }
+
+    private func binding(for item: ListItem, in items: Binding<[ListItem]>) -> Binding<ListItem> {
         Binding(
             get: {
-                unwatchedItems.first(where: { $0.media?.id == item.media?.id }) ?? item
+                items.wrappedValue.first(where: { $0.media?.id == item.media?.id }) ?? item
             },
             set: { newValue in
                 guard let id = item.media?.id,
-                      let index = unwatchedItems.firstIndex(where: { $0.media?.id == id })
+                      let index = items.wrappedValue.firstIndex(where: { $0.media?.id == id })
                 else { return }
-                unwatchedItems[index] = newValue
+                items.wrappedValue[index] = newValue
             }
         )
     }
@@ -273,122 +267,6 @@ private struct SectionHeader: View {
     }
 }
 
-struct UnwatchedSection: View {
-    @Binding var items: [ListItem]
-    @Binding var allItems: [ListItem]
-    @Binding var expandedItemID: String?
-
-    let subtitleProvider: (ListItem) -> String?
-    let onItemExpanded: (String?) -> Void
-    let onWatchedToggled: () -> Void
-    let onOrderChanged: () -> Void
-    
-    @State private var draggingItemID: String?
-
-    var body: some View {
-        ForEach($items, id: \.media?.id) { $item in
-            let itemID = item.media?.id ?? ""
-            MediaListRow(
-                item: $item,
-                itemID: itemID,
-                expandedItemID: $expandedItemID,
-                subtitle: subtitleProvider(item),
-                onItemExpanded: onItemExpanded,
-                onWatchedToggled: {
-                    toggleWatched(item)
-                }
-            )
-            .opacity(draggingItemID == itemID ? 0 : 1)
-            .overlay {
-                if draggingItemID == itemID {
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(.white.opacity(0.2), lineWidth: 1)
-                        .background(
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(.white.opacity(0.05))
-                        )
-                }
-            }
-            .onDrag {
-                draggingItemID = itemID
-                return NSItemProvider(object: itemID as NSString)
-            } preview: {
-                MediaCardView(
-                    title: item.media?.title ?? "",
-                    subtitle: subtitleProvider(item),
-                    imageURL: item.media?.thumbnailURL,
-                    networks: item.media?.networks ?? [],
-                    isWatched: item.isWatched,
-                    watchedToggleAction: { _ in }
-                )
-                .frame(width: 361)
-                .padding(.vertical, 5)
-            }
-        }
-        .onMove(perform: handleMove)
-    }
-
-    private func toggleWatched(_ item: ListItem) {
-        item.isWatched.toggle()
-        item.watchedAt = item.isWatched ? Date() : nil
-
-        if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
-            item.watchedSeasons = item.isWatched ? Array(1...total) : []
-        }
-
-        if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
-            allItems[index] = item
-        }
-        onWatchedToggled()
-    }
-
-    private func handleMove(from source: IndexSet, to destination: Int) {
-        items.move(fromOffsets: source, toOffset: destination)
-        for (index, item) in items.enumerated() {
-            item.order = index
-        }
-        for item in items {
-            if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
-                allItems[index].order = item.order
-            }
-        }
-        onOrderChanged()
-    }
-}
-
-struct WatchedSection: View {
-    @Binding var items: [ListItem]
-    @Binding var expandedItemID: String?
-
-    let subtitleProvider: (ListItem) -> String?
-    let onItemExpanded: (String?) -> Void
-    let onWatchedToggled: () -> Void
-
-    var body: some View {
-        if !items.isEmpty {
-            SectionHeader(title: "Watched", count: items.count)
-
-            ForEach($items, id: \.media?.id) { $item in
-                MediaListRow(
-                    item: $item,
-                    itemID: item.media?.id ?? "",
-                    expandedItemID: $expandedItemID,
-                    subtitle: subtitleProvider(item),
-                    onItemExpanded: onItemExpanded,
-                    onWatchedToggled: {
-                        item.isWatched.toggle()
-                        item.watchedAt = item.isWatched ? Date() : nil
-                        if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
-                            item.watchedSeasons = item.isWatched ? Array(1...total) : []
-                        }
-                        onWatchedToggled()
-                    }
-                )
-            }
-        }
-    }
-}
-
 struct MediaListRow: View {
     @Binding var item: ListItem
     let itemID: String
@@ -503,7 +381,6 @@ struct MediaListRow: View {
         },
         onItemExpanded: { _ in },
         onWatchedToggled: {},
-        onOrderChanged: {},
         onSearchTapped: nil
     )
 }
