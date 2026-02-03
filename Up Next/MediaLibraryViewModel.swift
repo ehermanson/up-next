@@ -353,7 +353,7 @@ final class MediaLibraryViewModel {
                 group.addTask {
                     do {
                         async let detailTask = service.getMovieDetails(id: seed.id)
-                        async let providersTask = service.getMovieWatchProviders(id: seed.id, countryCode: "US")
+                        async let providersTask = service.getMovieWatchProviders(id: seed.id)
                         let detail = try await detailTask
                         let providers = try await providersTask
                         return (index, detail, providers)

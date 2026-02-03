@@ -218,7 +218,7 @@ struct MediaDetailView: View {
             if let tvShow = listItem.tvShow {
                 let previousSeasonCount = tvShow.numberOfSeasons
                 async let detailTask = service.getTVShowDetails(id: id)
-                async let providersTask = service.getTVShowWatchProviders(id: id, countryCode: "US")
+                async let providersTask = service.getTVShowWatchProviders(id: id)
                 let detail = try await detailTask
                 let providers = try await providersTask
                 let updatedTVShow = service.mapToTVShow(detail, providers: providers)
@@ -244,7 +244,7 @@ struct MediaDetailView: View {
                 }
             } else if let movie = listItem.movie {
                 async let detailTask = service.getMovieDetails(id: id)
-                async let providersTask = service.getMovieWatchProviders(id: id, countryCode: "US")
+                async let providersTask = service.getMovieWatchProviders(id: id)
                 let detail = try await detailTask
                 let providers = try await providersTask
                 let updatedMovie = service.mapToMovie(detail, providers: providers)

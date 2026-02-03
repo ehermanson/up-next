@@ -25,6 +25,12 @@ actor TMDBService {
 
     private init() {}
 
+    /// Returns the user's region code (e.g., "US", "GB", "DE") for watch provider lookups.
+    /// Falls back to "US" if the device locale doesn't provide a region.
+    nonisolated var currentRegion: String {
+        Locale.current.region?.identifier ?? "US"
+    }
+
     // MARK: - Search
 
     /// Search for TV shows by name
@@ -67,28 +73,30 @@ actor TMDBService {
         )
     }
 
-    /// Get watch providers for a movie (per country). Returns the US entry when available.
-    func getMovieWatchProviders(id: Int, countryCode: String = "US") async throws
+    /// Get watch providers for a movie (per country). Uses device locale by default.
+    func getMovieWatchProviders(id: Int, countryCode: String? = nil) async throws
         -> TMDBWatchProviderCountry?
     {
+        let region = countryCode ?? currentRegion
         let endpoint = "/movie/\(id)/watch/providers"
         let response: TMDBWatchProvidersResponse = try await performRequest(
             endpoint: endpoint,
             queryItems: []
         )
-        return response.results?[countryCode]
+        return response.results?[region]
     }
 
-    /// Get watch providers for a TV show (per country). Returns the US entry when available.
-    func getTVShowWatchProviders(id: Int, countryCode: String = "US") async throws
+    /// Get watch providers for a TV show (per country). Uses device locale by default.
+    func getTVShowWatchProviders(id: Int, countryCode: String? = nil) async throws
         -> TMDBWatchProviderCountry?
     {
+        let region = countryCode ?? currentRegion
         let endpoint = "/tv/\(id)/watch/providers"
         let response: TMDBWatchProvidersResponse = try await performRequest(
             endpoint: endpoint,
             queryItems: []
         )
-        return response.results?[countryCode]
+        return response.results?[region]
     }
 
     // MARK: - Image URLs

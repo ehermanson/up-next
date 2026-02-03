@@ -396,7 +396,7 @@ struct WatchlistSearchView: View {
             let movie: Movie
             do {
                 async let detailTask = service.getMovieDetails(id: result.id)
-                async let providersTask = service.getMovieWatchProviders(id: result.id, countryCode: "US")
+                async let providersTask = service.getMovieWatchProviders(id: result.id)
                 let detail = try await detailTask
                 let providers = try await providersTask
                 movie = service.mapToMovie(detail, providers: providers)
