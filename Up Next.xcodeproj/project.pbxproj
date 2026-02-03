@@ -10,9 +10,22 @@
 		65E41CF62EEC5BF60028C00A /* Up Next.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Up Next.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		65E41D062EEC5BF70028C00A /* Exceptions for "Up Next" folder in "Up Next" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 65E41CF52EEC5BF60028C00A /* Up Next */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		65E41CF82EEC5BF60028C00A /* Up Next */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				65E41D062EEC5BF70028C00A /* Exceptions for "Up Next" folder in "Up Next" target */,
+			);
 			path = "Up Next";
 			sourceTree = "<group>";
 		};
