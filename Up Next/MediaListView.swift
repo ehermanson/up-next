@@ -1,10 +1,3 @@
-//
-//  MediaListView.swift
-//  Watch List
-//
-//  Created by Eric Hermanson on 12/12/25.
-//
-
 import SwiftData
 import SwiftUI
 
@@ -289,12 +282,15 @@ struct UnwatchedSection: View {
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
     let onOrderChanged: () -> Void
+    
+    @State private var draggingItemID: String?
 
     var body: some View {
         ForEach($items, id: \.media?.id) { $item in
+            let itemID = item.media?.id ?? ""
             MediaListRow(
                 item: $item,
-                itemID: item.media?.id ?? "",
+                itemID: itemID,
                 expandedItemID: $expandedItemID,
                 subtitle: subtitleProvider(item),
                 onItemExpanded: onItemExpanded,
@@ -302,6 +298,32 @@ struct UnwatchedSection: View {
                     toggleWatched(item)
                 }
             )
+            .opacity(draggingItemID == itemID ? 0 : 1)
+            .overlay {
+                if draggingItemID == itemID {
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(.white.opacity(0.2), lineWidth: 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(.white.opacity(0.05))
+                        )
+                }
+            }
+            .onDrag {
+                draggingItemID = itemID
+                return NSItemProvider(object: itemID as NSString)
+            } preview: {
+                MediaCardView(
+                    title: item.media?.title ?? "",
+                    subtitle: subtitleProvider(item),
+                    imageURL: item.media?.thumbnailURL,
+                    networks: item.media?.networks ?? [],
+                    isWatched: item.isWatched,
+                    watchedToggleAction: { _ in }
+                )
+                .frame(width: 361)
+                .padding(.vertical, 5)
+            }
         }
         .onMove(perform: handleMove)
     }
@@ -310,7 +332,6 @@ struct UnwatchedSection: View {
         item.isWatched.toggle()
         item.watchedAt = item.isWatched ? Date() : nil
 
-        // Sync season tracking for TV shows
         if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
             item.watchedSeasons = item.isWatched ? Array(1...total) : []
         }

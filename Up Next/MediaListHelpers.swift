@@ -1,10 +1,3 @@
-//
-//  MediaListHelpers.swift
-//  Watch List
-//
-//  Created by Eric Hermanson on 12/12/25.
-//
-
 import Foundation
 import SwiftData
 
