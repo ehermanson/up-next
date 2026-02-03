@@ -19,6 +19,12 @@ struct ProviderSettingsView: View {
                         settings.setHidden(shouldHide, for: ids)
                     }
                 }
+
+                Section {
+                    TMDBAttributionView()
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
             }
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
