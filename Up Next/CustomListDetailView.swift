@@ -168,6 +168,7 @@ private struct CustomListItemDetailView: View {
                     .offset(y: -40)
                 }
             }
+            .ignoresSafeArea(.container, edges: .top)
             .background(AppBackground())
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
