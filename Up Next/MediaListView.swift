@@ -36,7 +36,7 @@ struct MediaListView: View {
         NavigationStack {
             Group {
                 if !isLoaded {
-                    Color.clear
+                    ShimmerLoadingView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if isEmpty {
                     VStack(spacing: 16) {
@@ -49,7 +49,7 @@ struct MediaListView: View {
                             .font(.title3)
                             .fontWeight(.semibold)
                             .fontDesign(.rounded)
-                        Text("Tap + to add your first title")
+                        Text("Use the Search tab to find and add titles")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fontDesign(.rounded)
