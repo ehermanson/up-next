@@ -19,7 +19,14 @@ struct Watch_ListApp: App {
         do {
             return try ModelContainer(for: schema, configurations: configuration)
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // Fall back to an in-memory store so the app can still launch
+            let inMemory = ModelConfiguration("Watch_List", isStoredInMemoryOnly: true)
+            do {
+                return try ModelContainer(for: schema, configurations: inMemory)
+            } catch {
+                // Absolute last resort — should never happen with in-memory
+                fatalError("Could not create ModelContainer: \(error)")
+            }
         }
     }()
 

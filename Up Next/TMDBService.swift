@@ -17,7 +17,8 @@ actor TMDBService {
         guard let key = Bundle.main.infoDictionary?["TMDB_API_KEY"] as? String,
             key != "YOUR_API_KEY_HERE"
         else {
-            fatalError("TMDB_API_KEY not found in Info.plist or not configured")
+            assertionFailure("TMDB_API_KEY not found in Info.plist or not configured")
+            return ""
         }
         return key
     }

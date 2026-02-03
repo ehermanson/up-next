@@ -57,9 +57,7 @@ final class ListItem {
         watchedSeasons: [Int] = []
     ) {
         // Ensure exactly one media type is provided
-        guard (movie != nil) != (tvShow != nil) else {
-            fatalError("ListItem must have exactly one of movie or tvShow")
-        }
+        assert((movie != nil) != (tvShow != nil), "ListItem must have exactly one of movie or tvShow")
 
         self.movie = movie
         self.tvShow = tvShow
