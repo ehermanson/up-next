@@ -5,6 +5,7 @@ struct MyListsView: View {
     @State private var showingCreateList = false
     @State private var editingList: CustomList?
     @State private var navigationPath = NavigationPath()
+    @State private var listToDelete: CustomList?
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -81,7 +82,7 @@ struct MyListsView: View {
                                 .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
-                                        viewModel.deleteList(list)
+                                        listToDelete = list
                                     } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
@@ -97,6 +98,7 @@ struct MyListsView: View {
                         .scrollContentBackground(.hidden)
                         .listStyle(.plain)
                     }
+                    .padding(.horizontal, 12)
                     .background(AppBackground())
                 }
             }
@@ -127,6 +129,24 @@ struct MyListsView: View {
             }
             .sheet(item: $editingList) { list in
                 CreateListView(viewModel: viewModel, existingList: list)
+            }
+            .alert(
+                "Delete List",
+                isPresented: Binding(
+                    get: { listToDelete != nil },
+                    set: { if !$0 { listToDelete = nil } }
+                ),
+                presenting: listToDelete
+            ) { list in
+                Button("Delete", role: .destructive) {
+                    viewModel.deleteList(list)
+                    listToDelete = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    listToDelete = nil
+                }
+            } message: { list in
+                Text("Are you sure you want to delete \"\(list.name)\"? This action cannot be undone.")
             }
         }
     }

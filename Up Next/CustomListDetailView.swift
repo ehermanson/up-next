@@ -6,6 +6,7 @@ struct CustomListDetailView: View {
     @State private var showingAddItems = false
     @State private var selectedItem: CustomListItem?
     @State private var toastMessage: String?
+    @State private var itemToDelete: CustomListItem?
 
     var body: some View {
         Group {
@@ -46,17 +47,19 @@ struct CustomListDetailView: View {
                                 .onTapGesture {
                                     selectedItem = item
                                 }
-                        }
-                        .onDelete { offsets in
-                            let sorted = list.items.sorted(by: { $0.addedAt < $1.addedAt })
-                            for index in offsets {
-                                viewModel.removeItem(sorted[index], from: list)
-                            }
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        itemToDelete = item
+                                    } label: {
+                                        Label("Remove", systemImage: "trash")
+                                    }
+                                }
                         }
                     }
                     .scrollContentBackground(.hidden)
                     .listStyle(.plain)
                 }
+                .padding(.horizontal, 12)
                 .background(AppBackground())
             }
         }
@@ -109,6 +112,24 @@ struct CustomListDetailView: View {
         }
         .sheet(item: $selectedItem) { item in
             CustomListItemDetailView(item: item)
+        }
+        .alert(
+            "Remove from List",
+            isPresented: Binding(
+                get: { itemToDelete != nil },
+                set: { if !$0 { itemToDelete = nil } }
+            ),
+            presenting: itemToDelete
+        ) { item in
+            Button("Remove", role: .destructive) {
+                viewModel.removeItem(item, from: list)
+                itemToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                itemToDelete = nil
+            }
+        } message: { item in
+            Text("Are you sure you want to remove \"\(item.media?.title ?? "this item")\" from \"\(list.name)\"?")
         }
     }
 }

@@ -18,7 +18,10 @@ struct MediaListView: View {
     let onWatchedToggled: () -> Void
     let onSearchTapped: (() -> Void)?
     var onSettingsTapped: (() -> Void)?
+    var onItemDeleted: ((String) -> Void)?
     var isLoaded: Bool = true
+
+    @State private var itemToDelete: ListItem?
 
     private var isEmpty: Bool {
         unwatchedItems.isEmpty && watchedItems.isEmpty
@@ -69,6 +72,9 @@ struct MediaListView: View {
                                         onItemExpanded: onItemExpanded,
                                         onWatchedToggled: {
                                             toggleWatched(item)
+                                        },
+                                        onDeleteRequested: {
+                                            itemToDelete = item
                                         }
                                     )
                                 }
@@ -86,6 +92,9 @@ struct MediaListView: View {
                                         onItemExpanded: onItemExpanded,
                                         onWatchedToggled: {
                                             toggleWatched(item)
+                                        },
+                                        onDeleteRequested: {
+                                            itemToDelete = item
                                         }
                                     )
                                 }
@@ -96,6 +105,7 @@ struct MediaListView: View {
                         .contentMargins(.bottom, 20, for: .scrollContent)
                         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: filteredUnwatchedItems.count)
                     }
+                    .padding(.horizontal, 12)
                 }
             }
             .background(AppBackground())
@@ -119,6 +129,26 @@ struct MediaListView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .alert(
+            "Remove from Watchlist",
+            isPresented: Binding(
+                get: { itemToDelete != nil },
+                set: { if !$0 { itemToDelete = nil } }
+            ),
+            presenting: itemToDelete
+        ) { item in
+            Button("Remove", role: .destructive) {
+                if let id = item.media?.id {
+                    onItemDeleted?(id)
+                }
+                itemToDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                itemToDelete = nil
+            }
+        } message: { item in
+            Text("Are you sure you want to remove \"\(item.media?.title ?? "this item")\" from your watchlist?")
+        }
     }
 
     private func binding(for item: ListItem) -> Binding<ListItem> {
@@ -274,6 +304,7 @@ struct MediaListRow: View {
     let subtitle: String?
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
+    let onDeleteRequested: () -> Void
 
     var body: some View {
         Button {
@@ -298,6 +329,13 @@ struct MediaListRow: View {
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                onDeleteRequested()
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
     }
 }
 

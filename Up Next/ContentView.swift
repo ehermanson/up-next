@@ -241,6 +241,9 @@ struct ContentView: View {
             },
             onSearchTapped: nil,
             onSettingsTapped: { showingSettings = true },
+            onItemDeleted: { id in
+                viewModel.removeItem(withID: id, mediaType: .tvShow)
+            },
             isLoaded: viewModel.isLoaded
         )
         .sheet(
@@ -292,6 +295,9 @@ struct ContentView: View {
             },
             onSearchTapped: nil,
             onSettingsTapped: { showingSettings = true },
+            onItemDeleted: { id in
+                viewModel.removeItem(withID: id, mediaType: .movie)
+            },
             isLoaded: viewModel.isLoaded
         )
         .sheet(
