@@ -9,6 +9,24 @@ struct ProviderSettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("This list shows streaming services that are available for titles in your lists. Providers are automatically detected from your content.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        
+                        Text("Toggle providers off to hide them from the \"Available On\" section in your media details. This won't remove any titles from your library.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 16))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+                
                 ForEach(allProviders) { provider in
                     ProviderRow(
                         provider: provider,
