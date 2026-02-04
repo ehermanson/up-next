@@ -41,7 +41,11 @@ struct CreateListView: View {
                                 .font(.headline)
                                 .padding(.horizontal, 4)
 
-                            SFSymbolPickerGrid(selectedSymbol: $iconName)
+                            ScrollView {
+                                SFSymbolPickerGrid(selectedSymbol: $iconName)
+                                    .padding(.bottom, 8)
+                            }
+                            .frame(maxHeight: 400)
                         }
                         .padding(20)
                         .glassEffect(.regular, in: .rect(cornerRadius: 24))
