@@ -11,50 +11,81 @@ struct ShimmerLoadingView: View {
     @State private var shimmerOffset: CGFloat = -200
 
     var body: some View {
-        GlassEffectContainer(spacing: 8) {
-            VStack(spacing: 16) {
-                ForEach(0..<4, id: \.self) { _ in
-                    HStack(spacing: 12) {
-                        Color.clear
-                            .frame(width: 60, height: 90)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 10))
-                        VStack(alignment: .leading, spacing: 8) {
+        ScrollView {
+            GlassEffectContainer(spacing: 8) {
+                VStack(spacing: 10) {
+                    ForEach(0..<6, id: \.self) { index in
+                        HStack(spacing: 12) {
+                            // Match SearchResultRow image dimensions
                             Color.clear
-                                .frame(height: 16)
-                                .frame(maxWidth: 180)
-                                .glassEffect(.regular, in: .capsule)
-                            Color.clear
-                                .frame(height: 12)
-                                .frame(maxWidth: 240)
-                                .glassEffect(.regular, in: .capsule)
-                            Color.clear
-                                .frame(height: 12)
-                                .frame(maxWidth: 200)
-                                .glassEffect(.regular, in: .capsule)
+                                .frame(width: 60, height: 90)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 10))
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                // Title shimmer (2 lines)
+                                Color.clear
+                                    .frame(height: 16)
+                                    .frame(maxWidth: 180)
+                                    .glassEffect(.regular, in: .capsule)
+                                
+                                // Overview shimmer (3 lines)
+                                Color.clear
+                                    .frame(height: 10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .glassEffect(.regular, in: .capsule)
+                                
+                                Color.clear
+                                    .frame(height: 10)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .glassEffect(.regular, in: .capsule)
+                                
+                                Color.clear
+                                    .frame(height: 10)
+                                    .frame(maxWidth: 200)
+                                    .glassEffect(.regular, in: .capsule)
+                                
+                            }
+                            
+                            Spacer()
                         }
-                        Spacer()
+                        // Match SearchResultRow padding
+                        .padding(10)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                        .opacity(fadeOpacity(for: index))
                     }
-                    .padding(.horizontal, 20)
                 }
             }
-        }
-        .overlay(
-            LinearGradient(
-                colors: [
-                    .clear,
-                    Color.white.opacity(0.08),
-                    .clear,
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
+            .overlay(
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        Color.white.opacity(0.04),
+                        .clear,
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .offset(x: shimmerOffset)
             )
-            .offset(x: shimmerOffset)
-        )
-        .clipped()
+            .clipped()
+        }
+        .scrollDisabled(true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
                 shimmerOffset = 400
             }
+        }
+    }
+    
+    private func fadeOpacity(for index: Int) -> Double {
+        // Gradually fade out items toward the bottom
+        let fadeStart = 2 // Start fading after the 3rd item
+        if index < fadeStart {
+            return 1.0
+        } else {
+            let fadeProgress = Double(index - fadeStart) / Double(6 - fadeStart)
+            return 1.0 - (fadeProgress * 0.8) // Fade to 40% opacity
         }
     }
 }

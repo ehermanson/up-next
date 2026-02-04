@@ -71,6 +71,13 @@ struct WatchlistSearchView: View {
         }
     }
 
+    private var hasNoResults: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !isLoading &&
+        errorMessage == nil &&
+        (effectiveMediaType == .tvShow ? tvShowResults.isEmpty : movieResults.isEmpty)
+    }
+
     private var navigationTitleText: String {
         if isListMode {
             if let list = selectedList {
@@ -135,7 +142,6 @@ struct WatchlistSearchView: View {
                         noListSelectedView
                     } else if isLoading {
                         ShimmerLoadingView()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(AppBackground())
                     } else if let error = errorMessage {
                         VStack(spacing: 12) {
@@ -161,6 +167,24 @@ struct WatchlistSearchView: View {
                                 .font(.title3)
                                 .fontDesign(.rounded)
                                 .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if hasNoResults {
+                        VStack(spacing: 16) {
+                            Image(systemName: "magnifyingglass.circle")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 80, height: 80)
+                                .glassEffect(.regular, in: .circle)
+                            Text("No Results Found")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .fontDesign(.rounded)
+                                .foregroundStyle(.primary)
+                            Text("Try adjusting your search")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fontDesign(.rounded)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
