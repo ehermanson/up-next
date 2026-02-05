@@ -305,6 +305,14 @@ actor TMDBService {
         var categories: [Int: String] = [:]
         var allNetworks: [Network] = []
 
+        // Build lookup for provider logos by ID
+        var providerLogos: [Int: String] = [:]
+        for network in watchNetworks {
+            if let logo = network.logoPath {
+                providerLogos[network.id] = logo
+            }
+        }
+
         for network in watchNetworks {
             guard !seenNames.contains(network.name) else { continue }
             seenNames.insert(network.name)
@@ -319,10 +327,12 @@ actor TMDBService {
             seenNames.insert(canonical)
             // Use provider ID if known, otherwise fall back to network ID
             let networkID = Self.networkToProviderID[tmdbNetwork.name] ?? tmdbNetwork.id
+            // Prefer the streaming provider's logo if we have it
+            let logoPath = providerLogos[networkID] ?? tmdbNetwork.logoPath
             let network = Network(
                 id: networkID,
                 name: canonical,
-                logoPath: tmdbNetwork.logoPath,
+                logoPath: logoPath,
                 originCountry: tmdbNetwork.originCountry
             )
             allNetworks.append(network)
@@ -383,6 +393,7 @@ actor TMDBService {
         "Peacock Premium": "Peacock",
         "Peacock Premium Plus": "Peacock",
         // HBO/Max
+        "HBO": "HBO Max",
         "Max": "HBO Max",
         "Max Amazon Channel": "HBO Max",
         // Disney
