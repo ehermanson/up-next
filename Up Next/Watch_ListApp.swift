@@ -15,7 +15,10 @@ struct Watch_ListApp: App {
             CustomList.self,
             CustomListItem.self,
         ])
-        let configuration = ModelConfiguration("Watch_List")
+        let configuration = ModelConfiguration(
+            "Watch_List",
+            cloudKitDatabase: .automatic
+        )
         do {
             return try ModelContainer(for: schema, configurations: configuration)
         } catch {
