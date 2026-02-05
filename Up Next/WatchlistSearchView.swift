@@ -21,6 +21,7 @@ struct WatchlistSearchView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
+    @State private var isSearchPresented = false
     @State private var selectedMediaType: MediaType = .tvShow
     @State private var tvShowResults: [TMDBTVShowSearchResult] = []
     @State private var movieResults: [TMDBMovieSearchResult] = []
@@ -204,6 +205,7 @@ struct WatchlistSearchView: View {
             }
             .searchable(
                 text: $searchText,
+                isPresented: $isSearchPresented,
                 placement: .navigationBarDrawer(displayMode: .automatic),
                 prompt: "Search..."
             )
@@ -223,6 +225,7 @@ struct WatchlistSearchView: View {
             }
             .onAppear {
                 syncActiveList()
+                isSearchPresented = true
             }
             .onDisappear {
                 searchTask?.cancel()
