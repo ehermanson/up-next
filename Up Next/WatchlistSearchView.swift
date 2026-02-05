@@ -225,6 +225,9 @@ struct WatchlistSearchView: View {
             }
             .onAppear {
                 syncActiveList()
+            }
+            .task {
+                try? await Task.sleep(for: .milliseconds(100))
                 isSearchPresented = true
             }
             .onDisappear {
