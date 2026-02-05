@@ -257,6 +257,7 @@ private struct ProviderGridItem: View {
             }
         }
         .frame(width: 52, height: 52)
+        .clipShape(.rect(cornerRadius: 12))
         .background(Color.white.opacity(0.85), in: .rect(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
