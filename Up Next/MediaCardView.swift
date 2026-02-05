@@ -7,15 +7,38 @@ struct MediaCardView: View {
     let subtitle: String?
     let imageURL: URL?
     let networks: [Network]
+    let providerCategories: [Int: String]
     let isWatched: Bool
     let watchedToggleAction: (Bool) -> Void
 
-    private var visibleNetworks: [Network] {
-        networks.filter { !ProviderSettings.shared.isHidden($0.id) }
+    private let settings = ProviderSettings.shared
+
+    /// Streaming networks that match user's selected providers
+    private var selectedStreamingNetworks: [Network] {
+        networks.filter { network in
+            let category = providerCategories[network.id]
+            let isStreaming = category == "stream" || category == "ads"
+            return isStreaming && settings.isSelected(network.id)
+        }
     }
 
-    private var hiddenCount: Int {
-        networks.count - visibleNetworks.count
+    /// Count of additional networks (rent/buy + non-selected streaming)
+    private var additionalNetworkCount: Int {
+        networks.count - selectedStreamingNetworks.count
+    }
+
+    /// Networks to display as logos (just selected streaming services)
+    private var visibleNetworks: [Network] {
+        // If no providers selected, show all networks normally
+        if !settings.hasSelectedProviders {
+            return networks
+        }
+        return selectedStreamingNetworks
+    }
+
+    /// True when user has providers selected but no streaming services match
+    private var showNotStreamingBadge: Bool {
+        settings.hasSelectedProviders && selectedStreamingNetworks.isEmpty && !networks.isEmpty
     }
 
     var body: some View {
@@ -65,7 +88,19 @@ struct MediaCardView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
-                NetworkLogosView(networks: visibleNetworks, maxVisible: 4, logoSize: 28, hiddenCount: hiddenCount)
+                if showNotStreamingBadge {
+                    Text("Not on your services")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 2)
+                } else {
+                    NetworkLogosView(
+                        networks: visibleNetworks,
+                        maxVisible: 4,
+                        logoSize: 28,
+                        additionalCount: settings.hasSelectedProviders ? additionalNetworkCount : 0
+                    )
+                }
             }
         }
         .padding(.all, 14)
@@ -76,15 +111,15 @@ struct MediaCardView: View {
 #Preview {
     let sampleNetworks = [
         Network(
-            id: 213,
+            id: 8,
             name: "Netflix",
-            logoPath: "/pmvUqkQjmdJeuMkuGIcF1coIIJ1.png",
+            logoPath: "/pbpMk2JmcoNnQwx5JGpXngfoWtp.png",
             originCountry: "US"
         ),
         Network(
-            id: 49,
-            name: "HBO",
-            logoPath: "/tuomPhY2UtuPTqqFnKMVHvSb724.png",
+            id: 1899,
+            name: "HBO Max",
+            logoPath: "/6Q3ZYUNA9Hsgj6iWnVsw2gR5V77.png",
             originCountry: "US"
         ),
     ]
@@ -93,6 +128,7 @@ struct MediaCardView: View {
         subtitle: "2022 \u{00b7} Action, Adventure",
         imageURL: nil,
         networks: sampleNetworks,
+        providerCategories: [8: "stream", 1899: "stream"],
         isWatched: true,
         watchedToggleAction: { _ in }
     )

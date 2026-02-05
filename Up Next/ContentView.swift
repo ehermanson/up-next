@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var selectedTVProviderCategory: String? = nil
     @State private var selectedMovieProviderCategory: String? = nil
     @State private var showingSettings = false
+    @State private var showingOnboarding = false
     @State private var toastMessage: String?
 
     private var selectedTVShow: ListItem? {
@@ -94,36 +95,6 @@ struct ContentView: View {
         return result
     }
 
-    private var allProviderInfo: [ProviderInfo] {
-        var groups: [String: (ids: Set<Int>, logoPath: String?, titleIDs: Set<String>)] = [:]
-        for item in viewModel.tvShows + viewModel.movies {
-            let itemID = item.media?.id ?? UUID().uuidString
-            for network in item.media?.networks ?? [] {
-                if var existing = groups[network.name] {
-                    existing.ids.insert(network.id)
-                    existing.titleIDs.insert(itemID)
-                    groups[network.name] = existing
-                } else {
-                    groups[network.name] = (
-                        ids: [network.id],
-                        logoPath: network.logoPath,
-                        titleIDs: [itemID]
-                    )
-                }
-            }
-        }
-        return groups.map { name, value in
-            ProviderInfo(
-                id: value.ids.min() ?? 0,
-                name: name,
-                logoPath: value.logoPath,
-                titleCount: value.titleIDs.count,
-                allIDs: value.ids
-            )
-        }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
     var body: some View {
         mainTabView
             .overlay(alignment: .bottom) {
@@ -148,7 +119,15 @@ struct ContentView: View {
             }
             .animation(.spring(duration: 0.4), value: toastMessage)
             .sheet(isPresented: $showingSettings) {
-                ProviderSettingsView(allProviders: allProviderInfo)
+                ProviderSettingsView()
+            }
+            .sheet(isPresented: $showingOnboarding) {
+                ProviderOnboardingView()
+            }
+            .onAppear {
+                if !ProviderSettings.shared.hasCompletedOnboarding {
+                    showingOnboarding = true
+                }
             }
             .task {
                 await viewModel.configure(modelContext: modelContext)

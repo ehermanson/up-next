@@ -24,11 +24,11 @@ struct MediaDetailView: View {
     }
 
     private var visibleNetworks: [Network] {
-        (listItem.media?.networks ?? []).filter { !ProviderSettings.shared.isHidden($0.id) }
+        (listItem.media?.networks ?? []).filter { ProviderSettings.shared.isSelected($0.id) }
     }
 
     private var hiddenNetworks: [Network] {
-        (listItem.media?.networks ?? []).filter { ProviderSettings.shared.isHidden($0.id) }
+        (listItem.media?.networks ?? []).filter { !ProviderSettings.shared.isSelected($0.id) }
     }
 
     private var needsFullDetails: Bool {
@@ -821,16 +821,16 @@ private enum MediaDetailViewPreviewData {
     static let list = MediaList(name: "My Watchlist", createdBy: user, createdAt: Date())
 
     static let netflix = Network(
-        id: 213,
+        id: 8,
         name: "Netflix",
-        logoPath: "/wwemzKWzjKYJFfCeiB57q3r4Bcm.png",
+        logoPath: "/pbpMk2JmcoNnQwx5JGpXngfoWtp.png",
         originCountry: "US"
     )
 
-    static let hbo = Network(
-        id: 49,
-        name: "HBO",
-        logoPath: "/tuomPhY2UtuPTqqFnKMVHvSb724.png",
+    static let hboMax = Network(
+        id: 1899,
+        name: "HBO Max",
+        logoPath: "/6Q3ZYUNA9Hsgj6iWnVsw2gR5V77.png",
         originCountry: "US"
     )
 
@@ -844,6 +844,7 @@ private enum MediaDetailViewPreviewData {
             descriptionText:
                 "With the price on his head ever increasing, John Wick uncovers a path to defeating the High Table.",
             cast: ["Keanu Reeves", "Donnie Yen", "Bill Skarsgard", "Ian McShane"],
+            providerCategories: [8: "stream"],
             releaseDate: "2023-03-24",
             runtime: 169
         )
@@ -865,10 +866,11 @@ private enum MediaDetailViewPreviewData {
             title: "Game of Thrones",
             thumbnailURL: URL(
                 string: "https://image.tmdb.org/t/p/w500/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg"),
-            networks: [hbo],
+            networks: [hboMax],
             descriptionText:
                 "Nine noble families wage war against each other to gain control over the mythical land of Westeros.",
             cast: ["Emilia Clarke", "Kit Harington", "Peter Dinklage", "Lena Headey"],
+            providerCategories: [1899: "stream"],
             numberOfSeasons: 8,
             numberOfEpisodes: 73
         )

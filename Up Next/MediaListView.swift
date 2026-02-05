@@ -315,6 +315,7 @@ struct MediaListRow: View {
                 subtitle: subtitle,
                 imageURL: item.media?.thumbnailURL,
                 networks: item.media?.networks ?? [],
+                providerCategories: item.media?.providerCategories ?? [:],
                 isWatched: item.isWatched,
                 watchedToggleAction: { _ in
                     onWatchedToggled()
@@ -344,25 +345,27 @@ struct MediaListRow: View {
     let list = MediaList(name: "TV Shows", createdBy: user, createdAt: Date())
     let sampleNetworks = [
         Network(
-            id: 213,
+            id: 8,
             name: "Netflix",
-            logoPath: "/pmvUqkQjmdJeuMkuGIcF1coIIJ1.png",
+            logoPath: "/pbpMk2JmcoNnQwx5JGpXngfoWtp.png",
             originCountry: "US"
         ),
         Network(
-            id: 49,
-            name: "HBO",
-            logoPath: "/tuomPhY2UtuPTqqFnKMVHvSb724.png",
+            id: 1899,
+            name: "HBO Max",
+            logoPath: "/6Q3ZYUNA9Hsgj6iWnVsw2gR5V77.png",
             originCountry: "US"
         ),
     ]
+    let sampleProviderCategories: [Int: String] = [8: "stream", 1899: "stream"]
     let stubItems = [
         ListItem(
             tvShow: TVShow(
                 id: "tv-1",
                 title: "Stub TV Show 1",
                 thumbnailURL: URL(string: "https://example.com/tvshow1.jpg"),
-                networks: sampleNetworks
+                networks: sampleNetworks,
+                providerCategories: sampleProviderCategories
             ),
             list: list,
             addedBy: user,
@@ -376,7 +379,8 @@ struct MediaListRow: View {
                 id: "tv-2",
                 title: "Stub TV Show 2",
                 thumbnailURL: URL(string: "https://example.com/tvshow2.jpg"),
-                networks: sampleNetworks
+                networks: sampleNetworks,
+                providerCategories: sampleProviderCategories
             ),
             list: list,
             addedBy: user,

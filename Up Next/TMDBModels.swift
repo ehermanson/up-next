@@ -113,3 +113,20 @@ struct TMDBNetwork: Codable {
     let logoPath: String?
     let originCountry: String?
 }
+
+// MARK: - Watch Provider List Models
+
+// Response from /watch/providers/movie or /watch/providers/tv
+struct TMDBWatchProviderListResponse: Codable {
+    let results: [TMDBWatchProviderInfo]
+}
+
+struct TMDBWatchProviderInfo: Codable, Identifiable {
+    let providerId: Int
+    let providerName: String
+    let logoPath: String?
+    let displayPriority: Int?
+
+    var id: Int { providerId }
+    // Note: No CodingKeys needed - decoder uses .convertFromSnakeCase automatically
+}

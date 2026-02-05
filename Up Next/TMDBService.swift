@@ -13,6 +13,9 @@ actor TMDBService {
         return decoder
     }()
 
+    /// Cache for provider availability checks (keyed by "movie_123" or "tv_456")
+    private var providerAvailabilityCache: [String: ProviderAvailability] = [:]
+
     private var apiKey: String {
         guard let key = Bundle.main.infoDictionary?["TMDB_API_KEY"] as? String,
             key != "YOUR_API_KEY_HERE"
@@ -99,6 +102,141 @@ actor TMDBService {
         return response.results?[region]
     }
 
+    /// Fetch all available watch providers for a region, merged from movie and TV endpoints.
+    /// Deduplicates by provider ID and sorts by provider name.
+    func fetchWatchProviders(for region: String? = nil) async throws -> [TMDBWatchProviderInfo] {
+        let regionCode = region ?? currentRegion
+
+        #if DEBUG
+        print("🔍 Fetching providers for region: \(regionCode)")
+        #endif
+
+        let movieProviders: TMDBWatchProviderListResponse
+        let tvProviders: TMDBWatchProviderListResponse
+
+        do {
+            movieProviders = try await performRequest(
+                endpoint: "/watch/providers/movie",
+                queryItems: [URLQueryItem(name: "watch_region", value: regionCode)]
+            )
+            #if DEBUG
+            print("✅ Movie providers: \(movieProviders.results.count)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("❌ Movie providers failed: \(error)")
+            #endif
+            throw error
+        }
+
+        do {
+            tvProviders = try await performRequest(
+                endpoint: "/watch/providers/tv",
+                queryItems: [URLQueryItem(name: "watch_region", value: regionCode)]
+            )
+            #if DEBUG
+            print("✅ TV providers: \(tvProviders.results.count)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("❌ TV providers failed: \(error)")
+            #endif
+            throw error
+        }
+
+        // Curated list of streaming subscription services
+        // These are services people actually subscribe to - no rent/buy stores
+        let streamingProviderIDs: Set<Int> = [
+            8,      // Netflix
+            9,      // Amazon Prime Video
+            337,    // Disney Plus
+            1899,   // Max
+            15,     // Hulu
+            2303,   // Paramount+
+            386,    // Peacock
+            350,    // Apple TV+
+            43,     // Starz
+            526,    // AMC+
+            283,    // Crunchyroll
+            73,     // Tubi (free)
+            300,    // Pluto TV (free)
+        ]
+
+        // Merge and deduplicate, only keeping whitelisted providers
+        var seenIds = Set<Int>()
+        var merged: [TMDBWatchProviderInfo] = []
+
+        for provider in movieProviders.results + tvProviders.results {
+            guard !seenIds.contains(provider.providerId) else { continue }
+            guard streamingProviderIDs.contains(provider.providerId) else { continue }
+
+            seenIds.insert(provider.providerId)
+            merged.append(provider)
+        }
+
+        #if DEBUG
+        print("📺 Loaded \(merged.count) streaming providers")
+        #endif
+
+        // Sort alphabetically
+        return merged.sorted {
+            $0.providerName.localizedCaseInsensitiveCompare($1.providerName) == .orderedAscending
+        }
+    }
+
+    // MARK: - Provider Availability Check
+
+    /// Result of checking provider availability for a media item
+    struct ProviderAvailability: Sendable {
+        let providerIDs: Set<Int>
+        let isOnUserServices: Bool
+    }
+
+    /// Check if a media item is available on user's selected streaming services.
+    /// Results are cached to avoid redundant API calls.
+    func checkProviderAvailability(mediaId: Int, mediaType: MediaType) async -> ProviderAvailability {
+        let cacheKey = "\(mediaType == .tvShow ? "tv" : "movie")_\(mediaId)"
+
+        // Return cached result if available
+        if let cached = providerAvailabilityCache[cacheKey] {
+            return cached
+        }
+
+        // Fetch provider info
+        var providerIDs = Set<Int>()
+        do {
+            let providers: TMDBWatchProviderCountry?
+            if mediaType == .tvShow {
+                providers = try await getTVShowWatchProviders(id: mediaId)
+            } else {
+                providers = try await getMovieWatchProviders(id: mediaId)
+            }
+
+            // Collect all provider IDs from all categories
+            if let p = providers {
+                providerIDs.formUnion(p.flatrate?.map(\.providerId) ?? [])
+                providerIDs.formUnion(p.ads?.map(\.providerId) ?? [])
+                providerIDs.formUnion(p.rent?.map(\.providerId) ?? [])
+                providerIDs.formUnion(p.buy?.map(\.providerId) ?? [])
+            }
+        } catch {
+            // On error, return empty (we'll show as unavailable)
+        }
+
+        // Check against user's selected providers
+        let selectedIDs = await MainActor.run { ProviderSettings.shared.selectedProviderIDs }
+        let isOnUserServices = !selectedIDs.isEmpty && !providerIDs.isDisjoint(with: selectedIDs)
+
+        let result = ProviderAvailability(providerIDs: providerIDs, isOnUserServices: isOnUserServices)
+        providerAvailabilityCache[cacheKey] = result
+        return result
+    }
+
+    /// Clear the provider availability cache (e.g., when user changes provider selections)
+    func clearProviderAvailabilityCache() {
+        providerAvailabilityCache.removeAll()
+    }
+
     // MARK: - Image URLs
 
     /// Construct full image URL from TMDB image path
@@ -161,34 +299,34 @@ actor TMDBService {
             return numbered.map { $0.episodeCount ?? 0 }
         }()
 
-        // Start with originating networks (category "stream"), applying aliases
+        // Start with watch providers (using provider IDs which match user selections)
+        let (watchNetworks, watchCategories) = mapProviders(providers)
         var seenNames = Set<String>()
         var categories: [Int: String] = [:]
         var allNetworks: [Network] = []
+
+        for network in watchNetworks {
+            guard !seenNames.contains(network.name) else { continue }
+            seenNames.insert(network.name)
+            allNetworks.append(network)
+            categories[network.id] = watchCategories[network.id] ?? "stream"
+        }
+
+        // Add originating networks only if not already covered by watch providers
         for tmdbNetwork in detail.networks ?? [] {
             let canonical = Self.providerAliases[tmdbNetwork.name] ?? tmdbNetwork.name
             guard !seenNames.contains(canonical) else { continue }
             seenNames.insert(canonical)
+            // Use provider ID if known, otherwise fall back to network ID
+            let networkID = Self.networkToProviderID[tmdbNetwork.name] ?? tmdbNetwork.id
             let network = Network(
-                id: tmdbNetwork.id,
+                id: networkID,
                 name: canonical,
                 logoPath: tmdbNetwork.logoPath,
                 originCountry: tmdbNetwork.originCountry
             )
             allNetworks.append(network)
             categories[network.id] = "stream"
-        }
-
-        // Merge watch providers (deduplicating against originating networks)
-        let (watchNetworks, watchCategories) = mapProviders(providers)
-        var seenIDs = Set(allNetworks.map { $0.id })
-        for network in watchNetworks {
-            guard !seenIDs.contains(network.id) else { continue }
-            guard !seenNames.contains(network.name) else { continue }
-            seenIDs.insert(network.id)
-            seenNames.insert(network.name)
-            allNetworks.append(network)
-            categories[network.id] = watchCategories[network.id] ?? "stream"
         }
 
         return TVShow(
@@ -225,15 +363,44 @@ actor TMDBService {
     /// Suffixes that indicate a resold channel variant (e.g. "HBO Max Amazon Channel").
     private static let channelSuffixes = [" Amazon Channel", " Apple TV Channel", " Roku Premium Channel"]
 
+    /// Maps originating network names to their streaming provider IDs.
+    /// Used when a show's network (e.g., "AMC") should match the user's selected provider (e.g., AMC+ ID 526).
+    private static let networkToProviderID: [String: Int] = [
+        "AMC": 526,         // AMC network → AMC+ provider
+        "AMC+": 526,
+        "HBO": 1899,        // HBO network → HBO Max provider
+        "HBO Max": 1899,
+        "Max": 1899,
+    ]
+
     /// Maps variant provider names to a canonical name so duplicates collapse.
     /// The first entry encountered keeps its ID, logo, and category.
     private static let providerAliases: [String: String] = [
+        // Netflix tiers
+        "Netflix basic with Ads": "Netflix",
+        "Netflix Standard with Ads": "Netflix",
+        // Peacock tiers
         "Peacock Premium": "Peacock",
         "Peacock Premium Plus": "Peacock",
-        "HBO Max": "HBO",
-        "Max": "HBO",
+        // HBO/Max
+        "Max": "HBO Max",
+        "Max Amazon Channel": "HBO Max",
+        // Disney
         "Disney Plus": "Disney+",
+        // AMC
+        "AMC": "AMC+",
         "AMC+ Roku Premium Channel": "AMC+",
+        "AMC Plus": "AMC+",
+        // Paramount
+        "Paramount+ Premium": "Paramount+",
+        "Paramount Plus Premium": "Paramount+",
+        "Paramount Plus": "Paramount+",
+        "Paramount+ Amazon Channel": "Paramount+",
+        // Hulu
+        "Hulu (No Ads)": "Hulu",
+        // Amazon
+        "Amazon Prime Video": "Prime Video",
+        "Amazon Prime Video with Ads": "Prime Video",
     ]
 
     /// Build networks and provider categories from a watch provider response.

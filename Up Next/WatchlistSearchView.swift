@@ -306,6 +306,8 @@ struct WatchlistSearchView: View {
                             title: result.name,
                             overview: result.overview,
                             posterPath: result.posterPath,
+                            mediaId: result.id,
+                            mediaType: .tvShow,
                             isAdded: isAlreadyAdded(id: result.id),
                             onAdd: { addTVShow(result) }
                         )
@@ -316,6 +318,8 @@ struct WatchlistSearchView: View {
                             title: result.title,
                             overview: result.overview,
                             posterPath: result.posterPath,
+                            mediaId: result.id,
+                            mediaType: .movie,
                             isAdded: isAlreadyAdded(id: result.id),
                             onAdd: { addMovie(result) }
                         )
@@ -351,6 +355,15 @@ struct WatchlistSearchView: View {
         errorMessage = nil
         addedIDs = []
         selectedListID = nil
+    }
+
+    private func clearSearchState() {
+        searchTask?.cancel()
+        searchText = ""
+        tvShowResults = []
+        movieResults = []
+        isLoading = false
+        errorMessage = nil
     }
 
     private func scheduleSearch(for query: String) {
@@ -394,12 +407,16 @@ struct WatchlistSearchView: View {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
         onItemAdded?(result.name)
+        clearSearchState()
         performDone()
         Task {
             let tvShow: TVShow
             do {
-                let detail = try await service.getTVShowDetails(id: result.id)
-                tvShow = service.mapToTVShow(detail)
+                async let detailTask = service.getTVShowDetails(id: result.id)
+                async let providersTask = service.getTVShowWatchProviders(id: result.id)
+                let detail = try await detailTask
+                let providers = try await providersTask
+                tvShow = service.mapToTVShow(detail, providers: providers)
             } catch {
                 tvShow = service.mapToTVShow(result)
             }
@@ -415,6 +432,7 @@ struct WatchlistSearchView: View {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
         onItemAdded?(result.title)
+        clearSearchState()
         performDone()
         Task {
             let movie: Movie

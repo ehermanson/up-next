@@ -1,8 +1,10 @@
 import SwiftUI
 
-struct ProviderSettingsView: View {
+struct ProviderOnboardingView: View {
     @Environment(\.dismiss) private var dismiss
+
     @State private var providers: [TMDBWatchProviderInfo] = []
+    @State private var selectedProviderIDs: Set<Int> = []
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -16,7 +18,7 @@ struct ProviderSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    descriptionSection
+                    headerSection
 
                     if isLoading {
                         loadingView
@@ -26,25 +28,17 @@ struct ProviderSettingsView: View {
                         providerGrid
                     }
 
-                    TMDBAttributionView()
-                        .padding(.top, 16)
-
-                    #if DEBUG
-                    debugSection
-                    #endif
+                    Spacer(minLength: 100)
                 }
                 .padding(.horizontal, 20)
-                .padding(.vertical, 16)
+                .padding(.top, 24)
+            }
+            .safeAreaInset(edge: .bottom) {
+                buttonSection
             }
             .background(AppBackground())
-            .navigationTitle("Your Streaming Services")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
         }
         .preferredColorScheme(.dark)
         .task {
@@ -52,17 +46,29 @@ struct ProviderSettingsView: View {
         }
     }
 
-    // MARK: - Description
+    // MARK: - Header
 
-    private var descriptionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Select the streaming services you subscribe to. Only these will appear on your library items.")
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "tv")
+                .font(.system(size: 44))
+                .foregroundStyle(.indigo)
+                .frame(width: 88, height: 88)
+                .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .circle)
+
+            Text("Set Up Your Streaming Services")
+                .font(.title2)
+                .fontWeight(.bold)
+                .fontDesign(.rounded)
+                .multilineTextAlignment(.center)
+
+            Text("Select your services to see where you can watch at a glance")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 16))
+        .padding(.vertical, 16)
     }
 
     // MARK: - Loading
@@ -108,11 +114,11 @@ struct ProviderSettingsView: View {
     private var providerGrid: some View {
         LazyVGrid(columns: columns, spacing: 16) {
             ForEach(providers) { provider in
-                ProviderGridCell(
+                ProviderGridItem(
                     provider: provider,
-                    isSelected: settings.selectedProviderIDs.contains(provider.id)
+                    isSelected: selectedProviderIDs.contains(provider.id)
                 ) {
-                    settings.toggleProvider(provider.id)
+                    toggleProvider(provider.id)
                 }
             }
         }
@@ -120,58 +126,81 @@ struct ProviderSettingsView: View {
         .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 24))
     }
 
-    // MARK: - Data Loading
+    // MARK: - Buttons
+
+    private var buttonSection: some View {
+        VStack(spacing: 12) {
+            Button {
+                saveAndDismiss()
+            } label: {
+                Text("Continue")
+                    .font(.headline)
+                    .fontDesign(.rounded)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.indigo)
+            .disabled(isLoading)
+
+            Button {
+                skipAndDismiss()
+            } label: {
+                Text("Skip")
+                    .font(.subheadline)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea()
+        }
+    }
+
+    // MARK: - Actions
+
+    private func toggleProvider(_ id: Int) {
+        if selectedProviderIDs.contains(id) {
+            selectedProviderIDs.remove(id)
+        } else {
+            selectedProviderIDs.insert(id)
+        }
+    }
 
     private func loadProviders() async {
         isLoading = true
         errorMessage = nil
 
         do {
-            providers = try await TMDBService.shared.fetchWatchProviders()
+            let fetchedProviders = try await TMDBService.shared.fetchWatchProviders()
+            providers = fetchedProviders
             isLoading = false
         } catch {
-            #if DEBUG
-            print("❌ Failed to load providers: \(error)")
-            #endif
             errorMessage = "Unable to load streaming services. Please check your connection and try again."
             isLoading = false
         }
     }
 
-    // MARK: - Debug
-
-    #if DEBUG
-    private var debugSection: some View {
-        VStack(spacing: 12) {
-            Divider()
-                .background(Color.white.opacity(0.2))
-                .padding(.vertical, 8)
-
-            Text("Debug Options")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button {
-                settings.hasCompletedOnboarding = false
-                settings.selectedProviderIDs = []
-                dismiss()
-            } label: {
-                Label("Reset Onboarding", systemImage: "arrow.counterclockwise")
-                    .font(.subheadline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.bordered)
-            .tint(.orange)
-        }
-        .padding(.top, 24)
+    private func saveAndDismiss() {
+        settings.selectProviders(selectedProviderIDs)
+        settings.hasCompletedOnboarding = true
+        dismiss()
     }
-    #endif
+
+    private func skipAndDismiss() {
+        settings.hasCompletedOnboarding = true
+        dismiss()
+    }
 }
 
-// MARK: - Provider Grid Cell
+// MARK: - Provider Grid Item
 
-private struct ProviderGridCell: View {
+private struct ProviderGridItem: View {
     let provider: TMDBWatchProviderInfo
     let isSelected: Bool
     let onTap: () -> Void
