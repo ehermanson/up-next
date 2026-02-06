@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 /// Service for interacting with The Movie Database (TMDB) API
-actor TMDBService {
+final class TMDBService {
     static let shared = TMDBService()
 
     private let baseURL = "https://api.themoviedb.org/3"
@@ -30,7 +30,7 @@ actor TMDBService {
 
     /// Returns the user's region code (e.g., "US", "GB", "DE") for watch provider lookups.
     /// Falls back to "US" if the device locale doesn't provide a region.
-    nonisolated var currentRegion: String {
+    var currentRegion: String {
         Locale.current.region?.identifier ?? "US"
     }
 
@@ -107,42 +107,15 @@ actor TMDBService {
     func fetchWatchProviders(for region: String? = nil) async throws -> [TMDBWatchProviderInfo] {
         let regionCode = region ?? currentRegion
 
-        #if DEBUG
-        print("🔍 Fetching providers for region: \(regionCode)")
-        #endif
+        let movieProviders: TMDBWatchProviderListResponse = try await performRequest(
+            endpoint: "/watch/providers/movie",
+            queryItems: [URLQueryItem(name: "watch_region", value: regionCode)]
+        )
 
-        let movieProviders: TMDBWatchProviderListResponse
-        let tvProviders: TMDBWatchProviderListResponse
-
-        do {
-            movieProviders = try await performRequest(
-                endpoint: "/watch/providers/movie",
-                queryItems: [URLQueryItem(name: "watch_region", value: regionCode)]
-            )
-            #if DEBUG
-            print("✅ Movie providers: \(movieProviders.results.count)")
-            #endif
-        } catch {
-            #if DEBUG
-            print("❌ Movie providers failed: \(error)")
-            #endif
-            throw error
-        }
-
-        do {
-            tvProviders = try await performRequest(
-                endpoint: "/watch/providers/tv",
-                queryItems: [URLQueryItem(name: "watch_region", value: regionCode)]
-            )
-            #if DEBUG
-            print("✅ TV providers: \(tvProviders.results.count)")
-            #endif
-        } catch {
-            #if DEBUG
-            print("❌ TV providers failed: \(error)")
-            #endif
-            throw error
-        }
+        let tvProviders: TMDBWatchProviderListResponse = try await performRequest(
+            endpoint: "/watch/providers/tv",
+            queryItems: [URLQueryItem(name: "watch_region", value: regionCode)]
+        )
 
         // Curated list of streaming subscription services
         // These are services people actually subscribe to - no rent/buy stores
@@ -173,10 +146,6 @@ actor TMDBService {
             seenIds.insert(provider.providerId)
             merged.append(provider)
         }
-
-        #if DEBUG
-        print("📺 Loaded \(merged.count) streaming providers")
-        #endif
 
         // Sort alphabetically
         return merged.sorted {
@@ -224,7 +193,7 @@ actor TMDBService {
         }
 
         // Check against user's selected providers
-        let selectedIDs = await MainActor.run { ProviderSettings.shared.selectedProviderIDs }
+        let selectedIDs = ProviderSettings.shared.selectedProviderIDs
         let isOnUserServices = !selectedIDs.isEmpty && !providerIDs.isDisjoint(with: selectedIDs)
 
         let result = ProviderAvailability(providerIDs: providerIDs, isOnUserServices: isOnUserServices)
@@ -240,7 +209,7 @@ actor TMDBService {
     // MARK: - Image URLs
 
     /// Construct full image URL from TMDB image path
-    nonisolated func imageURL(path: String?, size: ImageSize = .w500) -> URL? {
+    func imageURL(path: String?, size: ImageSize = .w500) -> URL? {
         guard let path = path, !path.isEmpty else { return nil }
         let cleanPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
         return URL(string: "\(imageBaseURL)/\(size.rawValue)/\(cleanPath)")
@@ -259,7 +228,7 @@ actor TMDBService {
     // MARK: - Mapping Helpers
 
     /// Convert TMDB network to Network model
-    nonisolated func mapToNetwork(_ network: TMDBNetwork) -> Network {
+    func mapToNetwork(_ network: TMDBNetwork) -> Network {
         Network(
             id: network.id,
             name: network.name,
@@ -269,7 +238,7 @@ actor TMDBService {
     }
 
     /// Convert TMDB TV show search result to TVShow model
-    nonisolated func mapToTVShow(_ result: TMDBTVShowSearchResult) -> TVShow {
+    func mapToTVShow(_ result: TMDBTVShowSearchResult) -> TVShow {
         TVShow(
             id: String(result.id),
             title: result.name,
@@ -283,7 +252,7 @@ actor TMDBService {
     }
 
     /// Convert TMDB TV show detail + optional watch providers to TVShow model
-    nonisolated func mapToTVShow(_ detail: TMDBTVShowDetail, providers: TMDBWatchProviderCountry? = nil) -> TVShow {
+    func mapToTVShow(_ detail: TMDBTVShowDetail, providers: TMDBWatchProviderCountry? = nil) -> TVShow {
         let castMembers = detail.credits?.cast?.prefix(10) ?? []
         let cast = castMembers.map { $0.name }
         let castImagePaths = castMembers.map { $0.profilePath ?? "" }
@@ -357,7 +326,7 @@ actor TMDBService {
     }
 
     /// Convert TMDB movie search result to Movie model
-    nonisolated func mapToMovie(_ result: TMDBMovieSearchResult) -> Movie {
+    func mapToMovie(_ result: TMDBMovieSearchResult) -> Movie {
         Movie(
             id: String(result.id),
             title: result.title,
@@ -417,7 +386,7 @@ actor TMDBService {
     /// Build networks and provider categories from a watch provider response.
     /// Priority: flatrate > ads > rent > buy (first occurrence wins).
     /// Filters out resold channel variants and merges known aliases.
-    nonisolated func mapProviders(_ providers: TMDBWatchProviderCountry?) -> (networks: [Network], categories: [Int: String]) {
+    func mapProviders(_ providers: TMDBWatchProviderCountry?) -> (networks: [Network], categories: [Int: String]) {
         guard let providers else { return ([], [:]) }
 
         let categorized: [(String, [TMDBWatchProviderEntry])] = [
@@ -457,7 +426,7 @@ actor TMDBService {
     }
 
     /// Convert TMDB movie detail + watch providers to Movie model
-    nonisolated func mapToMovie(_ detail: TMDBMovieDetail, providers: TMDBWatchProviderCountry?) -> Movie {
+    func mapToMovie(_ detail: TMDBMovieDetail, providers: TMDBWatchProviderCountry?) -> Movie {
         let castMembers = detail.credits?.cast?.prefix(10) ?? []
         let cast = castMembers.map { $0.name }
         let castImagePaths = castMembers.map { $0.profilePath ?? "" }

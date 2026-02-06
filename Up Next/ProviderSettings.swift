@@ -12,7 +12,7 @@ final class ProviderSettings {
         didSet {
             saveSelectedProviders()
             // Clear availability cache since selections changed
-            Task { await TMDBService.shared.clearProviderAvailabilityCache() }
+            TMDBService.shared.clearProviderAvailabilityCache()
         }
     }
 

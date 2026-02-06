@@ -130,9 +130,6 @@ struct ProviderSettingsView: View {
             providers = try await TMDBService.shared.fetchWatchProviders()
             isLoading = false
         } catch {
-            #if DEBUG
-            print("❌ Failed to load providers: \(error)")
-            #endif
             errorMessage = "Unable to load streaming services. Please check your connection and try again."
             isLoading = false
         }

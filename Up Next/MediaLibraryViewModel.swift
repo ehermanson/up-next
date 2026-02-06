@@ -92,25 +92,13 @@ final class MediaLibraryViewModel {
 
         syncUnwatched(for: mediaType)
 
-        do {
-            try context.save()
-        } catch {
-            #if DEBUG
-                print("Failed to remove item: \(error)")
-            #endif
-        }
+        try? context.save()
     }
 
     func persistChanges(for mediaType: MediaType) {
         guard let context = modelContext else { return }
         syncUnwatched(for: mediaType)
-        do {
-            try context.save()
-        } catch {
-            #if DEBUG
-                print("Failed to save changes: \(error)")
-            #endif
-        }
+        try? context.save()
     }
 
     func syncUnwatched(for mediaType: MediaType) {
@@ -160,13 +148,7 @@ final class MediaLibraryViewModel {
             }
         }
 
-        do {
-            try context.save()
-        } catch {
-            #if DEBUG
-                print("Failed to persist order: \(error)")
-            #endif
-        }
+        try? context.save()
     }
 
     func handleSeasonCountUpdate(for listItem: ListItem, previousSeasonCount: Int?) {
@@ -216,11 +198,7 @@ final class MediaLibraryViewModel {
 
             syncUnwatched(for: .tvShow)
             syncUnwatched(for: .movie)
-        } catch {
-            #if DEBUG
-                print("Failed to load items: \(error)")
-            #endif
-        }
+        } catch { }
     }
 
     private func ensureDefaults() async {
@@ -231,11 +209,7 @@ final class MediaLibraryViewModel {
             tvList = try fetchOrCreateList(named: "TV Shows", context: context)
             movieList = try fetchOrCreateList(named: "Movies", context: context)
             try context.save()
-        } catch {
-            #if DEBUG
-                print("Failed to ensure defaults: \(error)")
-            #endif
-        }
+        } catch { }
     }
 
     private func fetchOrCreateUser(context: ModelContext) throws -> UserIdentity {
@@ -336,9 +310,6 @@ final class MediaLibraryViewModel {
                         let detail = try await service.getTVShowDetails(id: seed.id)
                         return (index, detail)
                     } catch {
-                        #if DEBUG
-                            print("Failed to fetch TV show \(seed.id): \(error)")
-                        #endif
                         return (index, nil)
                     }
                 }
@@ -360,9 +331,6 @@ final class MediaLibraryViewModel {
                         let providers = try await providersTask
                         return (index, detail, providers)
                     } catch {
-                        #if DEBUG
-                            print("Failed to fetch movie \(seed.id): \(error)")
-                        #endif
                         return (index, nil, nil)
                     }
                 }
@@ -416,12 +384,6 @@ final class MediaLibraryViewModel {
         syncUnwatched(for: .tvShow)
         syncUnwatched(for: .movie)
 
-        do {
-            try context.save()
-        } catch {
-            #if DEBUG
-                print("Failed to save seed data: \(error)")
-            #endif
-        }
+        try? context.save()
     }
 }

@@ -71,21 +71,13 @@ final class CustomListViewModel {
                 sortBy: [SortDescriptor(\CustomList.createdAt, order: .forward)]
             )
             customLists = try context.fetch(descriptor)
-        } catch {
-            #if DEBUG
-                print("Failed to load custom lists: \(error)")
-            #endif
-        }
+        } catch { }
     }
 
     private func save() {
         guard let context = modelContext else { return }
         do {
             try context.save()
-        } catch {
-            #if DEBUG
-                print("Failed to save custom list changes: \(error)")
-            #endif
-        }
+        } catch { }
     }
 }
