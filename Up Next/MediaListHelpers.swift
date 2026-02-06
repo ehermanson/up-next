@@ -6,9 +6,10 @@ func syncUnwatchedItems(
     currentUnwatched: [ListItem]
 ) -> [ListItem] {
     let currentOrder: [String: Int] = Dictionary(
-        uniqueKeysWithValues: currentUnwatched.enumerated().map {
+        currentUnwatched.enumerated().map {
             ($0.element.media?.id ?? "", $0.offset)
-        }
+        },
+        uniquingKeysWith: { first, _ in first }
     )
     let newUnwatched = allItems.filter { !$0.isWatched }
 

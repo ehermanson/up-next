@@ -6,12 +6,12 @@ import SwiftData
 @Model
 final class WatchListGroup {
     /// The users who have access to this watch-list space (app-wide sharing)
-    var members: [UserIdentity]
+    @Relationship(deleteRule: .nullify) var members: [UserIdentity]?
 
     /// All media lists (e.g., TV and Movie lists) in this group
-    @Relationship(deleteRule: .cascade) var lists: [MediaList]
+    @Relationship(deleteRule: .cascade) var lists: [MediaList]?
 
-    init(members: [UserIdentity] = [], lists: [MediaList] = []) {
+    init(members: [UserIdentity]? = nil, lists: [MediaList]? = nil) {
         self.members = members
         self.lists = lists
     }

@@ -19,9 +19,19 @@ struct MediaListView: View {
     let onSearchTapped: (() -> Void)?
     var onSettingsTapped: (() -> Void)?
     var onItemDeleted: ((String) -> Void)?
+    var onOrderChanged: (() -> Void)?
     var isLoaded: Bool = true
 
     @State private var itemToDelete: ListItem?
+    @State private var isEditingOrder = false
+
+    private var hasActiveFilter: Bool {
+        selectedGenre != nil || selectedProviderCategory != nil
+    }
+
+    private var canReorder: Bool {
+        !hasActiveFilter && unwatchedItems.count > 1
+    }
 
     private var isEmpty: Bool {
         unwatchedItems.isEmpty && watchedItems.isEmpty
@@ -50,6 +60,8 @@ struct MediaListView: View {
                             .fontDesign(.rounded)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if isEditingOrder {
+                    editModeContent
                 } else {
                     GlassEffectContainer(spacing: 10) {
                         List {
@@ -110,12 +122,22 @@ struct MediaListView: View {
             }
             .background(AppBackground())
             .navigationTitle(navigationTitle)
+            .navigationBarTitleDisplayMode(isEditingOrder ? .inline : .large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 if let onSettingsTapped {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button(action: onSettingsTapped) {
                             Image(systemName: "gearshape")
+                        }
+                    }
+                }
+                if canReorder {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(isEditingOrder ? "Done" : "Edit") {
+                            withAnimation {
+                                isEditingOrder.toggle()
+                            }
                         }
                     }
                 }
@@ -127,8 +149,12 @@ struct MediaListView: View {
                     }
                 }
             }
+            .toolbarBackground(isEditingOrder ? .visible : .automatic, for: .navigationBar)
         }
         .preferredColorScheme(.dark)
+        .onChange(of: hasActiveFilter) {
+            if hasActiveFilter { isEditingOrder = false }
+        }
         .alert(
             "Remove from Watchlist",
             isPresented: Binding(
@@ -149,6 +175,23 @@ struct MediaListView: View {
         } message: { item in
             Text("Are you sure you want to remove \"\(item.media?.title ?? "this item")\" from your watchlist?")
         }
+    }
+
+    @ViewBuilder
+    private var editModeContent: some View {
+        GlassEffectContainer(spacing: 10) {
+            ReorderableMediaList(
+                items: $unwatchedItems,
+                isEditing: true,
+                isCompact: true,
+                isScrollEnabled: true,
+                subtitleProvider: subtitleProvider,
+                onDelete: { id in onItemDeleted?(id) },
+                onMove: { onOrderChanged?() }
+            )
+            .clipped()
+        }
+        .padding(.horizontal, 12)
     }
 
     private func binding(for item: ListItem) -> Binding<ListItem> {

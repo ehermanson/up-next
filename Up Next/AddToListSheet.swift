@@ -85,7 +85,7 @@ struct AddToListSheet: View {
 
     private func toggleItem(in list: CustomList, isInList: Bool) {
         if isInList {
-            if let mediaID, let item = list.items.first(where: { $0.media?.id == mediaID }) {
+            if let mediaID, let item = list.items?.first(where: { $0.media?.id == mediaID }) {
                 viewModel.removeItem(item, from: list)
             }
         } else {

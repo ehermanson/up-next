@@ -223,6 +223,9 @@ struct ContentView: View {
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .tvShow)
             },
+            onOrderChanged: {
+                viewModel.updateOrderAfterUnwatchedMove(mediaType: .tvShow)
+            },
             isLoaded: viewModel.isLoaded
         )
         .sheet(
@@ -276,6 +279,9 @@ struct ContentView: View {
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .movie)
+            },
+            onOrderChanged: {
+                viewModel.updateOrderAfterUnwatchedMove(mediaType: .movie)
             },
             isLoaded: viewModel.isLoaded
         )

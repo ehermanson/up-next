@@ -6,10 +6,10 @@ import SwiftData
 @Model
 final class Network {
     /// Network ID from TMDB
-    @Attribute(.unique) var id: Int
+    var id: Int = 0
 
     /// Network name (e.g., "Netflix", "HBO")
-    var name: String
+    var name: String = ""
 
     /// Logo path from TMDB
     var logoPath: String?
@@ -17,7 +17,11 @@ final class Network {
     /// Origin country code
     var originCountry: String?
 
-    init(id: Int, name: String, logoPath: String? = nil, originCountry: String? = nil) {
+    // MARK: - Inverse relationships for CloudKit
+    @Relationship(inverse: \Movie.networks) var movies: [Movie]?
+    @Relationship(inverse: \TVShow.networks) var tvShows: [TVShow]?
+
+    init(id: Int = 0, name: String = "", logoPath: String? = nil, originCountry: String? = nil) {
         self.id = id
         self.name = name
         self.logoPath = logoPath
@@ -30,7 +34,7 @@ protocol MediaItemProtocol {
     var id: String { get }
     var title: String { get }
     var thumbnailURL: URL? { get }
-    var networks: [Network] { get }
+    var networks: [Network]? { get }
     var providerCategories: [Int: String] { get set }
     var descriptionText: String? { get }
     var cast: [String] { get }
@@ -42,26 +46,26 @@ protocol MediaItemProtocol {
 @Model
 final class Movie: MediaItemProtocol {
     /// Unique ID, such as MovieDB's identifier
-    @Attribute(.unique) var id: String
+    var id: String = ""
 
     /// Title of the movie
-    var title: String
+    var title: String = ""
 
     /// Optional thumbnail image URL
     var thumbnailURL: URL?
 
     /// Networks/streaming providers for this movie
-    @Relationship(deleteRule: .nullify) var networks: [Network]
+    @Relationship(deleteRule: .nullify) var networks: [Network]?
 
     /// Additional optional metadata
     var descriptionText: String?
-    var cast: [String]
-    var castImagePaths: [String]
-    var castCharacters: [String]
-    var genres: [String]
+    var cast: [String] = []
+    var castImagePaths: [String] = []
+    var castCharacters: [String] = []
+    var genres: [String] = []
 
     /// Provider ID → category ("stream", "ads", "rent", "buy")
-    var providerCategories: [Int: String]
+    var providerCategories: [Int: String] = [:]
 
     /// Release date in "YYYY-MM-DD" format (if known)
     var releaseDate: String?
@@ -69,11 +73,15 @@ final class Movie: MediaItemProtocol {
     /// Runtime in minutes (specific to movies)
     var runtime: Int?
 
+    // MARK: - Inverse relationships for CloudKit
+    @Relationship(inverse: \ListItem.movie) var listItems: [ListItem]?
+    @Relationship(inverse: \CustomListItem.movie) var customListItems: [CustomListItem]?
+
     init(
-        id: String,
-        title: String,
+        id: String = "",
+        title: String = "",
         thumbnailURL: URL? = nil,
-        networks: [Network] = [],
+        networks: [Network]? = nil,
         descriptionText: String? = nil,
         cast: [String] = [],
         castImagePaths: [String] = [],
@@ -101,26 +109,26 @@ final class Movie: MediaItemProtocol {
 @Model
 final class TVShow: MediaItemProtocol {
     /// Unique ID, such as MovieDB's identifier
-    @Attribute(.unique) var id: String
+    var id: String = ""
 
     /// Title of the TV show
-    var title: String
+    var title: String = ""
 
     /// Optional thumbnail image URL
     var thumbnailURL: URL?
 
     /// Networks/streaming providers for this TV show
-    @Relationship(deleteRule: .nullify) var networks: [Network]
+    @Relationship(deleteRule: .nullify) var networks: [Network]?
 
     /// Additional optional metadata
     var descriptionText: String?
-    var cast: [String]
-    var castImagePaths: [String]
-    var castCharacters: [String]
-    var genres: [String]
+    var cast: [String] = []
+    var castImagePaths: [String] = []
+    var castCharacters: [String] = []
+    var genres: [String] = []
 
     /// Provider ID → category ("stream", "ads", "rent", "buy")
-    var providerCategories: [Int: String]
+    var providerCategories: [Int: String] = [:]
 
     /// Number of seasons (specific to TV shows)
     var numberOfSeasons: Int?
@@ -129,13 +137,17 @@ final class TVShow: MediaItemProtocol {
     var numberOfEpisodes: Int?
 
     /// Episode count per season (index 0 = season 1)
-    var seasonEpisodeCounts: [Int]
+    var seasonEpisodeCounts: [Int] = []
+
+    // MARK: - Inverse relationships for CloudKit
+    @Relationship(inverse: \ListItem.tvShow) var listItems: [ListItem]?
+    @Relationship(inverse: \CustomListItem.tvShow) var customListItems: [CustomListItem]?
 
     init(
-        id: String,
-        title: String,
+        id: String = "",
+        title: String = "",
         thumbnailURL: URL? = nil,
-        networks: [Network] = [],
+        networks: [Network]? = nil,
         descriptionText: String? = nil,
         cast: [String] = [],
         castImagePaths: [String] = [],

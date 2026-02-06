@@ -61,7 +61,7 @@ struct MyListsView: View {
                                             Text(list.name)
                                                 .font(.body)
                                                 .fontWeight(.medium)
-                                            Text("\(list.items.count) item\(list.items.count == 1 ? "" : "s")")
+                                            Text("\(list.items?.count ?? 0) item\((list.items?.count ?? 0) == 1 ? "" : "s")")
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }

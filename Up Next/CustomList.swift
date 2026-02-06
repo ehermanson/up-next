@@ -3,18 +3,18 @@ import SwiftData
 
 @Model
 final class CustomList {
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var iconName: String
-    var createdAt: Date
-    @Relationship(deleteRule: .cascade) var items: [CustomListItem]
+    var id: UUID = UUID()
+    var name: String = ""
+    var iconName: String = "list.bullet"
+    var createdAt: Date = Date()
+    @Relationship(deleteRule: .cascade, inverse: \CustomListItem.customList) var items: [CustomListItem]?
 
     init(
         id: UUID = UUID(),
-        name: String,
+        name: String = "",
         iconName: String = "list.bullet",
         createdAt: Date = Date(),
-        items: [CustomListItem] = []
+        items: [CustomListItem]? = nil
     ) {
         self.id = id
         self.name = name

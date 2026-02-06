@@ -44,19 +44,22 @@ final class CustomListViewModel {
 
         let item = CustomListItem(movie: movie, tvShow: tvShow, customList: list, addedAt: Date())
         context.insert(item)
-        list.items.append(item)
+        if list.items == nil {
+            list.items = []
+        }
+        list.items?.append(item)
         save()
     }
 
     func removeItem(_ item: CustomListItem, from list: CustomList) {
         guard let context = modelContext else { return }
-        list.items.removeAll { $0.persistentModelID == item.persistentModelID }
+        list.items?.removeAll { $0.persistentModelID == item.persistentModelID }
         context.delete(item)
         save()
     }
 
     func containsItem(mediaID: String, in list: CustomList) -> Bool {
-        list.items.contains { $0.media?.id == mediaID }
+        list.items?.contains { $0.media?.id == mediaID } ?? false
     }
 
     // MARK: - Private

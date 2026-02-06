@@ -14,23 +14,22 @@ final class ListItem {
     var tvShow: TVShow?
 
     /// The parent media list that contains this list item
-    /// Note: This is consistent with the WatchListGroup root structure.
-    var list: MediaList
+    var list: MediaList?
 
     /// The user who added this item to the list (used for history only, not for list membership or sharing)
-    var addedBy: UserIdentity
+    var addedBy: UserIdentity?
 
     /// The date when this item was added to the list
-    var addedAt: Date
+    var addedAt: Date = Date()
 
     /// Whether the item has been marked as watched
-    var isWatched: Bool
+    var isWatched: Bool = false
 
     /// The date when the item was marked as watched (nil if not watched)
     var watchedAt: Date?
 
     /// The order of this item within the media list for sorting purposes
-    var order: Int
+    var order: Int = 0
 
     /// Which seasons the user has watched (1-based season numbers)
     var watchedSeasons: [Int] = []
@@ -48,17 +47,14 @@ final class ListItem {
     init(
         movie: Movie? = nil,
         tvShow: TVShow? = nil,
-        list: MediaList,
-        addedBy: UserIdentity,
-        addedAt: Date,
-        isWatched: Bool,
-        watchedAt: Date?,
-        order: Int,
+        list: MediaList? = nil,
+        addedBy: UserIdentity? = nil,
+        addedAt: Date = Date(),
+        isWatched: Bool = false,
+        watchedAt: Date? = nil,
+        order: Int = 0,
         watchedSeasons: [Int] = []
     ) {
-        // Ensure exactly one media type is provided
-        assert((movie != nil) != (tvShow != nil), "ListItem must have exactly one of movie or tvShow")
-
         self.movie = movie
         self.tvShow = tvShow
         self.list = list
@@ -100,12 +96,12 @@ final class ListItem {
     /// Convenience initializer for creating a ListItem with a Movie
     convenience init(
         movie: Movie,
-        list: MediaList,
-        addedBy: UserIdentity,
-        addedAt: Date,
-        isWatched: Bool,
-        watchedAt: Date?,
-        order: Int,
+        list: MediaList? = nil,
+        addedBy: UserIdentity? = nil,
+        addedAt: Date = Date(),
+        isWatched: Bool = false,
+        watchedAt: Date? = nil,
+        order: Int = 0,
         watchedSeasons: [Int] = []
     ) {
         self.init(
@@ -124,12 +120,12 @@ final class ListItem {
     /// Convenience initializer for creating a ListItem with a TVShow
     convenience init(
         tvShow: TVShow,
-        list: MediaList,
-        addedBy: UserIdentity,
-        addedAt: Date,
-        isWatched: Bool,
-        watchedAt: Date?,
-        order: Int,
+        list: MediaList? = nil,
+        addedBy: UserIdentity? = nil,
+        addedAt: Date = Date(),
+        isWatched: Bool = false,
+        watchedAt: Date? = nil,
+        order: Int = 0,
         watchedSeasons: [Int] = []
     ) {
         self.init(

@@ -10,6 +10,7 @@ struct MediaCardView: View {
     let providerCategories: [Int: String]
     let isWatched: Bool
     let watchedToggleAction: (Bool) -> Void
+    var isCompact: Bool = false
 
     private let settings = ProviderSettings.shared
 
@@ -41,8 +42,16 @@ struct MediaCardView: View {
         settings.hasSelectedProviders && selectedStreamingNetworks.isEmpty && !networks.isEmpty
     }
 
+    private var imageSize: CGSize {
+        isCompact ? CGSize(width: 54, height: 78) : CGSize(width: 70, height: 100)
+    }
+
+    private var imageCornerRadius: CGFloat {
+        isCompact ? 12 : 14
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: isCompact ? 12 : 14) {
             if let imageURL = imageURL {
                 CachedAsyncImage(url: imageURL) { phase in
                     switch phase {
@@ -52,24 +61,24 @@ struct MediaCardView: View {
                         Color.gray.opacity(0.1)
                     }
                 }
-                .frame(width: 70, height: 100)
-                .clipShape(.rect(cornerRadius: 14))
+                .frame(width: imageSize.width, height: imageSize.height)
+                .clipShape(.rect(cornerRadius: imageCornerRadius))
                 .clipped()
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
-                    .frame(width: 70, height: 100)
-                    .clipShape(.rect(cornerRadius: 14))
+                    .frame(width: imageSize.width, height: imageSize.height)
+                    .clipShape(.rect(cornerRadius: imageCornerRadius))
             }
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: isCompact ? 3 : 5) {
                 HStack {
                     Text(title)
-                        .font(.headline)
+                        .font(isCompact ? .subheadline : .headline)
                         .fontDesign(.rounded)
-                        .lineLimit(2)
+                        .lineLimit(isCompact ? 1 : 2)
                     Spacer()
-                    if isWatched {
+                    if isWatched && !isCompact {
                         Text("Watched")
                             .font(.caption2)
                             .fontWeight(.semibold)
@@ -83,28 +92,30 @@ struct MediaCardView: View {
                 }
                 if let subtitle = subtitle {
                     Text(subtitle)
-                        .font(.subheadline)
+                        .font(isCompact ? .caption : .subheadline)
                         .fontDesign(.rounded)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
-                if showNotStreamingBadge {
-                    Text("Not on your services")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 2)
-                } else {
-                    NetworkLogosView(
-                        networks: visibleNetworks,
-                        maxVisible: 4,
-                        logoSize: 28,
-                        additionalCount: settings.hasSelectedProviders ? additionalNetworkCount : 0
-                    )
+                if !isCompact {
+                    if showNotStreamingBadge {
+                        Text("Not on your services")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 2)
+                    } else {
+                        NetworkLogosView(
+                            networks: visibleNetworks,
+                            maxVisible: 4,
+                            logoSize: 28,
+                            additionalCount: settings.hasSelectedProviders ? additionalNetworkCount : 0
+                        )
+                    }
                 }
             }
         }
-        .padding(.all, 14)
-        .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: 20))
+        .padding(.all, isCompact ? 12 : 14)
+        .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: isCompact ? 16 : 20))
     }
 }
 

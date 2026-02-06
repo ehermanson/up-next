@@ -22,12 +22,13 @@ struct Watch_ListApp: App {
         do {
             return try ModelContainer(for: schema, configurations: configuration)
         } catch {
-            // Fall back to an in-memory store so the app can still launch
-            let inMemory = ModelConfiguration("Watch_List", isStoredInMemoryOnly: true)
+            print("CloudKit ModelContainer failed: \(error)")
+            // Fall back to local-only store
+            let localOnly = ModelConfiguration("Watch_List", cloudKitDatabase: .none)
             do {
-                return try ModelContainer(for: schema, configurations: inMemory)
+                return try ModelContainer(for: schema, configurations: localOnly)
             } catch {
-                // Absolute last resort — should never happen with in-memory
+                print("Local ModelContainer also failed: \(error)")
                 fatalError("Could not create ModelContainer: \(error)")
             }
         }

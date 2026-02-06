@@ -10,7 +10,7 @@ struct CustomListDetailView: View {
 
     var body: some View {
         Group {
-            if list.items.isEmpty {
+            if list.items?.isEmpty ?? true {
                 VStack(spacing: 16) {
                     Image(systemName: list.iconName)
                         .font(.system(size: 40))
@@ -41,7 +41,7 @@ struct CustomListDetailView: View {
             } else {
                 GlassEffectContainer(spacing: 8) {
                     List {
-                        ForEach(list.items.sorted(by: { $0.addedAt < $1.addedAt }), id: \.persistentModelID) { item in
+                        ForEach((list.items ?? []).sorted(by: { $0.addedAt < $1.addedAt }), id: \.persistentModelID) { item in
                             CustomListItemRow(item: item)
                                 .contentShape(Rectangle())
                                 .onTapGesture {

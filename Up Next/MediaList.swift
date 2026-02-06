@@ -5,18 +5,21 @@ import SwiftData
 @Model
 final class MediaList {
     /// Name of the list (e.g., "Movies to Watch")
-    var name: String
+    var name: String = ""
 
     /// The user who created the list
-    var createdBy: UserIdentity
+    var createdBy: UserIdentity?
 
     /// The date the list was created
-    var createdAt: Date
+    var createdAt: Date = Date()
 
     /// The list items (TV shows/movies) in this list
-    @Relationship(deleteRule: .cascade) var items: [ListItem]
+    @Relationship(deleteRule: .cascade, inverse: \ListItem.list) var items: [ListItem]?
 
-    init(name: String, createdBy: UserIdentity, createdAt: Date, items: [ListItem] = []) {
+    // MARK: - Inverse relationships for CloudKit
+    @Relationship(inverse: \WatchListGroup.lists) var group: WatchListGroup?
+
+    init(name: String = "", createdBy: UserIdentity? = nil, createdAt: Date = Date(), items: [ListItem]? = nil) {
         self.name = name
         self.createdBy = createdBy
         self.createdAt = createdAt
