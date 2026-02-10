@@ -6,18 +6,12 @@ final class ProviderSettings {
     static let shared = ProviderSettings()
 
     private static let selectedProvidersKey = "selectedProviderIDs"
-    private static let onboardingKey = "hasCompletedProviderOnboarding"
-
     var selectedProviderIDs: Set<Int> {
         didSet {
             saveSelectedProviders()
             // Clear availability cache since selections changed
             TMDBService.shared.clearProviderAvailabilityCache()
         }
-    }
-
-    var hasCompletedOnboarding: Bool {
-        didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: Self.onboardingKey) }
     }
 
     var hasSelectedProviders: Bool {
@@ -31,11 +25,10 @@ final class ProviderSettings {
         } else {
             selectedProviderIDs = []
         }
-        hasCompletedOnboarding = UserDefaults.standard.bool(forKey: Self.onboardingKey)
     }
 
     /// Returns true if provider should be shown.
-    /// When no providers are selected, all providers are shown (preserves behavior for users who skip onboarding).
+    /// When no providers are selected, all providers are shown.
     func isSelected(_ id: Int) -> Bool {
         selectedProviderIDs.isEmpty || selectedProviderIDs.contains(id)
     }

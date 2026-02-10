@@ -149,7 +149,6 @@ struct ProviderSettingsView: View {
                 .foregroundStyle(.secondary)
 
             Button {
-                settings.hasCompletedOnboarding = false
                 settings.selectedProviderIDs = []
                 dismiss()
             } label: {

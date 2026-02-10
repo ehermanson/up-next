@@ -22,7 +22,7 @@ struct ContentView: View {
     @State private var selectedTVProviderCategory: String? = nil
     @State private var selectedMovieProviderCategory: String? = nil
     @State private var showingSettings = false
-    @State private var showingOnboarding = false
+
     @State private var toastMessage: String?
 
     private var selectedTVShow: ListItem? {
@@ -120,14 +120,6 @@ struct ContentView: View {
             .animation(.spring(duration: 0.4), value: toastMessage)
             .sheet(isPresented: $showingSettings) {
                 ProviderSettingsView()
-            }
-            .sheet(isPresented: $showingOnboarding) {
-                ProviderOnboardingView()
-            }
-            .onAppear {
-                if !ProviderSettings.shared.hasCompletedOnboarding {
-                    showingOnboarding = true
-                }
             }
             .task {
                 await viewModel.configure(modelContext: modelContext)
