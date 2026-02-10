@@ -56,13 +56,13 @@ struct ProviderOnboardingView: View {
                 .frame(width: 88, height: 88)
                 .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .circle)
 
-            Text("Set Up Your Streaming Services")
+            Text("Where Do You Watch?")
                 .font(.title2)
                 .fontWeight(.bold)
                 .fontDesign(.rounded)
                 .multilineTextAlignment(.center)
 
-            Text("Select your services to see where you can watch at a glance")
+            Text("Select your streaming services and we'll show which ones carry each title in your watchlist")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

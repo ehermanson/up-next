@@ -44,20 +44,38 @@ struct MediaListView: View {
                     ShimmerLoadingView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if isEmpty {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 20) {
                         Image(systemName: "popcorn")
                             .font(.system(size: 48))
                             .foregroundStyle(.secondary)
                             .frame(width: 96, height: 96)
                             .glassEffect(.regular, in: .circle)
-                        Text("Your list is empty")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .fontDesign(.rounded)
-                        Text("Use the Search tab to find and add titles")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .fontDesign(.rounded)
+                        VStack(spacing: 8) {
+                            Text("Your watchlist is empty")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .fontDesign(.rounded)
+                            Text("Search for movies and shows to start building your list")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fontDesign(.rounded)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                        }
+                        if let onSearchTapped {
+                            Button(action: onSearchTapped) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "plus")
+                                    Text("Add Your First Title")
+                                }
+                                .font(.body)
+                                .fontWeight(.semibold)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .glassEffect(.regular.tint(.indigo.opacity(0.3)).interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if isEditingOrder {
@@ -65,6 +83,32 @@ struct MediaListView: View {
                 } else {
                     GlassEffectContainer(spacing: 10) {
                         List {
+                            if unwatchedItems.isEmpty {
+                                VStack(spacing: 12) {
+                                    Text("You're all caught up!")
+                                        .font(.headline)
+                                        .fontDesign(.rounded)
+                                    if let onSearchTapped {
+                                        Button(action: onSearchTapped) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "plus")
+                                                Text("Add More")
+                                            }
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .glassEffect(.regular.tint(.indigo.opacity(0.3)).interactive(), in: .capsule)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 32)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                            }
+
                             if !unwatchedItems.isEmpty {
                                 SectionHeader(
                                     title: "Up Next",
@@ -141,19 +185,15 @@ struct MediaListView: View {
                         }
                     }
                 }
-                if let onSearchTapped {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(action: onSearchTapped) {
-                            Image(systemName: "magnifyingglass")
-                        }
-                    }
-                }
             }
             .toolbarBackground(isEditingOrder ? .visible : .automatic, for: .navigationBar)
         }
         .preferredColorScheme(.dark)
         .onChange(of: hasActiveFilter) {
             if hasActiveFilter { isEditingOrder = false }
+        }
+        .onChange(of: unwatchedItems.count) {
+            if !canReorder { isEditingOrder = false }
         }
         .alert(
             "Remove from Watchlist",

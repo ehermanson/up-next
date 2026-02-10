@@ -218,7 +218,7 @@ struct ContentView: View {
             onWatchedToggled: {
                 viewModel.persistChanges(for: .tvShow)
             },
-            onSearchTapped: nil,
+            onSearchTapped: { selectedTab = .search },
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .tvShow)
@@ -275,7 +275,7 @@ struct ContentView: View {
             onWatchedToggled: {
                 viewModel.persistChanges(for: .movie)
             },
-            onSearchTapped: nil,
+            onSearchTapped: { selectedTab = .search },
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .movie)
