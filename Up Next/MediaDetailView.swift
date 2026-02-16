@@ -7,6 +7,7 @@ struct MediaDetailView: View {
     let onRemove: () -> Void
     var onSeasonCountChanged: ((ListItem, Int?) -> Void)?
     var customListViewModel: CustomListViewModel?
+    var onAdd: (() -> Void)?
 
     @State private var isLoadingDetails = false
     @State private var detailError: String?
@@ -92,14 +93,16 @@ struct MediaDetailView: View {
                                 castCharacters: listItem.media?.castCharacters ?? []
                             )
 
-                            if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 0 {
+                            if onAdd == nil {
+                                if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 0 {
+                                    Divider().padding(.vertical, 4)
+                                    SeasonChecklistCard(listItem: $listItem)
+                                }
+
                                 Divider().padding(.vertical, 4)
-                                SeasonChecklistCard(listItem: $listItem)
+
+                                WatchedToggleCard(listItem: $listItem)
                             }
-
-                            Divider().padding(.vertical, 4)
-
-                            WatchedToggleCard(listItem: $listItem)
 
                             if let customListVM = customListViewModel, !customListVM.customLists.isEmpty {
                                 Divider().padding(.vertical, 4)
@@ -172,12 +175,21 @@ struct MediaDetailView: View {
             .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(role: .destructive) {
-                        isConfirmingRemoval = true
-                    } label: {
-                        Label("Remove", systemImage: "trash")
+                    if let onAdd {
+                        Button {
+                            onAdd()
+                            dismiss()
+                        } label: {
+                            Label("Add to Watchlist", systemImage: "plus")
+                        }
+                    } else {
+                        Button(role: .destructive) {
+                            isConfirmingRemoval = true
+                        } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
+                        .accessibilityLabel("Remove from list")
                     }
-                    .accessibilityLabel("Remove from list")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(action: {

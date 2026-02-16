@@ -4,10 +4,18 @@ import Foundation
 
 struct TMDBTVShowSearchResponse: Codable {
     let results: [TMDBTVShowSearchResult]
+    let totalPages: Int?
 }
 
 struct TMDBMovieSearchResponse: Codable {
     let results: [TMDBMovieSearchResult]
+    let totalPages: Int?
+}
+
+// MARK: - Genre List Response
+
+struct TMDBGenreListResponse: Codable {
+    let genres: [TMDBGenre]
 }
 
 // MARK: - TV Show Models

@@ -6,6 +6,7 @@ struct ContentView: View {
         case tvShows
         case movies
         case myLists
+        case discover
         case search
     }
 
@@ -146,7 +147,7 @@ struct ContentView: View {
                 }
             }
             .onChange(of: selectedTab) { oldValue, _ in
-                if oldValue != .search {
+                if oldValue != .search && oldValue != .discover {
                     previousTab = oldValue
                 }
             }
@@ -162,6 +163,9 @@ struct ContentView: View {
             }
             Tab("My Lists", systemImage: "tray.full", value: .myLists) {
                 MyListsView(viewModel: customListViewModel)
+            }
+            Tab("Discover", systemImage: "sparkles", value: .discover) {
+                discoverTab
             }
             Tab("Search", systemImage: "magnifyingglass", value: .search, role: .search) {
                 searchTab
@@ -307,6 +311,18 @@ struct ContentView: View {
         case .myLists: .myLists
         default: .all
         }
+    }
+
+    private var discoverTab: some View {
+        DiscoverView(
+            existingTVShowIDs: existingIDs(for: .tvShow),
+            existingMovieIDs: existingIDs(for: .movie),
+            onTVShowAdded: { viewModel.addTVShow($0) },
+            onMovieAdded: { viewModel.addMovie($0) },
+            onItemAdded: { title in
+                toastMessage = "\(title) has been added"
+            }
+        )
     }
 
     private var searchTab: some View {

@@ -450,6 +450,78 @@ final class TMDBService {
         )
     }
 
+    // MARK: - Discover
+
+    /// Discover TV shows with optional filters
+    func discoverTVShows(
+        page: Int = 1,
+        sortBy: String = "popularity.desc",
+        withGenres: String? = nil,
+        withWatchProviders: String? = nil,
+        watchRegion: String? = nil,
+        voteCountGte: Int? = nil
+    ) async throws -> TMDBTVShowSearchResponse {
+        var queryItems = [
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "sort_by", value: sortBy),
+        ]
+        if let withGenres {
+            queryItems.append(URLQueryItem(name: "with_genres", value: withGenres))
+        }
+        if let withWatchProviders {
+            queryItems.append(URLQueryItem(name: "with_watch_providers", value: withWatchProviders))
+            queryItems.append(URLQueryItem(name: "watch_region", value: watchRegion ?? currentRegion))
+            queryItems.append(URLQueryItem(name: "with_watch_monetization_types", value: "flatrate|free|ads"))
+        }
+        if let voteCountGte {
+            queryItems.append(URLQueryItem(name: "vote_count.gte", value: String(voteCountGte)))
+        }
+        return try await performRequest(endpoint: "/discover/tv", queryItems: queryItems)
+    }
+
+    /// Discover movies with optional filters
+    func discoverMovies(
+        page: Int = 1,
+        sortBy: String = "popularity.desc",
+        withGenres: String? = nil,
+        withWatchProviders: String? = nil,
+        watchRegion: String? = nil,
+        voteCountGte: Int? = nil
+    ) async throws -> TMDBMovieSearchResponse {
+        var queryItems = [
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "sort_by", value: sortBy),
+        ]
+        if let withGenres {
+            queryItems.append(URLQueryItem(name: "with_genres", value: withGenres))
+        }
+        if let withWatchProviders {
+            queryItems.append(URLQueryItem(name: "with_watch_providers", value: withWatchProviders))
+            queryItems.append(URLQueryItem(name: "watch_region", value: watchRegion ?? currentRegion))
+            queryItems.append(URLQueryItem(name: "with_watch_monetization_types", value: "flatrate|free|ads"))
+        }
+        if let voteCountGte {
+            queryItems.append(URLQueryItem(name: "vote_count.gte", value: String(voteCountGte)))
+        }
+        return try await performRequest(endpoint: "/discover/movie", queryItems: queryItems)
+    }
+
+    /// Fetch TV show genres
+    func fetchTVGenres() async throws -> [TMDBGenre] {
+        let response: TMDBGenreListResponse = try await performRequest(
+            endpoint: "/genre/tv/list", queryItems: []
+        )
+        return response.genres
+    }
+
+    /// Fetch movie genres
+    func fetchMovieGenres() async throws -> [TMDBGenre] {
+        let response: TMDBGenreListResponse = try await performRequest(
+            endpoint: "/genre/movie/list", queryItems: []
+        )
+        return response.genres
+    }
+
     // MARK: - Private Helpers
 
     private func performRequest<T: Decodable>(
