@@ -92,60 +92,60 @@ struct DiscoverView: View {
     private func carouselCard(_ item: DiscoverViewModel.DiscoverItem) -> some View {
         let added = isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType)
 
-        return Button {
-            openDetail(for: item)
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                ZStack(alignment: .topTrailing) {
-                    CachedAsyncImage(url: service.imageURL(path: item.posterPath)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 140, height: 210)
-                                .clipped()
-                        case .failure:
-                            posterPlaceholder
-                        case .empty:
-                            posterPlaceholder
-                        @unknown default:
-                            posterPlaceholder
-                        }
-                    }
-                    .frame(width: 140, height: 210)
-                    .clipShape(.rect(cornerRadius: 12))
-
-                    if added {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.green)
-                            .shadow(color: .black.opacity(0.5), radius: 4)
-                            .padding(6)
+        return VStack(alignment: .leading, spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                CachedAsyncImage(url: service.imageURL(path: item.posterPath)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 140, height: 210)
+                            .clipped()
+                    case .failure:
+                        posterPlaceholder
+                    case .empty:
+                        posterPlaceholder
+                    @unknown default:
+                        posterPlaceholder
                     }
                 }
+                .frame(width: 140, height: 210)
+                .clipShape(.rect(cornerRadius: 12))
+                .onTapGesture { openDetail(for: item) }
 
-                Text(item.title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .fontDesign(.rounded)
-                    .lineLimit(1)
-                    .frame(width: 140, alignment: .leading)
+                Button {
+                    if !added { addItem(item) }
+                } label: {
+                    Image(systemName: added ? "checkmark.circle.fill" : "plus.circle.fill")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(added ? .green : .white)
+                        .shadow(color: .black.opacity(0.5), radius: 4)
+                        .padding(6)
+                }
+                .buttonStyle(.plain)
+            }
 
-                if let vote = item.voteAverage, vote > 0 {
-                    HStack(spacing: 3) {
-                        Image(systemName: "star.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.yellow)
-                        Text(String(format: "%.1f", vote))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+            Text(item.title)
+                .font(.caption)
+                .fontWeight(.medium)
+                .fontDesign(.rounded)
+                .lineLimit(1)
+                .frame(width: 140, alignment: .leading)
+                .onTapGesture { openDetail(for: item) }
+
+            if let vote = item.voteAverage, vote > 0 {
+                HStack(spacing: 3) {
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                    Text(String(format: "%.1f", vote))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
-        .buttonStyle(.plain)
     }
 
     private var posterPlaceholder: some View {
@@ -284,7 +284,8 @@ struct DiscoverView: View {
             mediaId: item.tmdbId,
             mediaType: item.mediaType,
             isAdded: isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType),
-            onAdd: { openDetail(for: item) }
+            onAdd: { addItem(item) },
+            onTap: { openDetail(for: item) }
         )
     }
 
@@ -319,6 +320,44 @@ struct DiscoverView: View {
             onTVShowAdded(tvShow)
         } else if let movie = item.movie {
             onMovieAdded(movie)
+        }
+    }
+
+    // MARK: - Add Directly
+
+    private func addItem(_ item: DiscoverViewModel.DiscoverItem) {
+        let stringID = String(item.tmdbId)
+        guard !addedIDs.contains(stringID) else { return }
+        addedIDs.insert(stringID)
+        onItemAdded?(item.title)
+
+        Task {
+            switch item {
+            case .tvShow(let result):
+                let tvShow: TVShow
+                do {
+                    async let detailTask = service.getTVShowDetails(id: result.id)
+                    async let providersTask = service.getTVShowWatchProviders(id: result.id)
+                    let detail = try await detailTask
+                    let providers = try await providersTask
+                    tvShow = service.mapToTVShow(detail, providers: providers)
+                } catch {
+                    tvShow = service.mapToTVShow(result)
+                }
+                onTVShowAdded(tvShow)
+            case .movie(let result):
+                let movie: Movie
+                do {
+                    async let detailTask = service.getMovieDetails(id: result.id)
+                    async let providersTask = service.getMovieWatchProviders(id: result.id)
+                    let detail = try await detailTask
+                    let providers = try await providersTask
+                    movie = service.mapToMovie(detail, providers: providers)
+                } catch {
+                    movie = service.mapToMovie(result)
+                }
+                onMovieAdded(movie)
+            }
         }
     }
 

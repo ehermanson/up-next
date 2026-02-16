@@ -98,6 +98,7 @@ struct SearchResultRowWithImage: View {
     let mediaType: MediaType
     let isAdded: Bool
     let onAdd: () -> Void
+    var onTap: (() -> Void)?
 
     @State private var imageURL: URL?
     @State private var availabilityState: SearchResultRow.AvailabilityState = .loading
@@ -111,7 +112,8 @@ struct SearchResultRowWithImage: View {
             imageURL: imageURL,
             isAdded: isAdded,
             availabilityState: availabilityState,
-            onAdd: onAdd
+            onAdd: onAdd,
+            onTap: onTap
         )
         .task {
             if let path = posterPath {
@@ -143,6 +145,7 @@ struct SearchResultRow: View {
     let isAdded: Bool
     let availabilityState: AvailabilityState
     let onAdd: () -> Void
+    var onTap: (() -> Void)?
 
     enum AvailabilityState {
         case loading
@@ -152,74 +155,103 @@ struct SearchResultRow: View {
     }
 
     var body: some View {
-        Button {
-            if !isAdded {
-                onAdd()
-            }
-        } label: {
-            HStack(spacing: 12) {
-                CachedAsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .empty:
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 60, height: 90)
-                            .clipShape(.rect(cornerRadius: 10))
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 60, height: 90)
-                            .clipShape(.rect(cornerRadius: 10))
-                            .clipped()
-                    case .failure:
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 60, height: 90)
-                            .clipShape(.rect(cornerRadius: 10))
-                    @unknown default:
-                        EmptyView()
+        Group {
+            if let onTap {
+                HStack(spacing: 12) {
+                    rowContent
+                        .contentShape(Rectangle())
+                        .onTapGesture { onTap() }
+
+                    addButton
+                }
+            } else {
+                Button {
+                    if !isAdded { onAdd() }
+                } label: {
+                    HStack(spacing: 12) {
+                        rowContent
+                        addIcon
                     }
                 }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.headline)
-                        .fontDesign(.rounded)
-                        .lineLimit(2)
-
-                    if let overview = overview, !overview.isEmpty {
-                        Text(overview)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                    }
-
-                    availabilityBadge
-                }
-
-                Spacer()
-
-                if isAdded {
-                    Image(systemName: "checkmark")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .frame(width: 44, height: 44)
-                        .accessibilityLabel("Already added")
-                } else {
-                    Image(systemName: "plus")
-                        .font(.headline.weight(.semibold))
-                        .frame(width: 44, height: 44)
-                        .accessibilityLabel("Add to list")
-                }
+                .buttonStyle(.plain)
             }
         }
-        .buttonStyle(.plain)
         .padding(10)
         .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 12) {
+            CachedAsyncImage(url: imageURL) { phase in
+                switch phase {
+                case .empty:
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 60, height: 90)
+                        .clipShape(.rect(cornerRadius: 10))
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 60, height: 90)
+                        .clipShape(.rect(cornerRadius: 10))
+                        .clipped()
+                case .failure:
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: 60, height: 90)
+                        .clipShape(.rect(cornerRadius: 10))
+                @unknown default:
+                    EmptyView()
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .fontDesign(.rounded)
+                    .lineLimit(2)
+
+                if let overview = overview, !overview.isEmpty {
+                    Text(overview)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+
+                availabilityBadge
+            }
+
+            Spacer()
+        }
+    }
+
+    private var addButton: some View {
+        Button {
+            if !isAdded { onAdd() }
+        } label: {
+            addIcon
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var addIcon: some View {
+        if isAdded {
+            Image(systemName: "checkmark")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.green)
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Already added")
+        } else {
+            Image(systemName: "plus")
+                .font(.headline.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Add to list")
+        }
     }
 
     @ViewBuilder
