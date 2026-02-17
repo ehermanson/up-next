@@ -12,10 +12,19 @@ sed "s/YOUR_API_KEY_HERE/${TMDB_API_KEY}/" "$CI_PRIMARY_REPOSITORY_PATH/Up Next/
 
 echo "Info.plist generated successfully"
 
-# Auto-increment build number using Xcode Cloud's build number
+# Auto-set build and marketing version from Xcode Cloud build number
+# Marketing version: {MAJOR}.{CI_BUILD_NUMBER} (e.g. 1.25)
+# Build number: CI_BUILD_NUMBER (e.g. 25)
+# To bump the major version, change MAJOR_VERSION below.
+MAJOR_VERSION=1
+
 if [ -n "$CI_BUILD_NUMBER" ]; then
-    echo "Setting build number to $CI_BUILD_NUMBER..."
     cd "$CI_PRIMARY_REPOSITORY_PATH"
+
+    echo "Setting build number to $CI_BUILD_NUMBER..."
     agvtool new-version -all "$CI_BUILD_NUMBER"
-    echo "Build number set to $CI_BUILD_NUMBER"
+
+    VERSION="${MAJOR_VERSION}.${CI_BUILD_NUMBER}"
+    echo "Setting marketing version to $VERSION..."
+    agvtool new-marketing-version "$VERSION"
 fi
