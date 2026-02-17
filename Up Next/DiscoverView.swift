@@ -285,7 +285,8 @@ struct DiscoverView: View {
             mediaType: item.mediaType,
             isAdded: isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType),
             onAdd: { addItem(item) },
-            onTap: { openDetail(for: item) }
+            onTap: { openDetail(for: item) },
+            voteAverage: item.voteAverage
         )
     }
 

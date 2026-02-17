@@ -315,7 +315,8 @@ struct WatchlistSearchView: View {
                             mediaId: result.id,
                             mediaType: .tvShow,
                             isAdded: isAlreadyAdded(id: result.id),
-                            onAdd: { addTVShow(result) }
+                            onAdd: { addTVShow(result) },
+                            voteAverage: result.voteAverage
                         )
                     }
                 } else {
@@ -327,7 +328,8 @@ struct WatchlistSearchView: View {
                             mediaId: result.id,
                             mediaType: .movie,
                             isAdded: isAlreadyAdded(id: result.id),
-                            onAdd: { addMovie(result) }
+                            onAdd: { addMovie(result) },
+                            voteAverage: result.voteAverage
                         )
                     }
                 }

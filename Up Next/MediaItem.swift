@@ -41,6 +41,7 @@ protocol MediaItemProtocol {
     var castImagePaths: [String] { get }
     var castCharacters: [String] { get }
     var genres: [String] { get }
+    var voteAverage: Double? { get }
 }
 
 @Model
@@ -73,6 +74,9 @@ final class Movie: MediaItemProtocol {
     /// Runtime in minutes (specific to movies)
     var runtime: Int?
 
+    /// TMDB vote average (0–10)
+    var voteAverage: Double?
+
     // MARK: - Inverse relationships for CloudKit
     @Relationship(inverse: \ListItem.movie) var listItems: [ListItem]?
     @Relationship(inverse: \CustomListItem.movie) var customListItems: [CustomListItem]?
@@ -89,7 +93,8 @@ final class Movie: MediaItemProtocol {
         genres: [String] = [],
         providerCategories: [Int: String] = [:],
         releaseDate: String? = nil,
-        runtime: Int? = nil
+        runtime: Int? = nil,
+        voteAverage: Double? = nil
     ) {
         self.id = id
         self.title = title
@@ -103,6 +108,7 @@ final class Movie: MediaItemProtocol {
         self.providerCategories = providerCategories
         self.releaseDate = releaseDate
         self.runtime = runtime
+        self.voteAverage = voteAverage
     }
 }
 
@@ -139,6 +145,9 @@ final class TVShow: MediaItemProtocol {
     /// Episode count per season (index 0 = season 1)
     var seasonEpisodeCounts: [Int] = []
 
+    /// TMDB vote average (0–10)
+    var voteAverage: Double?
+
     // MARK: - Inverse relationships for CloudKit
     @Relationship(inverse: \ListItem.tvShow) var listItems: [ListItem]?
     @Relationship(inverse: \CustomListItem.tvShow) var customListItems: [CustomListItem]?
@@ -156,7 +165,8 @@ final class TVShow: MediaItemProtocol {
         providerCategories: [Int: String] = [:],
         numberOfSeasons: Int? = nil,
         numberOfEpisodes: Int? = nil,
-        seasonEpisodeCounts: [Int] = []
+        seasonEpisodeCounts: [Int] = [],
+        voteAverage: Double? = nil
     ) {
         self.id = id
         self.title = title
@@ -171,6 +181,7 @@ final class TVShow: MediaItemProtocol {
         self.numberOfSeasons = numberOfSeasons
         self.numberOfEpisodes = numberOfEpisodes
         self.seasonEpisodeCounts = seasonEpisodeCounts
+        self.voteAverage = voteAverage
     }
 }
 

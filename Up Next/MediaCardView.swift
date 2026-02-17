@@ -11,6 +11,8 @@ struct MediaCardView: View {
     let isWatched: Bool
     let watchedToggleAction: (Bool) -> Void
     var isCompact: Bool = false
+    var voteAverage: Double?
+    var genres: [String] = []
 
     private let settings = ProviderSettings.shared
 
@@ -98,6 +100,27 @@ struct MediaCardView: View {
                         .lineLimit(1)
                 }
                 if !isCompact {
+                    HStack(spacing: 6) {
+                        if !genres.isEmpty {
+                            Text(genres.prefix(3).joined(separator: ", "))
+                                .font(.caption)
+                                .fontDesign(.rounded)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        if let vote = voteAverage, vote > 0 {
+                            HStack(spacing: 3) {
+                                Image(systemName: "star.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.yellow)
+                                Text(String(format: "%.1f", vote))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                if !isCompact {
                     if showNotStreamingBadge {
                         Text("Not on your services")
                             .font(.caption2)
@@ -136,11 +159,13 @@ struct MediaCardView: View {
     ]
     MediaCardView(
         title: "Example Movie Title",
-        subtitle: "2022 \u{00b7} Action, Adventure",
+        subtitle: "2022 \u{00b7} 148 min",
         imageURL: nil,
         networks: sampleNetworks,
         providerCategories: [8: "stream", 1899: "stream"],
         isWatched: true,
-        watchedToggleAction: { _ in }
+        watchedToggleAction: { _ in },
+        voteAverage: 7.8,
+        genres: ["Action", "Adventure", "Thriller"]
     )
 }

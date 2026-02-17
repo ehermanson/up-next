@@ -187,7 +187,6 @@ struct ContentView: View {
             navigationTitle: "TV Shows",
             subtitleProvider: { item in
                 guard let tvShow = item.tvShow else { return nil }
-                var parts: [String] = []
 
                 // Show "Next Season: S{next}" for partially-watched multi-season shows
                 if !item.watchedSeasons.isEmpty,
@@ -195,18 +194,12 @@ struct ContentView: View {
                    let next = item.nextSeasonToWatch {
                     let remaining = total - item.watchedSeasons.count
                     if remaining > 1 {
-                        parts.append("Next Season: S\(next) (\(remaining) left)")
+                        return "Next Season: S\(next) (\(remaining) left)"
                     } else {
-                        parts.append("Next Season: S\(next)")
+                        return "Next Season: S\(next)"
                     }
-                } else if let summary = tvShow.seasonsEpisodesSummary {
-                    parts.append(summary)
                 }
-
-                if !tvShow.genres.isEmpty {
-                    parts.append(tvShow.genres.prefix(2).joined(separator: ", "))
-                }
-                return parts.isEmpty ? nil : parts.joined(separator: "\n")
+                return tvShow.seasonsEpisodesSummary
             },
             onItemExpanded: { id in
                 expandedTVShowID = id
@@ -364,7 +357,6 @@ struct ContentView: View {
     private func movieSubtitle(for item: ListItem) -> String? {
         guard let movie = item.movie else { return nil }
 
-        var lines: [String] = []
         var meta: [String] = []
         if let year = movie.releaseYear {
             meta.append(year)
@@ -372,14 +364,8 @@ struct ContentView: View {
         if let runtime = movie.runtime {
             meta.append("\(runtime) min")
         }
-        if !meta.isEmpty {
-            lines.append(meta.joined(separator: " \u{2022} "))
-        }
-        if !movie.genres.isEmpty {
-            lines.append(movie.genres.prefix(2).joined(separator: ", "))
-        }
 
-        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+        return meta.isEmpty ? nil : meta.joined(separator: " \u{2022} ")
     }
 }
 

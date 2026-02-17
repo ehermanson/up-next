@@ -245,6 +245,7 @@ struct MediaDetailView: View {
                 tvShow.networks = updatedTVShow.networks
                 tvShow.providerCategories = updatedTVShow.providerCategories
                 tvShow.seasonEpisodeCounts = updatedTVShow.seasonEpisodeCounts
+                tvShow.voteAverage = updatedTVShow.voteAverage
                 if updatedTVShow.thumbnailURL != nil {
                     tvShow.thumbnailURL = updatedTVShow.thumbnailURL
                 }
@@ -270,6 +271,7 @@ struct MediaDetailView: View {
                 movie.networks = updatedMovie.networks
                 movie.providerCategories = updatedMovie.providerCategories
                 movie.releaseDate = updatedMovie.releaseDate
+                movie.voteAverage = updatedMovie.voteAverage
                 if updatedMovie.thumbnailURL != nil {
                     movie.thumbnailURL = updatedMovie.thumbnailURL
                 }
@@ -478,6 +480,10 @@ private struct HiddenProvidersPopover: View {
 private struct MetadataRow: View {
     let listItem: ListItem
 
+    private var voteAverage: Double? {
+        listItem.tvShow?.voteAverage ?? listItem.movie?.voteAverage
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             if let tvShow = listItem.tvShow {
@@ -495,6 +501,9 @@ private struct MetadataRow: View {
                     MetadataPill(text: "\(runtime) min")
                 }
             }
+            if let vote = voteAverage, vote > 0 {
+                RatingPill(vote: vote)
+            }
         }
     }
 }
@@ -510,6 +519,25 @@ private struct MetadataPill: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .glassEffect(.regular, in: .capsule)
+    }
+}
+
+private struct RatingPill: View {
+    let vote: Double
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "star.fill")
+                .font(.caption)
+                .foregroundStyle(.yellow)
+            Text(String(format: "%.1f", vote))
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .glassEffect(.regular, in: .capsule)
     }
 }
 

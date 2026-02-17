@@ -99,6 +99,7 @@ struct SearchResultRowWithImage: View {
     let isAdded: Bool
     let onAdd: () -> Void
     var onTap: (() -> Void)?
+    var voteAverage: Double?
 
     @State private var imageURL: URL?
     @State private var availabilityState: SearchResultRow.AvailabilityState = .loading
@@ -113,7 +114,8 @@ struct SearchResultRowWithImage: View {
             isAdded: isAdded,
             availabilityState: availabilityState,
             onAdd: onAdd,
-            onTap: onTap
+            onTap: onTap,
+            voteAverage: voteAverage
         )
         .task {
             if let path = posterPath {
@@ -146,6 +148,7 @@ struct SearchResultRow: View {
     let availabilityState: AvailabilityState
     let onAdd: () -> Void
     var onTap: (() -> Void)?
+    var voteAverage: Double?
 
     enum AvailabilityState {
         case loading
@@ -222,7 +225,19 @@ struct SearchResultRow: View {
                         .lineLimit(3)
                 }
 
-                availabilityBadge
+                HStack(spacing: 8) {
+                    if let vote = voteAverage, vote > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "star.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.yellow)
+                            Text(String(format: "%.1f", vote))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    availabilityBadge
+                }
             }
 
             Spacer()

@@ -402,7 +402,9 @@ struct MediaListRow: View {
                 isWatched: item.isWatched,
                 watchedToggleAction: { _ in
                     onWatchedToggled()
-                }
+                },
+                voteAverage: item.media?.voteAverage,
+                genres: item.media?.genres ?? []
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

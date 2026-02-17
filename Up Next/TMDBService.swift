@@ -247,7 +247,8 @@ final class TMDBService {
             descriptionText: result.overview,
             cast: [],
             numberOfSeasons: nil,
-            numberOfEpisodes: nil
+            numberOfEpisodes: nil,
+            voteAverage: result.voteAverage
         )
     }
 
@@ -321,7 +322,8 @@ final class TMDBService {
             providerCategories: categories,
             numberOfSeasons: detail.numberOfSeasons,
             numberOfEpisodes: detail.numberOfEpisodes,
-            seasonEpisodeCounts: seasonEpisodeCounts
+            seasonEpisodeCounts: seasonEpisodeCounts,
+            voteAverage: detail.voteAverage
         )
     }
 
@@ -335,7 +337,8 @@ final class TMDBService {
             descriptionText: result.overview,
             cast: [],
             releaseDate: result.releaseDate,
-            runtime: nil
+            runtime: nil,
+            voteAverage: result.voteAverage
         )
     }
 
@@ -446,7 +449,8 @@ final class TMDBService {
             genres: genres,
             providerCategories: categories,
             releaseDate: detail.releaseDate,
-            runtime: detail.runtime
+            runtime: detail.runtime,
+            voteAverage: detail.voteAverage
         )
     }
 
