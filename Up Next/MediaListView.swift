@@ -17,6 +17,7 @@ struct MediaListView: View {
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
     let onSearchTapped: (() -> Void)?
+    var onRandomPick: (() -> Void)?
     var onSettingsTapped: (() -> Void)?
     var onItemDeleted: ((String) -> Void)?
     var onOrderChanged: (() -> Void)?
@@ -173,6 +174,13 @@ struct MediaListView: View {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button(action: onSettingsTapped) {
                             Image(systemName: "gearshape")
+                        }
+                    }
+                }
+                if let onRandomPick, !unwatchedItems.isEmpty {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: onRandomPick) {
+                            Image(systemName: "dice")
                         }
                     }
                 }

@@ -208,6 +208,12 @@ struct ContentView: View {
                 viewModel.persistChanges(for: .tvShow)
             },
             onSearchTapped: { selectedTab = .search },
+            onRandomPick: {
+                if let randomItem = viewModel.unwatchedTVShows.randomElement(),
+                   let id = randomItem.media?.id {
+                    expandedTVShowID = id
+                }
+            },
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .tvShow)
@@ -265,6 +271,12 @@ struct ContentView: View {
                 viewModel.persistChanges(for: .movie)
             },
             onSearchTapped: { selectedTab = .search },
+            onRandomPick: {
+                if let randomItem = viewModel.unwatchedMovies.randomElement(),
+                   let id = randomItem.media?.id {
+                    expandedMovieID = id
+                }
+            },
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .movie)
