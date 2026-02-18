@@ -409,27 +409,13 @@ private struct CustomListItemDetailView: View {
         do {
             if let tvShow = item.tvShow {
                 let detail = try await service.getTVShowDetails(id: id)
-                let updated = service.mapToTVShow(detail)
-                tvShow.numberOfSeasons = updated.numberOfSeasons
-                tvShow.numberOfEpisodes = updated.numberOfEpisodes
-                tvShow.descriptionText = updated.descriptionText
-                tvShow.cast = updated.cast
-                tvShow.castImagePaths = updated.castImagePaths
-                tvShow.castCharacters = updated.castCharacters
-                tvShow.genres = updated.genres
+                tvShow.update(from: service.mapToTVShow(detail))
             } else if let movie = item.movie {
                 async let detailTask = service.getMovieDetails(id: id)
                 async let providersTask = service.getMovieWatchProviders(id: id)
                 let detail = try await detailTask
                 let providers = try await providersTask
-                let updated = service.mapToMovie(detail, providers: providers)
-                movie.runtime = updated.runtime
-                movie.descriptionText = updated.descriptionText
-                movie.cast = updated.cast
-                movie.castImagePaths = updated.castImagePaths
-                movie.castCharacters = updated.castCharacters
-                movie.genres = updated.genres
-                movie.releaseDate = updated.releaseDate
+                movie.update(from: service.mapToMovie(detail, providers: providers))
             }
         } catch {
             detailError = error.localizedDescription

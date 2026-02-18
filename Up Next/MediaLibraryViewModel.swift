@@ -23,6 +23,7 @@ final class MediaLibraryViewModel {
         await ensureDefaults()
         await loadItems()
         isLoaded = true
+        Task { await refreshAllItems() }
     }
 
     func containsItem(withID id: String, mediaType: MediaType) -> Bool {
@@ -168,6 +169,44 @@ final class MediaLibraryViewModel {
     }
 
     // MARK: - Private helpers
+
+    private func refreshAllItems() async {
+        guard let context = modelContext else { return }
+        let service = TMDBService.shared
+
+        for item in tvShows {
+            guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { continue }
+            do {
+                let previousSeasonCount = tvShow.numberOfSeasons
+                async let detailTask = service.getTVShowDetails(id: id)
+                async let providersTask = service.getTVShowWatchProviders(id: id)
+                let detail = try await detailTask
+                let providers = try await providersTask
+                tvShow.update(from: service.mapToTVShow(detail, providers: providers))
+
+                if let newCount = tvShow.numberOfSeasons,
+                   let prev = previousSeasonCount,
+                   newCount > prev {
+                    handleSeasonCountUpdate(for: item, previousSeasonCount: previousSeasonCount)
+                }
+            } catch { }
+        }
+
+        for item in movies {
+            guard let movie = item.movie, let id = Int(movie.id) else { continue }
+            do {
+                async let detailTask = service.getMovieDetails(id: id)
+                async let providersTask = service.getMovieWatchProviders(id: id)
+                let detail = try await detailTask
+                let providers = try await providersTask
+                movie.update(from: service.mapToMovie(detail, providers: providers))
+            } catch { }
+        }
+
+        syncUnwatched(for: .tvShow)
+        syncUnwatched(for: .movie)
+        try? context.save()
+    }
 
     private func loadItems() async {
         guard let context = modelContext else { return }

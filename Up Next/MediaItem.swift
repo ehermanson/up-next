@@ -186,6 +186,25 @@ final class TVShow: MediaItemProtocol {
 }
 
 extension Movie {
+    /// Applies all TMDB-sourced fields from a freshly-fetched instance.
+    /// Add new TMDB fields here — this is the single place to keep in sync.
+    func update(from source: Movie) {
+        title = source.title
+        descriptionText = source.descriptionText
+        cast = source.cast
+        castImagePaths = source.castImagePaths
+        castCharacters = source.castCharacters
+        genres = source.genres
+        networks = source.networks
+        providerCategories = source.providerCategories
+        releaseDate = source.releaseDate
+        runtime = source.runtime
+        voteAverage = source.voteAverage
+        if source.thumbnailURL != nil {
+            thumbnailURL = source.thumbnailURL
+        }
+    }
+
     /// User-facing release year derived from the stored date
     var releaseYear: String? {
         guard let releaseDate, releaseDate.count >= 4 else { return nil }
@@ -194,6 +213,26 @@ extension Movie {
 }
 
 extension TVShow {
+    /// Applies all TMDB-sourced fields from a freshly-fetched instance.
+    /// Add new TMDB fields here — this is the single place to keep in sync.
+    func update(from source: TVShow) {
+        title = source.title
+        descriptionText = source.descriptionText
+        cast = source.cast
+        castImagePaths = source.castImagePaths
+        castCharacters = source.castCharacters
+        genres = source.genres
+        networks = source.networks
+        providerCategories = source.providerCategories
+        numberOfSeasons = source.numberOfSeasons
+        numberOfEpisodes = source.numberOfEpisodes
+        seasonEpisodeCounts = source.seasonEpisodeCounts
+        voteAverage = source.voteAverage
+        if source.thumbnailURL != nil {
+            thumbnailURL = source.thumbnailURL
+        }
+    }
+
     /// User-facing summary of seasons and episodes for display
     var seasonsEpisodesSummary: String? {
         guard let seasons = numberOfSeasons else { return nil }

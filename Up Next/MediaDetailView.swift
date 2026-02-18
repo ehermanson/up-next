@@ -240,24 +240,9 @@ struct MediaDetailView: View {
                 async let providersTask = service.getTVShowWatchProviders(id: id)
                 let detail = try await detailTask
                 let providers = try await providersTask
-                let updatedTVShow = service.mapToTVShow(detail, providers: providers)
+                tvShow.update(from: service.mapToTVShow(detail, providers: providers))
 
-                tvShow.numberOfSeasons = updatedTVShow.numberOfSeasons
-                tvShow.numberOfEpisodes = updatedTVShow.numberOfEpisodes
-                tvShow.descriptionText = updatedTVShow.descriptionText
-                tvShow.cast = updatedTVShow.cast
-                tvShow.castImagePaths = updatedTVShow.castImagePaths
-                tvShow.castCharacters = updatedTVShow.castCharacters
-                tvShow.genres = updatedTVShow.genres
-                tvShow.networks = updatedTVShow.networks
-                tvShow.providerCategories = updatedTVShow.providerCategories
-                tvShow.seasonEpisodeCounts = updatedTVShow.seasonEpisodeCounts
-                tvShow.voteAverage = updatedTVShow.voteAverage
-                if updatedTVShow.thumbnailURL != nil {
-                    tvShow.thumbnailURL = updatedTVShow.thumbnailURL
-                }
-
-                if let newCount = updatedTVShow.numberOfSeasons,
+                if let newCount = tvShow.numberOfSeasons,
                    previousSeasonCount != nil,
                    newCount > (previousSeasonCount ?? 0) {
                     onSeasonCountChanged?(listItem, previousSeasonCount)
@@ -267,21 +252,7 @@ struct MediaDetailView: View {
                 async let providersTask = service.getMovieWatchProviders(id: id)
                 let detail = try await detailTask
                 let providers = try await providersTask
-                let updatedMovie = service.mapToMovie(detail, providers: providers)
-
-                movie.runtime = updatedMovie.runtime
-                movie.descriptionText = updatedMovie.descriptionText
-                movie.cast = updatedMovie.cast
-                movie.castImagePaths = updatedMovie.castImagePaths
-                movie.castCharacters = updatedMovie.castCharacters
-                movie.genres = updatedMovie.genres
-                movie.networks = updatedMovie.networks
-                movie.providerCategories = updatedMovie.providerCategories
-                movie.releaseDate = updatedMovie.releaseDate
-                movie.voteAverage = updatedMovie.voteAverage
-                if updatedMovie.thumbnailURL != nil {
-                    movie.thumbnailURL = updatedMovie.thumbnailURL
-                }
+                movie.update(from: service.mapToMovie(detail, providers: providers))
             }
         } catch {
             detailError = error.localizedDescription
