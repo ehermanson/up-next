@@ -45,6 +45,8 @@ struct TMDBTVShowDetail: Codable {
     let genres: [TMDBGenre]?
     let credits: TMDBCredits?
     let contentRatings: TMDBContentRatingsResponse?
+    let similar: TMDBTVShowSearchResponse?
+    let recommendations: TMDBTVShowSearchResponse?
     let networks: [TMDBNetwork]?
     let seasons: [TMDBSeason]?
 }
@@ -86,6 +88,8 @@ struct TMDBMovieDetail: Codable {
     let genres: [TMDBGenre]?
     let credits: TMDBCredits?
     let releaseDates: TMDBReleaseDatesResponse?
+    let similar: TMDBMovieSearchResponse?
+    let recommendations: TMDBMovieSearchResponse?
 }
 
 // Watch Providers (per country)

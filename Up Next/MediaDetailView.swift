@@ -15,6 +15,8 @@ struct MediaDetailView: View {
     @State private var showingHiddenProviders = false
     @State private var showingTMDBPage = false
     @State private var showingAddToList = false
+    @State private var similarItems: [SimilarMediaItem] = []
+    @State private var recommendedItems: [SimilarMediaItem] = []
 
     private let service = TMDBService.shared
 
@@ -163,6 +165,9 @@ struct MediaDetailView: View {
                                         .ignoresSafeArea()
                                 }
                             }
+
+                            SimilarSection(title: "Similar", items: similarItems)
+                            SimilarSection(title: "Recommended", items: recommendedItems)
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
@@ -247,12 +252,26 @@ struct MediaDetailView: View {
                    newCount > (previousSeasonCount ?? 0) {
                     onSeasonCountChanged?(listItem, previousSeasonCount)
                 }
+
+                similarItems = (detail.similar?.results ?? []).prefix(10).map {
+                    SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
+                }
+                recommendedItems = (detail.recommendations?.results ?? []).prefix(10).map {
+                    SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
+                }
             } else if let movie = listItem.movie {
                 async let detailTask = service.getMovieDetails(id: id)
                 async let providersTask = service.getMovieWatchProviders(id: id)
                 let detail = try await detailTask
                 let providers = try await providersTask
                 movie.update(from: service.mapToMovie(detail, providers: providers))
+
+                similarItems = (detail.similar?.results ?? []).prefix(10).map {
+                    SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
+                }
+                recommendedItems = (detail.recommendations?.results ?? []).prefix(10).map {
+                    SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
+                }
             }
         } catch {
             detailError = error.localizedDescription
@@ -934,6 +953,105 @@ private struct CastSection: View {
             .foregroundStyle(.tertiary)
             .frame(width: imageSize, height: imageSize)
             .glassEffect(.regular, in: .circle)
+    }
+}
+
+// MARK: - Similar / Recommended
+
+struct SimilarMediaItem: Identifiable {
+    let id: Int
+    let title: String
+    let posterPath: String?
+    let voteAverage: Double?
+}
+
+private struct SimilarSection: View {
+    let title: String
+    let items: [SimilarMediaItem]
+
+    private let cardWidth: CGFloat = 120
+    private let posterHeight: CGFloat = 170
+
+    var body: some View {
+        if !items.isEmpty {
+            Divider().padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.headline)
+
+                ScrollView(.horizontal) {
+                    HStack(spacing: 12) {
+                        ForEach(items) { item in
+                            similarCard(for: item)
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                    .padding(.vertical, 2)
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+    }
+
+    private func similarCard(for item: SimilarMediaItem) -> some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .bottomTrailing) {
+                posterImage(path: item.posterPath)
+                    .frame(width: cardWidth, height: posterHeight)
+                    .clipShape(.rect(cornerRadius: 12))
+
+                if let vote = item.voteAverage, vote > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.yellow)
+                        Text(String(format: "%.1f", vote))
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .glassEffect(.regular, in: .capsule)
+                    .padding(6)
+                }
+            }
+
+            Text(item.title)
+                .font(.caption)
+                .fontWeight(.medium)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .frame(width: cardWidth)
+    }
+
+    @ViewBuilder
+    private func posterImage(path: String?) -> some View {
+        if let url = TMDBService.shared.imageURL(path: path, size: .w342) {
+            CachedAsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    posterPlaceholder
+                }
+            }
+        } else {
+            posterPlaceholder
+        }
+    }
+
+    private var posterPlaceholder: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .overlay {
+                Image(systemName: "film")
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
+            }
     }
 }
 
