@@ -17,6 +17,8 @@ struct MediaDetailView: View {
     @State private var showingAddToList = false
     @State private var similarItems: [SimilarMediaItem] = []
     @State private var recommendedItems: [SimilarMediaItem] = []
+    @State private var trailerKey: String?
+    @State private var showingTrailer = false
 
     private let service = TMDBService.shared
 
@@ -141,6 +143,42 @@ struct MediaDetailView: View {
                                 }
                             }
 
+                            if trailerKey != nil {
+                                Divider().padding(.vertical, 4)
+
+                                Button {
+                                    showingTrailer = true
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "play.fill")
+                                            .font(.body)
+                                        Text("Watch Trailer")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(.regular.tint(.red.opacity(0.15)).interactive(), in: .rect(cornerRadius: 16))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .sheet(isPresented: $showingTrailer) {
+                                    NavigationStack {
+                                        YouTubePlayerView(videoID: trailerKey ?? "")
+                                            .ignoresSafeArea()
+                                            .navigationTitle("Trailer")
+                                            .navigationBarTitleDisplayMode(.inline)
+                                            .toolbar {
+                                                ToolbarItem(placement: .confirmationAction) {
+                                                    Button("Done") { showingTrailer = false }
+                                                }
+                                            }
+                                    }
+                                    .presentationDetents([.large])
+                                    .preferredColorScheme(.dark)
+                                }
+                            }
+
                             if let tmdbURL {
                                 Divider().padding(.vertical, 4)
 
@@ -229,6 +267,14 @@ struct MediaDetailView: View {
         }
     }
 
+    private static func bestTrailerKey(from videos: TMDBVideosResponse?) -> String? {
+        guard let results = videos?.results else { return nil }
+        let youtubeVideos = results.filter { $0.site == "YouTube" }
+        if let trailer = youtubeVideos.first(where: { $0.type == "Trailer" }) { return trailer.key }
+        if let teaser = youtubeVideos.first(where: { $0.type == "Teaser" }) { return teaser.key }
+        return youtubeVideos.first?.key
+    }
+
     @MainActor
     private func fetchFullDetails() async {
         guard let media = listItem.media,
@@ -259,6 +305,7 @@ struct MediaDetailView: View {
                 recommendedItems = (detail.recommendations?.results ?? []).prefix(10).map {
                     SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
                 }
+                trailerKey = Self.bestTrailerKey(from: detail.videos)
             } else if let movie = listItem.movie {
                 async let detailTask = service.getMovieDetails(id: id)
                 async let providersTask = service.getMovieWatchProviders(id: id)
@@ -272,6 +319,7 @@ struct MediaDetailView: View {
                 recommendedItems = (detail.recommendations?.results ?? []).prefix(10).map {
                     SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
                 }
+                trailerKey = Self.bestTrailerKey(from: detail.videos)
             }
         } catch {
             detailError = error.localizedDescription

@@ -47,6 +47,7 @@ struct TMDBTVShowDetail: Codable {
     let contentRatings: TMDBContentRatingsResponse?
     let similar: TMDBTVShowSearchResponse?
     let recommendations: TMDBTVShowSearchResponse?
+    let videos: TMDBVideosResponse?
     let networks: [TMDBNetwork]?
     let seasons: [TMDBSeason]?
 }
@@ -90,6 +91,7 @@ struct TMDBMovieDetail: Codable {
     let releaseDates: TMDBReleaseDatesResponse?
     let similar: TMDBMovieSearchResponse?
     let recommendations: TMDBMovieSearchResponse?
+    let videos: TMDBVideosResponse?
 }
 
 // Watch Providers (per country)
@@ -135,6 +137,20 @@ struct TMDBNetwork: Codable {
     let name: String
     let logoPath: String?
     let originCountry: String?
+}
+
+// MARK: - Videos
+
+struct TMDBVideosResponse: Codable {
+    let results: [TMDBVideo]?
+}
+
+struct TMDBVideo: Codable {
+    let key: String
+    let site: String
+    let type: String
+    let name: String
+    let official: Bool?
 }
 
 // MARK: - Content Ratings & Release Dates
