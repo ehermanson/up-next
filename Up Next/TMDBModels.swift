@@ -40,6 +40,7 @@ struct TMDBTVShowDetail: Codable {
     let voteAverage: Double?
     let numberOfSeasons: Int?
     let numberOfEpisodes: Int?
+    let episodeRunTime: [Int]?
     let genres: [TMDBGenre]?
     let credits: TMDBCredits?
     let networks: [TMDBNetwork]?

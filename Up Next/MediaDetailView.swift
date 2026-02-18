@@ -471,6 +471,9 @@ private struct MetadataRow: View {
                 if let episodes = tvShow.numberOfEpisodes {
                     MetadataPill(text: "\(episodes) Episodes")
                 }
+                if let runtime = tvShow.episodeRunTime {
+                    MetadataPill(text: "\(runtime) min/ep")
+                }
             } else if let movie = listItem.movie {
                 if let year = movie.releaseYear {
                     MetadataPill(text: year)

@@ -145,6 +145,9 @@ final class TVShow: MediaItemProtocol {
     /// Episode count per season (index 0 = season 1)
     var seasonEpisodeCounts: [Int] = []
 
+    /// Average episode runtime in minutes
+    var episodeRunTime: Int?
+
     /// TMDB vote average (0–10)
     var voteAverage: Double?
 
@@ -166,6 +169,7 @@ final class TVShow: MediaItemProtocol {
         numberOfSeasons: Int? = nil,
         numberOfEpisodes: Int? = nil,
         seasonEpisodeCounts: [Int] = [],
+        episodeRunTime: Int? = nil,
         voteAverage: Double? = nil
     ) {
         self.id = id
@@ -181,6 +185,7 @@ final class TVShow: MediaItemProtocol {
         self.numberOfSeasons = numberOfSeasons
         self.numberOfEpisodes = numberOfEpisodes
         self.seasonEpisodeCounts = seasonEpisodeCounts
+        self.episodeRunTime = episodeRunTime
         self.voteAverage = voteAverage
     }
 }
@@ -227,6 +232,7 @@ extension TVShow {
         numberOfSeasons = source.numberOfSeasons
         numberOfEpisodes = source.numberOfEpisodes
         seasonEpisodeCounts = source.seasonEpisodeCounts
+        episodeRunTime = source.episodeRunTime
         voteAverage = source.voteAverage
         if source.thumbnailURL != nil {
             thumbnailURL = source.thumbnailURL

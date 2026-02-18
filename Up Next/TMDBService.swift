@@ -323,6 +323,7 @@ final class TMDBService {
             numberOfSeasons: detail.numberOfSeasons,
             numberOfEpisodes: detail.numberOfEpisodes,
             seasonEpisodeCounts: seasonEpisodeCounts,
+            episodeRunTime: detail.episodeRunTime?.first,
             voteAverage: detail.voteAverage
         )
     }
