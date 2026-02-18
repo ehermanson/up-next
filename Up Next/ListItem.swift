@@ -34,6 +34,12 @@ final class ListItem {
     /// Which seasons the user has watched (1-based season numbers)
     var watchedSeasons: [Int] = []
 
+    /// Personal rating: 1 = thumbs up, 0 = meh, -1 = thumbs down, nil = not rated
+    var userRating: Int?
+
+    /// Free-text personal notes
+    var userNotes: String?
+
     /// Computed property to access the media item as a protocol type
     var media: (any MediaItemProtocol)? {
         if let movie = movie {
@@ -53,7 +59,9 @@ final class ListItem {
         isWatched: Bool = false,
         watchedAt: Date? = nil,
         order: Int = 0,
-        watchedSeasons: [Int] = []
+        watchedSeasons: [Int] = [],
+        userRating: Int? = nil,
+        userNotes: String? = nil
     ) {
         self.movie = movie
         self.tvShow = tvShow
@@ -64,6 +72,8 @@ final class ListItem {
         self.watchedAt = watchedAt
         self.order = order
         self.watchedSeasons = watchedSeasons
+        self.userRating = userRating
+        self.userNotes = userNotes
     }
 
     /// The next season number the user should watch, or nil if all watched / no season data
@@ -102,7 +112,9 @@ final class ListItem {
         isWatched: Bool = false,
         watchedAt: Date? = nil,
         order: Int = 0,
-        watchedSeasons: [Int] = []
+        watchedSeasons: [Int] = [],
+        userRating: Int? = nil,
+        userNotes: String? = nil
     ) {
         self.init(
             movie: movie,
@@ -113,7 +125,9 @@ final class ListItem {
             isWatched: isWatched,
             watchedAt: watchedAt,
             order: order,
-            watchedSeasons: watchedSeasons
+            watchedSeasons: watchedSeasons,
+            userRating: userRating,
+            userNotes: userNotes
         )
     }
 
@@ -126,7 +140,9 @@ final class ListItem {
         isWatched: Bool = false,
         watchedAt: Date? = nil,
         order: Int = 0,
-        watchedSeasons: [Int] = []
+        watchedSeasons: [Int] = [],
+        userRating: Int? = nil,
+        userNotes: String? = nil
     ) {
         self.init(
             movie: nil,
@@ -137,7 +153,9 @@ final class ListItem {
             isWatched: isWatched,
             watchedAt: watchedAt,
             order: order,
-            watchedSeasons: watchedSeasons
+            watchedSeasons: watchedSeasons,
+            userRating: userRating,
+            userNotes: userNotes
         )
     }
 }

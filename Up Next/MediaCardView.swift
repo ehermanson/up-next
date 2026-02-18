@@ -13,6 +13,7 @@ struct MediaCardView: View {
     var isCompact: Bool = false
     var voteAverage: Double?
     var genres: [String] = []
+    var userRating: Int?
 
     private let settings = ProviderSettings.shared
 
@@ -81,15 +82,26 @@ struct MediaCardView: View {
                         .lineLimit(isCompact ? 1 : 2)
                     Spacer()
                     if isWatched && !isCompact {
-                        Text("Watched")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .fontDesign(.rounded)
-                            .foregroundStyle(.green)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .glassEffect(.regular.tint(.green.opacity(0.3)), in: .capsule)
-                            .accessibilityLabel("Watched")
+                        HStack(spacing: 6) {
+                            Text("Watched")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .fontDesign(.rounded)
+                                .foregroundStyle(.green)
+                            if let userRating {
+                                Image(systemName: userRating == 1 ? "hand.thumbsup.fill"
+                                      : userRating == 0 ? "minus.circle.fill"
+                                      : "hand.thumbsdown.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(userRating == 1 ? .green
+                                                     : userRating == 0 ? .gray
+                                                     : .red)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .glassEffect(.regular.tint(.green.opacity(0.3)), in: .capsule)
+                        .accessibilityLabel("Watched")
                     }
                 }
                 if let subtitle = subtitle {
@@ -166,6 +178,7 @@ struct MediaCardView: View {
         isWatched: true,
         watchedToggleAction: { _ in },
         voteAverage: 7.8,
-        genres: ["Action", "Adventure", "Thriller"]
+        genres: ["Action", "Adventure", "Thriller"],
+        userRating: 1
     )
 }

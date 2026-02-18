@@ -42,18 +42,36 @@ struct CustomListDetailView: View {
                 GlassEffectContainer(spacing: 8) {
                     List {
                         ForEach((list.items ?? []).sorted(by: { $0.addedAt < $1.addedAt }), id: \.persistentModelID) { item in
-                            CustomListItemRow(item: item)
+                            Button {
+                                selectedItem = item
+                            } label: {
+                                MediaCardView(
+                                    title: item.media?.title ?? "",
+                                    subtitle: customListSubtitle(for: item),
+                                    imageURL: item.media?.thumbnailURL,
+                                    networks: item.media?.networks ?? [],
+                                    providerCategories: item.media?.providerCategories ?? [:],
+                                    isWatched: false,
+                                    watchedToggleAction: { _ in },
+                                    voteAverage: item.media?.voteAverage,
+                                    genres: item.media?.genres ?? []
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())
-                                .onTapGesture {
-                                    selectedItem = item
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 5)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    itemToDelete = item
+                                } label: {
+                                    Label("Remove", systemImage: "trash")
                                 }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        itemToDelete = item
-                                    } label: {
-                                        Label("Remove", systemImage: "trash")
-                                    }
-                                }
+                            }
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -131,6 +149,16 @@ struct CustomListDetailView: View {
         } message: { item in
             Text("Are you sure you want to remove \"\(item.media?.title ?? "this item")\" from \"\(list.name)\"?")
         }
+    }
+
+    private func customListSubtitle(for item: CustomListItem) -> String? {
+        if let tvShow = item.tvShow {
+            return tvShow.seasonsEpisodesSummary
+        } else if let movie = item.movie {
+            let parts = [movie.releaseYear, movie.runtime.map { "\($0) min" }].compactMap { $0 }
+            return parts.isEmpty ? nil : parts.joined(separator: " \u{00b7} ")
+        }
+        return nil
     }
 }
 
@@ -411,69 +439,3 @@ private struct CustomListItemDetailView: View {
     }
 }
 
-private struct CustomListItemRow: View {
-    let item: CustomListItem
-    private let service = TMDBService.shared
-
-    var body: some View {
-        HStack(spacing: 12) {
-            posterImage
-                .frame(width: 60, height: 90)
-                .clipShape(.rect(cornerRadius: 10))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.media?.title ?? "Unknown")
-                    .font(.headline)
-                    .fontDesign(.rounded)
-                    .lineLimit(2)
-
-                if let tvShow = item.tvShow, let summary = tvShow.seasonsEpisodesSummary {
-                    Text(summary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let movie = item.movie {
-                    movieMetadataText(movie: movie)
-                }
-
-                if let genres = item.media?.genres, !genres.isEmpty {
-                    Text(genres.prefix(2).joined(separator: ", "))
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            Spacer()
-        }
-        .padding(10)
-        .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))
-    }
-
-    @ViewBuilder
-    private func movieMetadataText(movie: Movie) -> some View {
-        let parts = [movie.releaseYear, movie.runtime.map { "\($0) min" }].compactMap { $0 }
-        if !parts.isEmpty {
-            Text(parts.joined(separator: " \u{2022} "))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var posterImage: some View {
-        if let url = item.media?.thumbnailURL {
-            CachedAsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    Rectangle().fill(Color.gray.opacity(0.3))
-                }
-            }
-        } else {
-            Rectangle().fill(Color.gray.opacity(0.3))
-        }
-    }
-}

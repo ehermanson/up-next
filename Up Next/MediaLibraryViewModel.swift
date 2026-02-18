@@ -271,33 +271,33 @@ final class MediaLibraryViewModel {
         let tvList = ensureList(for: .tvShow, using: user)
         let movieList = ensureList(for: .movie, using: user)
 
-        // TV show IDs to seed: (tmdbID, isWatched)
-        let tvSeeds: [(id: Int, watched: Bool)] = [
-            (1396, false),   // Breaking Bad
-            (2316, false),   // The Office
-            (97546, false),  // Ted Lasso
-            (76479, false),  // The Boys
-            (82856, false),  // The Mandalorian
-            (94997, false),  // House of the Dragon
-            (103768, false), // Sweet Tooth
-            (95557, false),  // Invincible
-            (1399, true),    // Game of Thrones
-            (66732, true),   // Stranger Things
-            (87108, true),   // Chernobyl
-            (60625, true),   // Rick and Morty
+        // TV show IDs to seed: (tmdbID, isWatched, userRating, userNotes)
+        let tvSeeds: [(id: Int, watched: Bool, rating: Int?, notes: String?)] = [
+            (1396, false, nil, nil),   // Breaking Bad
+            (2316, false, nil, nil),   // The Office
+            (97546, false, nil, nil),  // Ted Lasso
+            (76479, false, nil, nil),  // The Boys
+            (82856, false, nil, nil),  // The Mandalorian
+            (94997, false, nil, nil),  // House of the Dragon
+            (103768, false, nil, nil), // Sweet Tooth
+            (95557, false, nil, nil),  // Invincible
+            (1399, true, 0, "Great first 4 seasons, ending was disappointing"),  // Game of Thrones
+            (66732, true, 1, nil),          // Stranger Things
+            (87108, true, 1, "Intense and brilliantly made"),  // Chernobyl
+            (60625, true, -1, "Got too weird after season 3"), // Rick and Morty
         ]
 
-        // Movie IDs to seed: (tmdbID, isWatched)
-        let movieSeeds: [(id: Int, watched: Bool)] = [
-            (603692, false), // John Wick: Chapter 4
-            (693134, false), // Dune: Part Two
-            (545611, false), // Everything Everywhere All at Once
-            (346698, false), // Barbie
-            (872585, false), // Oppenheimer
-            (438631, true),  // Dune
-            (299536, true),  // Avengers: Infinity War
-            (550, true),     // Fight Club
-            (278, true),     // The Shawshank Redemption
+        // Movie IDs to seed: (tmdbID, isWatched, userRating, userNotes)
+        let movieSeeds: [(id: Int, watched: Bool, rating: Int?, notes: String?)] = [
+            (603692, false, nil, nil), // John Wick: Chapter 4
+            (693134, false, nil, nil), // Dune: Part Two
+            (545611, false, nil, nil), // Everything Everywhere All at Once
+            (346698, false, nil, nil), // Barbie
+            (872585, false, nil, nil), // Oppenheimer
+            (438631, true, 1, "Visually stunning, can't wait for Part Two"),   // Dune
+            (299536, true, 1, nil),    // Avengers: Infinity War
+            (550, true, 1, "First rule: you don't talk about it"),             // Fight Club
+            (278, true, 1, "Perfect film"),  // The Shawshank Redemption
         ]
 
         // Fetch all TMDB details concurrently (raw Codable structs, not @Model objects)
@@ -354,7 +354,9 @@ final class MediaLibraryViewModel {
                 addedAt: Date().addingTimeInterval(-86400 * daysAgo),
                 isWatched: seed.watched,
                 watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
-                order: index
+                order: index,
+                userRating: seed.rating,
+                userNotes: seed.notes
             )
             context.insert(item)
             seedTVItems.append(item)
@@ -373,7 +375,9 @@ final class MediaLibraryViewModel {
                 addedAt: Date().addingTimeInterval(-86400 * daysAgo),
                 isWatched: seed.watched,
                 watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
-                order: index
+                order: index,
+                userRating: seed.rating,
+                userNotes: seed.notes
             )
             context.insert(item)
             seedMovieItems.append(item)
@@ -383,6 +387,42 @@ final class MediaLibraryViewModel {
         movies = seedMovieItems
         syncUnwatched(for: .tvShow)
         syncUnwatched(for: .movie)
+
+        // Seed a "Christmas Stuff" custom list
+        let christmasList = CustomList(name: "Christmas Stuff", iconName: "gift")
+        context.insert(christmasList)
+
+        let christmasMovieIDs = [10719, 12540, 771, 13675]  // Elf, Four Christmases, Home Alone, Rudolph
+        let christmasDetails: [(Int, TMDBMovieDetail?, TMDBWatchProviderCountry?)] = await withTaskGroup(
+            of: (Int, TMDBMovieDetail?, TMDBWatchProviderCountry?).self
+        ) { group in
+            for (index, id) in christmasMovieIDs.enumerated() {
+                group.addTask {
+                    do {
+                        async let detailTask = service.getMovieDetails(id: id)
+                        async let providersTask = service.getMovieWatchProviders(id: id)
+                        let detail = try await detailTask
+                        let providers = try await providersTask
+                        return (index, detail, providers)
+                    } catch {
+                        return (index, nil, nil)
+                    }
+                }
+            }
+            var results: [(Int, TMDBMovieDetail?, TMDBWatchProviderCountry?)] = []
+            for await result in group { results.append(result) }
+            return results.sorted { $0.0 < $1.0 }
+        }
+
+        var christmasItems: [CustomListItem] = []
+        for (_, detail, providers) in christmasDetails {
+            guard let detail else { continue }
+            let movie = service.mapToMovie(detail, providers: providers)
+            let item = CustomListItem(movie: movie, customList: christmasList, addedAt: Date())
+            context.insert(item)
+            christmasItems.append(item)
+        }
+        christmasList.items = christmasItems
 
         try? context.save()
     }

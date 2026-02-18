@@ -404,7 +404,8 @@ struct MediaListRow: View {
                     onWatchedToggled()
                 },
                 voteAverage: item.media?.voteAverage,
-                genres: item.media?.genres ?? []
+                genres: item.media?.genres ?? [],
+                userRating: item.userRating
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -472,7 +473,9 @@ struct MediaListRow: View {
             addedAt: Date(),
             isWatched: true,
             watchedAt: Date(),
-            order: 0
+            order: 0,
+            userRating: 1,
+            userNotes: "Loved every episode"
         ),
         ListItem(
             tvShow: TVShow(
@@ -486,6 +489,22 @@ struct MediaListRow: View {
             isWatched: false,
             watchedAt: nil,
             order: 1
+        ),
+        ListItem(
+            tvShow: TVShow(
+                id: "tv-4",
+                title: "Stub TV Show 4",
+                thumbnailURL: URL(string: "https://example.com/tvshow4.jpg"),
+                networks: sampleNetworks,
+                providerCategories: sampleProviderCategories
+            ),
+            list: list,
+            addedBy: user,
+            addedAt: Date(),
+            isWatched: true,
+            watchedAt: Date(),
+            order: 2,
+            userRating: -1
         ),
     ]
 

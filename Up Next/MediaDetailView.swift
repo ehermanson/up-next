@@ -102,6 +102,13 @@ struct MediaDetailView: View {
                                 Divider().padding(.vertical, 4)
 
                                 WatchedToggleCard(listItem: $listItem)
+
+                                if listItem.isWatched {
+                                    Divider().padding(.vertical, 4)
+
+                                    UserRatingCard(listItem: $listItem)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
                             }
 
                             if let customListVM = customListViewModel, !customListVM.customLists.isEmpty {
@@ -603,6 +610,54 @@ private struct WatchedToggleCard: View {
     }
 }
 
+private struct UserRatingCard: View {
+    @Binding var listItem: ListItem
+
+    private func isSelected(_ value: Int) -> Bool {
+        listItem.userRating == value
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Your Rating")
+                .font(.headline)
+
+            HStack(spacing: 12) {
+                ratingButton(value: -1, icon: "hand.thumbsdown.fill", tint: .red)
+                ratingButton(value: 0, icon: "minus.circle.fill", tint: .gray)
+                ratingButton(value: 1, icon: "hand.thumbsup.fill", tint: .green)
+            }
+
+            TextField("Add notes...", text: Binding(
+                get: { listItem.userNotes ?? "" },
+                set: { listItem.userNotes = $0.isEmpty ? nil : $0 }
+            ), axis: .vertical)
+                .lineLimit(1...5)
+                .font(.subheadline)
+                .padding(12)
+                .glassEffect(.regular.tint(.white.opacity(0.05)), in: .rect(cornerRadius: 14))
+        }
+    }
+
+    private func ratingButton(value: Int, icon: String, tint: Color) -> some View {
+        let selected = isSelected(value)
+        return Button {
+            listItem.userRating = selected ? nil : value
+        } label: {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(selected ? tint : .secondary.opacity(0.5))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .glassEffect(
+                    .regular.tint(selected ? tint.opacity(0.2) : .clear),
+                    in: .rect(cornerRadius: 16)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct SeasonChecklistCard: View {
     @Binding var listItem: ListItem
 
@@ -894,9 +949,11 @@ private enum MediaDetailViewPreviewData {
             list: list,
             addedBy: user,
             addedAt: Date(),
-            isWatched: false,
-            watchedAt: nil,
-            order: 0
+            isWatched: true,
+            watchedAt: Date(),
+            order: 0,
+            userRating: 1,
+            userNotes: "Incredible action sequences. Best one in the series."
         )
     }
 
@@ -922,7 +979,9 @@ private enum MediaDetailViewPreviewData {
             addedAt: Date(),
             isWatched: true,
             watchedAt: Date(),
-            order: 1
+            order: 1,
+            userRating: 0,
+            userNotes: "Great first 4 seasons, fell off hard at the end."
         )
     }
 }
