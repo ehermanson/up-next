@@ -41,10 +41,18 @@ struct TMDBTVShowDetail: Codable {
     let numberOfSeasons: Int?
     let numberOfEpisodes: Int?
     let episodeRunTime: [Int]?
+    let nextEpisodeToAir: TMDBEpisode?
     let genres: [TMDBGenre]?
     let credits: TMDBCredits?
     let networks: [TMDBNetwork]?
     let seasons: [TMDBSeason]?
+}
+
+struct TMDBEpisode: Codable {
+    let airDate: String?
+    let episodeNumber: Int?
+    let seasonNumber: Int?
+    let name: String?
 }
 
 struct TMDBSeason: Codable {

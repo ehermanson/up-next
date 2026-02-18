@@ -148,6 +148,9 @@ final class TVShow: MediaItemProtocol {
     /// Average episode runtime in minutes
     var episodeRunTime: Int?
 
+    /// Next episode air date in "YYYY-MM-DD" format (if the show is still airing)
+    var nextEpisodeAirDate: String?
+
     /// TMDB vote average (0–10)
     var voteAverage: Double?
 
@@ -170,6 +173,7 @@ final class TVShow: MediaItemProtocol {
         numberOfEpisodes: Int? = nil,
         seasonEpisodeCounts: [Int] = [],
         episodeRunTime: Int? = nil,
+        nextEpisodeAirDate: String? = nil,
         voteAverage: Double? = nil
     ) {
         self.id = id
@@ -186,6 +190,7 @@ final class TVShow: MediaItemProtocol {
         self.numberOfEpisodes = numberOfEpisodes
         self.seasonEpisodeCounts = seasonEpisodeCounts
         self.episodeRunTime = episodeRunTime
+        self.nextEpisodeAirDate = nextEpisodeAirDate
         self.voteAverage = voteAverage
     }
 }
@@ -233,6 +238,7 @@ extension TVShow {
         numberOfEpisodes = source.numberOfEpisodes
         seasonEpisodeCounts = source.seasonEpisodeCounts
         episodeRunTime = source.episodeRunTime
+        nextEpisodeAirDate = source.nextEpisodeAirDate
         voteAverage = source.voteAverage
         if source.thumbnailURL != nil {
             thumbnailURL = source.thumbnailURL

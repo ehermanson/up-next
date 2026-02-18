@@ -474,6 +474,9 @@ private struct MetadataRow: View {
                 if let runtime = tvShow.episodeRunTime {
                     MetadataPill(text: "\(runtime) min/ep")
                 }
+                if let airDate = tvShow.nextEpisodeAirDate, let formatted = Self.formatAirDate(airDate) {
+                    NextAirDatePill(text: formatted)
+                }
             } else if let movie = listItem.movie {
                 if let year = movie.releaseYear {
                     MetadataPill(text: year)
@@ -486,6 +489,36 @@ private struct MetadataRow: View {
                 RatingPill(vote: vote)
             }
         }
+    }
+}
+
+extension MetadataRow {
+    static func formatAirDate(_ dateString: String) -> String? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: dateString) else { return nil }
+        let display = DateFormatter()
+        display.dateFormat = "MMM d"
+        return "Next: \(display.string(from: date))"
+    }
+}
+
+private struct NextAirDatePill: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "calendar")
+                .font(.caption)
+                .foregroundStyle(.blue)
+            Text(text)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .glassEffect(.regular, in: .capsule)
     }
 }
 
