@@ -44,6 +44,7 @@ struct TMDBTVShowDetail: Codable {
     let nextEpisodeToAir: TMDBEpisode?
     let genres: [TMDBGenre]?
     let credits: TMDBCredits?
+    let contentRatings: TMDBContentRatingsResponse?
     let networks: [TMDBNetwork]?
     let seasons: [TMDBSeason]?
 }
@@ -84,6 +85,7 @@ struct TMDBMovieDetail: Codable {
     let runtime: Int?
     let genres: [TMDBGenre]?
     let credits: TMDBCredits?
+    let releaseDates: TMDBReleaseDatesResponse?
 }
 
 // Watch Providers (per country)
@@ -129,6 +131,41 @@ struct TMDBNetwork: Codable {
     let name: String
     let logoPath: String?
     let originCountry: String?
+}
+
+// MARK: - Content Ratings & Release Dates
+
+struct TMDBContentRatingsResponse: Codable {
+    let results: [TMDBContentRating]?
+}
+
+struct TMDBContentRating: Codable {
+    let iso31661: String
+    let rating: String
+
+    enum CodingKeys: String, CodingKey {
+        case iso31661 = "iso_3166_1"
+        case rating
+    }
+}
+
+struct TMDBReleaseDatesResponse: Codable {
+    let results: [TMDBReleaseDateCountry]?
+}
+
+struct TMDBReleaseDateCountry: Codable {
+    let iso31661: String
+    let releaseDates: [TMDBReleaseDateEntry]?
+
+    enum CodingKeys: String, CodingKey {
+        case iso31661 = "iso_3166_1"
+        case releaseDates = "release_dates"
+    }
+}
+
+struct TMDBReleaseDateEntry: Codable {
+    let certification: String?
+    let type: Int?
 }
 
 // MARK: - Watch Provider List Models

@@ -63,7 +63,7 @@ final class TMDBService {
         let endpoint = "/tv/\(id)"
         return try await performRequest(
             endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "append_to_response", value: "credits")]
+            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,content_ratings")]
         )
     }
 
@@ -72,7 +72,7 @@ final class TMDBService {
         let endpoint = "/movie/\(id)"
         return try await performRequest(
             endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "append_to_response", value: "credits")]
+            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,release_dates")]
         )
     }
 
@@ -252,6 +252,32 @@ final class TMDBService {
         )
     }
 
+    /// Extract the content rating for the user's region from a TV show detail response
+    private func extractTVContentRating(from detail: TMDBTVShowDetail) -> String? {
+        guard let ratings = detail.contentRatings?.results else { return nil }
+        let region = currentRegion
+        if let match = ratings.first(where: { $0.iso31661 == region }), !match.rating.isEmpty {
+            return match.rating
+        }
+        if region != "US", let us = ratings.first(where: { $0.iso31661 == "US" }), !us.rating.isEmpty {
+            return us.rating
+        }
+        return nil
+    }
+
+    /// Extract the certification for the user's region from a movie detail response
+    private func extractMovieCertification(from detail: TMDBMovieDetail) -> String? {
+        guard let countries = detail.releaseDates?.results else { return nil }
+        let region = currentRegion
+        func certification(for countryCode: String) -> String? {
+            guard let country = countries.first(where: { $0.iso31661 == countryCode }) else { return nil }
+            return country.releaseDates?.first(where: { $0.certification?.isEmpty == false })?.certification
+        }
+        if let cert = certification(for: region) { return cert }
+        if region != "US", let cert = certification(for: "US") { return cert }
+        return nil
+    }
+
     /// Convert TMDB TV show detail + optional watch providers to TVShow model
     func mapToTVShow(_ detail: TMDBTVShowDetail, providers: TMDBWatchProviderCountry? = nil) -> TVShow {
         let castMembers = detail.credits?.cast?.prefix(10) ?? []
@@ -323,6 +349,7 @@ final class TMDBService {
             numberOfSeasons: detail.numberOfSeasons,
             numberOfEpisodes: detail.numberOfEpisodes,
             seasonEpisodeCounts: seasonEpisodeCounts,
+            contentRating: extractTVContentRating(from: detail),
             episodeRunTime: detail.episodeRunTime?.first,
             nextEpisodeAirDate: detail.nextEpisodeToAir?.airDate,
             voteAverage: detail.voteAverage
@@ -450,6 +477,7 @@ final class TMDBService {
             castCharacters: castCharacters,
             genres: genres,
             providerCategories: categories,
+            contentRating: extractMovieCertification(from: detail),
             releaseDate: detail.releaseDate,
             runtime: detail.runtime,
             voteAverage: detail.voteAverage

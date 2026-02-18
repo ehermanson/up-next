@@ -68,6 +68,9 @@ final class Movie: MediaItemProtocol {
     /// Provider ID → category ("stream", "ads", "rent", "buy")
     var providerCategories: [Int: String] = [:]
 
+    /// Content rating (e.g., "PG-13", "R")
+    var contentRating: String?
+
     /// Release date in "YYYY-MM-DD" format (if known)
     var releaseDate: String?
 
@@ -92,6 +95,7 @@ final class Movie: MediaItemProtocol {
         castCharacters: [String] = [],
         genres: [String] = [],
         providerCategories: [Int: String] = [:],
+        contentRating: String? = nil,
         releaseDate: String? = nil,
         runtime: Int? = nil,
         voteAverage: Double? = nil
@@ -106,6 +110,7 @@ final class Movie: MediaItemProtocol {
         self.castCharacters = castCharacters
         self.genres = genres
         self.providerCategories = providerCategories
+        self.contentRating = contentRating
         self.releaseDate = releaseDate
         self.runtime = runtime
         self.voteAverage = voteAverage
@@ -148,6 +153,9 @@ final class TVShow: MediaItemProtocol {
     /// Average episode runtime in minutes
     var episodeRunTime: Int?
 
+    /// Content rating (e.g., "TV-MA", "TV-PG")
+    var contentRating: String?
+
     /// Next episode air date in "YYYY-MM-DD" format (if the show is still airing)
     var nextEpisodeAirDate: String?
 
@@ -172,6 +180,7 @@ final class TVShow: MediaItemProtocol {
         numberOfSeasons: Int? = nil,
         numberOfEpisodes: Int? = nil,
         seasonEpisodeCounts: [Int] = [],
+        contentRating: String? = nil,
         episodeRunTime: Int? = nil,
         nextEpisodeAirDate: String? = nil,
         voteAverage: Double? = nil
@@ -189,6 +198,7 @@ final class TVShow: MediaItemProtocol {
         self.numberOfSeasons = numberOfSeasons
         self.numberOfEpisodes = numberOfEpisodes
         self.seasonEpisodeCounts = seasonEpisodeCounts
+        self.contentRating = contentRating
         self.episodeRunTime = episodeRunTime
         self.nextEpisodeAirDate = nextEpisodeAirDate
         self.voteAverage = voteAverage
@@ -207,6 +217,7 @@ extension Movie {
         genres = source.genres
         networks = source.networks
         providerCategories = source.providerCategories
+        contentRating = source.contentRating
         releaseDate = source.releaseDate
         runtime = source.runtime
         voteAverage = source.voteAverage
@@ -237,6 +248,7 @@ extension TVShow {
         numberOfSeasons = source.numberOfSeasons
         numberOfEpisodes = source.numberOfEpisodes
         seasonEpisodeCounts = source.seasonEpisodeCounts
+        contentRating = source.contentRating
         episodeRunTime = source.episodeRunTime
         nextEpisodeAirDate = source.nextEpisodeAirDate
         voteAverage = source.voteAverage

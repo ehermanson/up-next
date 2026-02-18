@@ -462,8 +462,15 @@ private struct MetadataRow: View {
         listItem.tvShow?.voteAverage ?? listItem.movie?.voteAverage
     }
 
+    private var contentRating: String? {
+        listItem.tvShow?.contentRating ?? listItem.movie?.contentRating
+    }
+
     var body: some View {
         HStack(spacing: 8) {
+            if let rating = contentRating, !rating.isEmpty {
+                ContentRatingPill(text: rating)
+            }
             if let tvShow = listItem.tvShow {
                 if let seasons = tvShow.numberOfSeasons {
                     MetadataPill(text: "\(seasons) Season\(seasons == 1 ? "" : "s")")
@@ -519,6 +526,20 @@ private struct NextAirDatePill: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .glassEffect(.regular, in: .capsule)
+    }
+}
+
+private struct ContentRatingPill: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .fontWeight(.bold)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .glassEffect(.regular.tint(.white.opacity(0.1)), in: .rect(cornerRadius: 6))
     }
 }
 
