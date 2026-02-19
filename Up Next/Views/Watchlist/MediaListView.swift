@@ -178,11 +178,28 @@ struct MediaListView: View {
                     }
                 }
 
-                if canReorder {
+                if isEditingOrder {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button(isEditingOrder ? "Done" : "Edit") {
+                        Button("Done") {
                             withAnimation {
-                                isEditingOrder.toggle()
+                                isEditingOrder = false
+                            }
+                        }
+                    }
+                } else {
+                    if let onSearchTapped {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(action: onSearchTapped) {
+                                Image(systemName: "plus")
+                            }
+                        }
+                    }
+                    if canReorder {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Edit") {
+                                withAnimation {
+                                    isEditingOrder = true
+                                }
                             }
                         }
                     }

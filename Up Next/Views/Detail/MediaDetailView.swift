@@ -536,6 +536,7 @@ private struct HiddenProvidersPopover: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Hidden Providers")
                 .font(.subheadline)
+                .foregroundStyle(.tertiary)
                 .fontWeight(.semibold)
 
             if hasCategories {

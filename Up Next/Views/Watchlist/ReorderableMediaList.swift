@@ -1,18 +1,25 @@
 import SwiftUI
 
-/// A UITableView subclass that reports its content height as intrinsic size,
+/// A UITableView subclass that can report its content height as intrinsic size,
 /// allowing SwiftUI to size it correctly when scroll is disabled.
+/// When scrolling is enabled, it defers to the proposed size so the view
+/// stays within the visible area and scrolls normally.
 class IntrinsicTableView: UITableView {
+    var reportIntrinsicHeight = true
+
     override var contentSize: CGSize {
         didSet {
-            if oldValue.height != contentSize.height {
+            if reportIntrinsicHeight && oldValue.height != contentSize.height {
                 invalidateIntrinsicContentSize()
             }
         }
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: contentSize.height)
+        guard reportIntrinsicHeight else {
+            return super.intrinsicContentSize
+        }
+        return CGSize(width: UIView.noIntrinsicMetric, height: contentSize.height)
     }
 }
 
@@ -33,6 +40,7 @@ struct ReorderableMediaList: UIViewRepresentable {
         tv.dataSource = context.coordinator
         tv.delegate = context.coordinator
         tv.isScrollEnabled = isScrollEnabled
+        tv.reportIntrinsicHeight = !isScrollEnabled
         tv.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: isScrollEnabled ? 20 : 0, right: 0)
 
         context.coordinator.dataItems = items
@@ -45,6 +53,7 @@ struct ReorderableMediaList: UIViewRepresentable {
 
         tv.setEditing(isEditing, animated: true)
         tv.isScrollEnabled = isScrollEnabled
+        tv.reportIntrinsicHeight = !isScrollEnabled
         tv.allowsSelectionDuringEditing = false
         tv.allowsSelection = !isEditing
 

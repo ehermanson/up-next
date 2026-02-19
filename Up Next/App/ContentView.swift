@@ -7,7 +7,6 @@ struct ContentView: View {
         case movies
         case myLists
         case discover
-        case search
     }
 
     @Environment(\.modelContext) private var modelContext
@@ -17,12 +16,12 @@ struct ContentView: View {
     @State private var expandedTVShowID: String? = nil
     @State private var expandedMovieID: String? = nil
     @State private var selectedTab: MediaTab = .tvShows
-    @State private var previousTab: MediaTab = .tvShows
     @State private var selectedTVGenre: String? = nil
     @State private var selectedMovieGenre: String? = nil
     @State private var selectedTVProviderCategory: String? = nil
     @State private var selectedMovieProviderCategory: String? = nil
     @State private var showingSettings = false
+    @State private var showingSearch = false
 
     @State private var toastMessage: String?
 
@@ -146,10 +145,8 @@ struct ContentView: View {
                     selectedMovieProviderCategory = nil
                 }
             }
-            .onChange(of: selectedTab) { oldValue, _ in
-                if oldValue != .search && oldValue != .discover {
-                    previousTab = oldValue
-                }
+            .sheet(isPresented: $showingSearch) {
+                searchSheet
             }
     }
 
@@ -166,9 +163,6 @@ struct ContentView: View {
             }
             Tab("Discover", systemImage: "sparkles", value: .discover) {
                 discoverTab
-            }
-            Tab("Search", systemImage: "magnifyingglass", value: .search, role: .search) {
-                searchTab
             }
         }
     }
@@ -215,7 +209,7 @@ struct ContentView: View {
             onWatchedToggled: {
                 viewModel.persistChanges(for: .tvShow)
             },
-            onSearchTapped: { selectedTab = .search },
+            onSearchTapped: { showingSearch = true },
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .tvShow)
@@ -276,7 +270,7 @@ struct ContentView: View {
             onWatchedToggled: {
                 viewModel.persistChanges(for: .movie)
             },
-            onSearchTapped: { selectedTab = .search },
+            onSearchTapped: { showingSearch = true },
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .movie)
@@ -314,7 +308,7 @@ struct ContentView: View {
     }
 
     private var searchContext: WatchlistSearchView.SearchContext {
-        switch previousTab {
+        switch selectedTab {
         case .tvShows: .tvShows
         case .movies: .movies
         case .myLists: .myLists
@@ -334,7 +328,7 @@ struct ContentView: View {
         )
     }
 
-    private var searchTab: some View {
+    private var searchSheet: some View {
         WatchlistSearchView(
             context: searchContext,
             existingTVShowIDs: existingIDs(for: .tvShow),
@@ -342,7 +336,6 @@ struct ContentView: View {
             onTVShowAdded: { viewModel.addTVShow($0) },
             onMovieAdded: { viewModel.addMovie($0) },
             customListViewModel: customListViewModel,
-            onDone: { selectedTab = previousTab },
             onItemAdded: { title in
                 toastMessage = "\(title) has been added"
             }

@@ -354,15 +354,6 @@ struct WatchlistSearchView: View {
         selectedListID = nil
     }
 
-    private func clearSearchState() {
-        searchTask?.cancel()
-        searchText = ""
-        tvShowResults = []
-        movieResults = []
-        isLoading = false
-        errorMessage = nil
-    }
-
     private func scheduleSearch(for query: String) {
         searchTask?.cancel()
 
@@ -392,6 +383,10 @@ struct WatchlistSearchView: View {
             } else {
                 movieResults = try await service.searchMovies(query: query)
             }
+        } catch is CancellationError {
+            return
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -404,8 +399,6 @@ struct WatchlistSearchView: View {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
         onItemAdded?(result.name)
-        clearSearchState()
-        performDone()
         Task {
             let tvShow: TVShow
             do {
@@ -429,8 +422,6 @@ struct WatchlistSearchView: View {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
         onItemAdded?(result.title)
-        clearSearchState()
-        performDone()
         Task {
             let movie: Movie
             do {

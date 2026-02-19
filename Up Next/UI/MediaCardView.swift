@@ -49,12 +49,21 @@ struct MediaCardView: View {
         isCompact ? CGSize(width: 54, height: 78) : CGSize(width: 70, height: 100)
     }
 
-    private var imageCornerRadius: CGFloat {
-        isCompact ? 12 : 14
+    private var cardCornerRadius: CGFloat {
+        isCompact ? 16 : 20
+    }
+
+    private var leadingClipShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: cardCornerRadius,
+            bottomLeadingRadius: cardCornerRadius,
+            bottomTrailingRadius: 0,
+            topTrailingRadius: 0
+        )
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: isCompact ? 12 : 14) {
+        HStack(spacing: isCompact ? 10 : 12) {
             if let imageURL = imageURL {
                 CachedAsyncImage(url: imageURL) { phase in
                     switch phase {
@@ -64,14 +73,16 @@ struct MediaCardView: View {
                         Color.gray.opacity(0.1)
                     }
                 }
-                .frame(width: imageSize.width, height: imageSize.height)
-                .clipShape(.rect(cornerRadius: imageCornerRadius))
+                .frame(width: imageSize.width)
+                .frame(minHeight: imageSize.height, maxHeight: .infinity)
+                .clipShape(leadingClipShape)
                 .clipped()
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
-                    .frame(width: imageSize.width, height: imageSize.height)
-                    .clipShape(.rect(cornerRadius: imageCornerRadius))
+                    .frame(width: imageSize.width)
+                    .frame(minHeight: imageSize.height, maxHeight: .infinity)
+                    .clipShape(leadingClipShape)
             }
 
             VStack(alignment: .leading, spacing: isCompact ? 3 : 5) {
@@ -138,9 +149,10 @@ struct MediaCardView: View {
                     }
                 }
             }
+            .padding(.vertical, isCompact ? 10 : 12)
+            .padding(.trailing, isCompact ? 10 : 12)
         }
-        .padding(.all, isCompact ? 12 : 14)
-        .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: isCompact ? 16 : 20))
+        .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: cardCornerRadius))
     }
 }
 
