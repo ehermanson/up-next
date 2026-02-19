@@ -162,11 +162,6 @@ struct TMDBContentRatingsResponse: Codable {
 struct TMDBContentRating: Codable {
     let iso31661: String
     let rating: String
-
-    enum CodingKeys: String, CodingKey {
-        case iso31661 = "iso_3166_1"
-        case rating
-    }
 }
 
 struct TMDBReleaseDatesResponse: Codable {
@@ -176,11 +171,6 @@ struct TMDBReleaseDatesResponse: Codable {
 struct TMDBReleaseDateCountry: Codable {
     let iso31661: String
     let releaseDates: [TMDBReleaseDateEntry]?
-
-    enum CodingKeys: String, CodingKey {
-        case iso31661 = "iso_3166_1"
-        case releaseDates = "release_dates"
-    }
 }
 
 struct TMDBReleaseDateEntry: Codable {

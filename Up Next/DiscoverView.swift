@@ -38,7 +38,11 @@ struct DiscoverView: View {
                 onRemove: { detailListItem = nil },
                 onAdd: {
                     addFromDetail(item)
-                }
+                },
+                existingIDs: existingTVShowIDs.union(existingMovieIDs).union(addedIDs),
+                onTVShowAdded: { onTVShowAdded($0) },
+                onMovieAdded: { onMovieAdded($0) },
+                onItemAdded: onItemAdded
             )
         }
     }

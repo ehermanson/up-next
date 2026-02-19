@@ -8,6 +8,10 @@ struct MediaDetailView: View {
     var onSeasonCountChanged: ((ListItem, Int?) -> Void)?
     var customListViewModel: CustomListViewModel?
     var onAdd: (() -> Void)?
+    var existingIDs: Set<String> = []
+    var onTVShowAdded: ((TVShow) -> Void)?
+    var onMovieAdded: ((Movie) -> Void)?
+    var onItemAdded: ((String) -> Void)?
 
     @State private var isLoadingDetails = false
     @State private var detailError: String?
@@ -19,6 +23,8 @@ struct MediaDetailView: View {
     @State private var recommendedItems: [SimilarMediaItem] = []
     @State private var trailerKey: String?
     @State private var showingTrailer = false
+    @State private var selectedSimilarItem: ListItem?
+    @State private var addedSimilarIDs: Set<String> = []
 
     private let service = TMDBService.shared
 
@@ -163,19 +169,10 @@ struct MediaDetailView: View {
                                 .buttonStyle(.plain)
                                 .foregroundStyle(.secondary)
                                 .sheet(isPresented: $showingTrailer) {
-                                    NavigationStack {
-                                        YouTubePlayerView(videoID: trailerKey ?? "")
+                                    if let url = URL(string: "https://www.youtube.com/watch?v=\(trailerKey ?? "")") {
+                                        SafariView(url: url)
                                             .ignoresSafeArea()
-                                            .navigationTitle("Trailer")
-                                            .navigationBarTitleDisplayMode(.inline)
-                                            .toolbar {
-                                                ToolbarItem(placement: .confirmationAction) {
-                                                    Button("Done") { showingTrailer = false }
-                                                }
-                                            }
                                     }
-                                    .presentationDetents([.large])
-                                    .preferredColorScheme(.dark)
                                 }
                             }
 
@@ -204,8 +201,20 @@ struct MediaDetailView: View {
                                 }
                             }
 
-                            SimilarSection(title: "Similar", items: similarItems)
-                            SimilarSection(title: "Recommended", items: recommendedItems)
+                            SimilarSection(
+                                title: "Similar",
+                                items: similarItems,
+                                existingIDs: existingIDs.union(addedSimilarIDs),
+                                onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addSimilarItem($0) } : nil,
+                                onTap: { openSimilarDetail($0) }
+                            )
+                            SimilarSection(
+                                title: "Recommended",
+                                items: recommendedItems,
+                                existingIDs: existingIDs.union(addedSimilarIDs),
+                                onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addSimilarItem($0) } : nil,
+                                onTap: { openSimilarDetail($0) }
+                            )
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
@@ -251,9 +260,7 @@ struct MediaDetailView: View {
                 }
             }
             .task {
-                if needsFullDetails {
-                    await fetchFullDetails()
-                }
+                await fetchFullDetails()
             }
             .alert("Remove from list?", isPresented: $isConfirmingRemoval) {
                 Button("Remove", role: .destructive) {
@@ -263,6 +270,18 @@ struct MediaDetailView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will delete this title from your watch list.")
+            }
+            .sheet(item: $selectedSimilarItem) { item in
+                MediaDetailView(
+                    listItem: similarDetailBinding(for: item),
+                    dismiss: { selectedSimilarItem = nil },
+                    onRemove: { selectedSimilarItem = nil },
+                    onAdd: { addSimilarFromDetail(item) },
+                    existingIDs: existingIDs.union(addedSimilarIDs),
+                    onTVShowAdded: onTVShowAdded,
+                    onMovieAdded: onMovieAdded,
+                    onItemAdded: onItemAdded
+                )
             }
         }
     }
@@ -281,8 +300,11 @@ struct MediaDetailView: View {
             let id = Int(media.id)
         else { return }
 
-        isLoadingDetails = true
-        detailError = nil
+        let showLoading = needsFullDetails
+        if showLoading {
+            isLoadingDetails = true
+            detailError = nil
+        }
 
         do {
             if let tvShow = listItem.tvShow {
@@ -300,10 +322,10 @@ struct MediaDetailView: View {
                 }
 
                 similarItems = (detail.similar?.results ?? []).prefix(10).map {
-                    SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
+                    SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)
                 }
                 recommendedItems = (detail.recommendations?.results ?? []).prefix(10).map {
-                    SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
+                    SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)
                 }
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
             } else if let movie = listItem.movie {
@@ -314,18 +336,82 @@ struct MediaDetailView: View {
                 movie.update(from: service.mapToMovie(detail, providers: providers))
 
                 similarItems = (detail.similar?.results ?? []).prefix(10).map {
-                    SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
+                    SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
                 }
                 recommendedItems = (detail.recommendations?.results ?? []).prefix(10).map {
-                    SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage)
+                    SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
                 }
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
             }
         } catch {
-            detailError = error.localizedDescription
+            if showLoading {
+                detailError = error.localizedDescription
+            }
         }
 
         isLoadingDetails = false
+    }
+
+    private func addSimilarItem(_ item: SimilarMediaItem) {
+        let stringID = String(item.id)
+        guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
+        addedSimilarIDs.insert(stringID)
+        onItemAdded?(item.title)
+
+        Task {
+            if item.mediaType == .tvShow {
+                let tvShow: TVShow
+                do {
+                    async let d = service.getTVShowDetails(id: item.id)
+                    async let p = service.getTVShowWatchProviders(id: item.id)
+                    tvShow = service.mapToTVShow(try await d, providers: try await p)
+                } catch {
+                    tvShow = TVShow(id: stringID, title: item.title, thumbnailURL: service.imageURL(path: item.posterPath), voteAverage: item.voteAverage)
+                }
+                onTVShowAdded?(tvShow)
+            } else {
+                let movie: Movie
+                do {
+                    async let d = service.getMovieDetails(id: item.id)
+                    async let p = service.getMovieWatchProviders(id: item.id)
+                    movie = service.mapToMovie(try await d, providers: try await p)
+                } catch {
+                    movie = Movie(id: stringID, title: item.title, thumbnailURL: service.imageURL(path: item.posterPath), voteAverage: item.voteAverage)
+                }
+                onMovieAdded?(movie)
+            }
+        }
+    }
+
+    private func openSimilarDetail(_ item: SimilarMediaItem) {
+        let posterURL = service.imageURL(path: item.posterPath)
+        if item.mediaType == .tvShow {
+            let tvShow = TVShow(id: String(item.id), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
+            selectedSimilarItem = ListItem(tvShow: tvShow)
+        } else {
+            let movie = Movie(id: String(item.id), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
+            selectedSimilarItem = ListItem(movie: movie)
+        }
+    }
+
+    private func addSimilarFromDetail(_ item: ListItem) {
+        guard let media = item.media else { return }
+        let stringID = media.id
+        guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
+        addedSimilarIDs.insert(stringID)
+        onItemAdded?(media.title)
+        if let tvShow = item.tvShow {
+            onTVShowAdded?(tvShow)
+        } else if let movie = item.movie {
+            onMovieAdded?(movie)
+        }
+    }
+
+    private func similarDetailBinding(for item: ListItem) -> Binding<ListItem> {
+        Binding(
+            get: { selectedSimilarItem ?? item },
+            set: { selectedSimilarItem = $0 }
+        )
     }
 
 }
@@ -432,12 +518,13 @@ private struct DetailProviderRow: View {
     }
 
     private func providerLogo(for network: Network) -> some View {
-        Group {
+        let radius = logoSize * 0.22
+        return Group {
             if let logoURL = TMDBService.shared.imageURL(path: network.logoPath, size: .w92) {
                 CachedAsyncImage(url: logoURL) { phase in
                     switch phase {
                     case .success(let image):
-                        image.resizable().scaledToFit().padding(4)
+                        image.resizable().scaledToFill()
                     default:
                         Color.gray.opacity(0.1)
                     }
@@ -447,8 +534,8 @@ private struct DetailProviderRow: View {
             }
         }
         .frame(width: logoSize, height: logoSize)
-        .background(Color.white.opacity(0.85), in: .rect(cornerRadius: logoSize * 0.19))
-        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.19))
+        .clipShape(.rect(cornerRadius: radius))
+        .glassEffect(.regular, in: .rect(cornerRadius: radius))
     }
 }
 
@@ -522,6 +609,43 @@ private struct HiddenProvidersPopover: View {
     }
 }
 
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(in: proposal.width ?? .infinity, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (index, position) in arrange(in: bounds.width, subviews: subviews).positions.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y), proposal: .unspecified)
+        }
+    }
+
+    private func arrange(in maxWidth: CGFloat, subviews: Subviews) -> (positions: [CGPoint], size: CGSize) {
+        var positions: [CGPoint] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var maxX: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth, x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            positions.append(CGPoint(x: x, y: y))
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+            maxX = max(maxX, x - spacing)
+        }
+
+        return (positions, CGSize(width: maxX, height: y + rowHeight))
+    }
+}
+
 private struct MetadataRow: View {
     let listItem: ListItem
 
@@ -534,16 +658,13 @@ private struct MetadataRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        FlowLayout(spacing: 8) {
             if let rating = contentRating, !rating.isEmpty {
                 ContentRatingPill(text: rating)
             }
             if let tvShow = listItem.tvShow {
-                if let seasons = tvShow.numberOfSeasons {
-                    MetadataPill(text: "\(seasons) Season\(seasons == 1 ? "" : "s")")
-                }
-                if let episodes = tvShow.numberOfEpisodes {
-                    MetadataPill(text: "\(episodes) Episodes")
+                if let summary = tvShow.seasonsEpisodesSummary {
+                    MetadataPill(text: summary)
                 }
                 if let runtime = tvShow.episodeRunTime {
                     MetadataPill(text: "\(runtime) min/ep")
@@ -1011,11 +1132,15 @@ struct SimilarMediaItem: Identifiable {
     let title: String
     let posterPath: String?
     let voteAverage: Double?
+    let mediaType: MediaType
 }
 
 private struct SimilarSection: View {
     let title: String
     let items: [SimilarMediaItem]
+    var existingIDs: Set<String> = []
+    var onAdd: ((SimilarMediaItem) -> Void)?
+    var onTap: ((SimilarMediaItem) -> Void)?
 
     private let cardWidth: CGFloat = 120
     private let posterHeight: CGFloat = 170
@@ -1029,7 +1154,7 @@ private struct SimilarSection: View {
                     .font(.headline)
 
                 ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
                         ForEach(items) { item in
                             similarCard(for: item)
                         }
@@ -1042,26 +1167,32 @@ private struct SimilarSection: View {
         }
     }
 
+    private func isAdded(_ item: SimilarMediaItem) -> Bool {
+        existingIDs.contains(String(item.id))
+    }
+
     private func similarCard(for item: SimilarMediaItem) -> some View {
         VStack(spacing: 6) {
-            ZStack(alignment: .bottomTrailing) {
+            ZStack(alignment: .topTrailing) {
                 posterImage(path: item.posterPath)
                     .frame(width: cardWidth, height: posterHeight)
                     .clipShape(.rect(cornerRadius: 12))
+                    .contentShape(Rectangle())
+                    .onTapGesture { onTap?(item) }
 
-                if let vote = item.voteAverage, vote > 0 {
-                    HStack(spacing: 2) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.yellow)
-                        Text(String(format: "%.1f", vote))
-                            .font(.caption2)
+                if let onAdd {
+                    let added = isAdded(item)
+                    Button {
+                        if !added { onAdd(item) }
+                    } label: {
+                        Image(systemName: added ? "checkmark.circle.fill" : "plus.circle.fill")
+                            .font(.title3)
                             .fontWeight(.semibold)
+                            .foregroundStyle(added ? .green : .white)
+                            .shadow(color: .black.opacity(0.5), radius: 4)
+                            .padding(6)
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .glassEffect(.regular, in: .capsule)
-                    .padding(6)
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -1070,6 +1201,7 @@ private struct SimilarSection: View {
                 .fontWeight(.medium)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
+                .onTapGesture { onTap?(item) }
         }
         .frame(width: cardWidth)
     }

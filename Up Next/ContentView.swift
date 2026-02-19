@@ -188,18 +188,26 @@ struct ContentView: View {
             subtitleProvider: { item in
                 guard let tvShow = item.tvShow else { return nil }
 
+                var base: String?
+
                 // Show "Next Season: S{next}" for partially-watched multi-season shows
                 if !item.watchedSeasons.isEmpty,
                    let total = tvShow.numberOfSeasons, total > 1,
                    let next = item.nextSeasonToWatch {
                     let remaining = total - item.watchedSeasons.count
                     if remaining > 1 {
-                        return "Next Season: S\(next) (\(remaining) left)"
+                        base = "Next Season: S\(next) (\(remaining) left)"
                     } else {
-                        return "Next Season: S\(next)"
+                        base = "Next Season: S\(next)"
                     }
+                } else {
+                    base = tvShow.seasonsEpisodesSummary
                 }
-                return tvShow.seasonsEpisodesSummary
+
+                if let airDate = tvShow.nextEpisodeAirDate, let formatted = formatAirDate(airDate) {
+                    return [base, formatted].compactMap { $0 }.joined(separator: " \u{2022} ")
+                }
+                return base
             },
             onItemExpanded: { id in
                 expandedTVShowID = id
@@ -208,12 +216,6 @@ struct ContentView: View {
                 viewModel.persistChanges(for: .tvShow)
             },
             onSearchTapped: { selectedTab = .search },
-            onRandomPick: {
-                if let randomItem = viewModel.unwatchedTVShows.randomElement(),
-                   let id = randomItem.media?.id {
-                    expandedTVShowID = id
-                }
-            },
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .tvShow)
@@ -244,7 +246,11 @@ struct ContentView: View {
                 onSeasonCountChanged: { listItem, previousCount in
                     viewModel.handleSeasonCountUpdate(for: listItem, previousSeasonCount: previousCount)
                 },
-                customListViewModel: customListViewModel
+                customListViewModel: customListViewModel,
+                existingIDs: existingIDs(for: .tvShow).union(existingIDs(for: .movie)),
+                onTVShowAdded: { viewModel.addTVShow($0) },
+                onMovieAdded: { viewModel.addMovie($0) },
+                onItemAdded: { toastMessage = "\($0) has been added" }
             )
         }
     }
@@ -271,12 +277,6 @@ struct ContentView: View {
                 viewModel.persistChanges(for: .movie)
             },
             onSearchTapped: { selectedTab = .search },
-            onRandomPick: {
-                if let randomItem = viewModel.unwatchedMovies.randomElement(),
-                   let id = randomItem.media?.id {
-                    expandedMovieID = id
-                }
-            },
             onSettingsTapped: { showingSettings = true },
             onItemDeleted: { id in
                 viewModel.removeItem(withID: id, mediaType: .movie)
@@ -304,7 +304,11 @@ struct ContentView: View {
                         viewModel.removeItem(withID: id, mediaType: .movie)
                     }
                 },
-                customListViewModel: customListViewModel
+                customListViewModel: customListViewModel,
+                existingIDs: existingIDs(for: .tvShow).union(existingIDs(for: .movie)),
+                onTVShowAdded: { viewModel.addTVShow($0) },
+                onMovieAdded: { viewModel.addMovie($0) },
+                onItemAdded: { toastMessage = "\($0) has been added" }
             )
         }
     }
@@ -378,6 +382,15 @@ struct ContentView: View {
         }
 
         return meta.isEmpty ? nil : meta.joined(separator: " \u{2022} ")
+    }
+
+    private func formatAirDate(_ dateString: String) -> String? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: dateString) else { return nil }
+        let display = DateFormatter()
+        display.dateFormat = "MMM d"
+        return "Next: \(display.string(from: date))"
     }
 }
 

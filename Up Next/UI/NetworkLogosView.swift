@@ -28,15 +28,14 @@ struct NetworkLogosView: View {
                             case .success(let image):
                                 image
                                     .resizable()
-                                    .scaledToFit()
-                                    .padding(4)
+                                    .scaledToFill()
                             default:
                                 Color.gray.opacity(0.1)
                             }
                         }
                         .frame(width: logoSize, height: logoSize)
-                        .background(Color.white.opacity(0.85), in: .rect(cornerRadius: logoSize * 0.19))
-                        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.19))
+                        .clipShape(.rect(cornerRadius: logoSize * 0.22))
+                        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.22))
                     }
                 }
 
@@ -48,7 +47,7 @@ struct NetworkLogosView: View {
                         .fontWeight(.medium)
                         .foregroundStyle(.secondary)
                         .frame(width: logoSize, height: logoSize)
-                        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.19))
+                        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.22))
                 }
             }
             .padding(.vertical, 2)
