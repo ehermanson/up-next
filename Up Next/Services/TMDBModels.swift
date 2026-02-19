@@ -50,6 +50,15 @@ struct TMDBTVShowDetail: Codable {
     let videos: TMDBVideosResponse?
     let networks: [TMDBNetwork]?
     let seasons: [TMDBSeason]?
+    let watchProviders: TMDBWatchProvidersResponse?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, overview, posterPath, backdropPath, firstAirDate, voteAverage
+        case numberOfSeasons, numberOfEpisodes, episodeRunTime, nextEpisodeToAir
+        case genres, credits, contentRatings, similar, recommendations, videos
+        case networks, seasons
+        case watchProviders = "watch/providers"
+    }
 }
 
 struct TMDBEpisode: Codable {
@@ -93,6 +102,14 @@ struct TMDBMovieDetail: Codable {
     let recommendations: TMDBMovieSearchResponse?
     let videos: TMDBVideosResponse?
     let belongsToCollection: TMDBBelongsToCollection?
+    let watchProviders: TMDBWatchProvidersResponse?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, overview, posterPath, backdropPath, releaseDate, voteAverage
+        case runtime, genres, credits, releaseDates, similar, recommendations, videos
+        case belongsToCollection
+        case watchProviders = "watch/providers"
+    }
 }
 
 struct TMDBBelongsToCollection: Codable {

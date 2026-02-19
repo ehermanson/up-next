@@ -21,9 +21,11 @@ final class MediaLibraryViewModel {
         guard self.modelContext == nil else { return }
         self.modelContext = modelContext
         await ensureDefaults()
-        await loadItems()
+        let didSeed = await loadItems()
         isLoaded = true
-        Task { await refreshAllItems() }
+        if !didSeed {
+            Task { await refreshAllItems() }
+        }
     }
 
     func containsItem(withID id: String, mediaType: MediaType) -> Bool {
@@ -178,10 +180,8 @@ final class MediaLibraryViewModel {
             guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { continue }
             do {
                 let previousSeasonCount = tvShow.numberOfSeasons
-                async let detailTask = service.getTVShowDetails(id: id)
-                async let providersTask = service.getTVShowWatchProviders(id: id)
-                let detail = try await detailTask
-                let providers = try await providersTask
+                let detail = try await service.getTVShowDetails(id: id)
+                let providers = detail.watchProviders?.results?[service.currentRegion]
                 tvShow.update(from: service.mapToTVShow(detail, providers: providers))
 
                 if let newCount = tvShow.numberOfSeasons,
@@ -195,10 +195,8 @@ final class MediaLibraryViewModel {
         for item in movies {
             guard let movie = item.movie, let id = Int(movie.id) else { continue }
             do {
-                async let detailTask = service.getMovieDetails(id: id)
-                async let providersTask = service.getMovieWatchProviders(id: id)
-                let detail = try await detailTask
-                let providers = try await providersTask
+                let detail = try await service.getMovieDetails(id: id)
+                let providers = detail.watchProviders?.results?[service.currentRegion]
                 movie.update(from: service.mapToMovie(detail, providers: providers))
             } catch { }
         }
@@ -208,8 +206,10 @@ final class MediaLibraryViewModel {
         try? context.save()
     }
 
-    private func loadItems() async {
-        guard let context = modelContext else { return }
+    @discardableResult
+    private func loadItems() async -> Bool {
+        guard let context = modelContext else { return false }
+        var didSeed = false
         do {
             let tvDescriptor = FetchDescriptor<ListItem>(
                 predicate: #Predicate { $0.tvShow != nil },
@@ -232,12 +232,14 @@ final class MediaLibraryViewModel {
             #if DEBUG
             if tvShows.isEmpty && movies.isEmpty {
                 await seedStubData()
+                didSeed = true
             }
             #endif
 
             syncUnwatched(for: .tvShow)
             syncUnwatched(for: .movie)
         } catch { }
+        return didSeed
     }
 
     private func ensureDefaults() async {
@@ -358,23 +360,20 @@ final class MediaLibraryViewModel {
             return results.sorted { $0.0 < $1.0 }
         }
 
-        let movieDetails: [(Int, TMDBMovieDetail?, TMDBWatchProviderCountry?)] = await withTaskGroup(
-            of: (Int, TMDBMovieDetail?, TMDBWatchProviderCountry?).self
+        let movieDetails: [(Int, TMDBMovieDetail?)] = await withTaskGroup(
+            of: (Int, TMDBMovieDetail?).self
         ) { group in
             for (index, seed) in movieSeeds.enumerated() {
                 group.addTask {
                     do {
-                        async let detailTask = service.getMovieDetails(id: seed.id)
-                        async let providersTask = service.getMovieWatchProviders(id: seed.id)
-                        let detail = try await detailTask
-                        let providers = try await providersTask
-                        return (index, detail, providers)
+                        let detail = try await service.getMovieDetails(id: seed.id)
+                        return (index, detail)
                     } catch {
-                        return (index, nil, nil)
+                        return (index, nil)
                     }
                 }
             }
-            var results: [(Int, TMDBMovieDetail?, TMDBWatchProviderCountry?)] = []
+            var results: [(Int, TMDBMovieDetail?)] = []
             for await result in group { results.append(result) }
             return results.sorted { $0.0 < $1.0 }
         }
@@ -383,7 +382,8 @@ final class MediaLibraryViewModel {
         var seedTVItems: [ListItem] = []
         for (index, detail) in tvDetails {
             guard let detail else { continue }
-            let tvShow = service.mapToTVShow(detail)
+            let providers = detail.watchProviders?.results?[service.currentRegion]
+            let tvShow = service.mapToTVShow(detail, providers: providers)
             let seed = tvSeeds[index]
             let daysAgo = seed.watched ? Double(30 + index * 15) : 0
             let item = ListItem(
@@ -402,8 +402,9 @@ final class MediaLibraryViewModel {
         }
 
         var seedMovieItems: [ListItem] = []
-        for (index, detail, providers) in movieDetails {
+        for (index, detail) in movieDetails {
             guard let detail else { continue }
+            let providers = detail.watchProviders?.results?[service.currentRegion]
             let movie = service.mapToMovie(detail, providers: providers)
             let seed = movieSeeds[index]
             let daysAgo = seed.watched ? Double(30 + index * 15) : 0
@@ -432,30 +433,28 @@ final class MediaLibraryViewModel {
         context.insert(christmasList)
 
         let christmasMovieIDs = [10719, 12540, 771, 13675]  // Elf, Four Christmases, Home Alone, Rudolph
-        let christmasDetails: [(Int, TMDBMovieDetail?, TMDBWatchProviderCountry?)] = await withTaskGroup(
-            of: (Int, TMDBMovieDetail?, TMDBWatchProviderCountry?).self
+        let christmasDetails: [(Int, TMDBMovieDetail?)] = await withTaskGroup(
+            of: (Int, TMDBMovieDetail?).self
         ) { group in
             for (index, id) in christmasMovieIDs.enumerated() {
                 group.addTask {
                     do {
-                        async let detailTask = service.getMovieDetails(id: id)
-                        async let providersTask = service.getMovieWatchProviders(id: id)
-                        let detail = try await detailTask
-                        let providers = try await providersTask
-                        return (index, detail, providers)
+                        let detail = try await service.getMovieDetails(id: id)
+                        return (index, detail)
                     } catch {
-                        return (index, nil, nil)
+                        return (index, nil)
                     }
                 }
             }
-            var results: [(Int, TMDBMovieDetail?, TMDBWatchProviderCountry?)] = []
+            var results: [(Int, TMDBMovieDetail?)] = []
             for await result in group { results.append(result) }
             return results.sorted { $0.0 < $1.0 }
         }
 
         var christmasItems: [CustomListItem] = []
-        for (_, detail, providers) in christmasDetails {
+        for (_, detail) in christmasDetails {
             guard let detail else { continue }
+            let providers = detail.watchProviders?.results?[service.currentRegion]
             let movie = service.mapToMovie(detail, providers: providers)
             let item = CustomListItem(movie: movie, customList: christmasList, addedAt: Date())
             context.insert(item)

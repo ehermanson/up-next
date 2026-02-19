@@ -21,6 +21,24 @@ final class ImageCache {
     }
 }
 
+private actor ImageDownloader {
+    static let shared = ImageDownloader()
+    private var inFlight: [URL: Task<Data, any Error>] = [:]
+
+    func download(from url: URL) async throws -> Data {
+        if let existing = inFlight[url] {
+            return try await existing.value
+        }
+        let task = Task {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            return data
+        }
+        inFlight[url] = task
+        defer { inFlight.removeValue(forKey: url) }
+        return try await task.value
+    }
+}
+
 struct CachedAsyncImage<Content: View>: View {
     let url: URL?
     @ViewBuilder let content: (AsyncImagePhase) -> Content
@@ -48,7 +66,7 @@ struct CachedAsyncImage<Content: View>: View {
         phase = .empty
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let data = try await ImageDownloader.shared.download(from: url)
             guard let uiImage = UIImage(data: data) else {
                 phase = .failure(URLError(.cannotDecodeContentData))
                 return

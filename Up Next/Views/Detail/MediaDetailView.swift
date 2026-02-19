@@ -320,10 +320,8 @@ struct MediaDetailView: View {
         do {
             if let tvShow = listItem.tvShow {
                 let previousSeasonCount = tvShow.numberOfSeasons
-                async let detailTask = service.getTVShowDetails(id: id)
-                async let providersTask = service.getTVShowWatchProviders(id: id)
-                let detail = try await detailTask
-                let providers = try await providersTask
+                let detail = try await service.getTVShowDetails(id: id)
+                let providers = detail.watchProviders?.results?[service.currentRegion]
                 tvShow.update(from: service.mapToTVShow(detail, providers: providers))
 
                 if let newCount = tvShow.numberOfSeasons,
@@ -340,10 +338,8 @@ struct MediaDetailView: View {
                 }
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
             } else if let movie = listItem.movie {
-                async let detailTask = service.getMovieDetails(id: id)
-                async let providersTask = service.getMovieWatchProviders(id: id)
-                let detail = try await detailTask
-                let providers = try await providersTask
+                let detail = try await service.getMovieDetails(id: id)
+                let providers = detail.watchProviders?.results?[service.currentRegion]
                 movie.update(from: service.mapToMovie(detail, providers: providers))
 
                 similarItems = (detail.similar?.results ?? []).prefix(10).map {
@@ -385,9 +381,9 @@ struct MediaDetailView: View {
             if item.mediaType == .tvShow {
                 let tvShow: TVShow
                 do {
-                    async let d = service.getTVShowDetails(id: item.id)
-                    async let p = service.getTVShowWatchProviders(id: item.id)
-                    tvShow = service.mapToTVShow(try await d, providers: try await p)
+                    let d = try await service.getTVShowDetails(id: item.id)
+                    let p = d.watchProviders?.results?[service.currentRegion]
+                    tvShow = service.mapToTVShow(d, providers: p)
                 } catch {
                     tvShow = TVShow(id: stringID, title: item.title, thumbnailURL: service.imageURL(path: item.posterPath), voteAverage: item.voteAverage)
                 }
@@ -395,9 +391,9 @@ struct MediaDetailView: View {
             } else {
                 let movie: Movie
                 do {
-                    async let d = service.getMovieDetails(id: item.id)
-                    async let p = service.getMovieWatchProviders(id: item.id)
-                    movie = service.mapToMovie(try await d, providers: try await p)
+                    let d = try await service.getMovieDetails(id: item.id)
+                    let p = d.watchProviders?.results?[service.currentRegion]
+                    movie = service.mapToMovie(d, providers: p)
                 } catch {
                     movie = Movie(id: stringID, title: item.title, thumbnailURL: service.imageURL(path: item.posterPath), voteAverage: item.voteAverage)
                 }
@@ -426,9 +422,9 @@ struct MediaDetailView: View {
         Task {
             let movie: Movie
             do {
-                async let d = service.getMovieDetails(id: part.id)
-                async let p = service.getMovieWatchProviders(id: part.id)
-                movie = service.mapToMovie(try await d, providers: try await p)
+                let d = try await service.getMovieDetails(id: part.id)
+                let p = d.watchProviders?.results?[service.currentRegion]
+                movie = service.mapToMovie(d, providers: p)
             } catch {
                 movie = Movie(id: stringID, title: part.title, thumbnailURL: service.imageURL(path: part.posterPath), voteAverage: part.voteAverage)
             }

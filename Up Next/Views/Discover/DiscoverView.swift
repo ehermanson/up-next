@@ -334,10 +334,8 @@ struct DiscoverView: View {
             case .tvShow(let result):
                 let tvShow: TVShow
                 do {
-                    async let detailTask = service.getTVShowDetails(id: result.id)
-                    async let providersTask = service.getTVShowWatchProviders(id: result.id)
-                    let detail = try await detailTask
-                    let providers = try await providersTask
+                    let detail = try await service.getTVShowDetails(id: result.id)
+                    let providers = detail.watchProviders?.results?[service.currentRegion]
                     tvShow = service.mapToTVShow(detail, providers: providers)
                 } catch {
                     tvShow = service.mapToTVShow(result)
@@ -346,10 +344,8 @@ struct DiscoverView: View {
             case .movie(let result):
                 let movie: Movie
                 do {
-                    async let detailTask = service.getMovieDetails(id: result.id)
-                    async let providersTask = service.getMovieWatchProviders(id: result.id)
-                    let detail = try await detailTask
-                    let providers = try await providersTask
+                    let detail = try await service.getMovieDetails(id: result.id)
+                    let providers = detail.watchProviders?.results?[service.currentRegion]
                     movie = service.mapToMovie(detail, providers: providers)
                 } catch {
                     movie = service.mapToMovie(result)

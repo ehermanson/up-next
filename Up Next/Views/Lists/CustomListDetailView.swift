@@ -263,12 +263,11 @@ private struct CustomListItemDetailView: View {
         do {
             if let tvShow = item.tvShow {
                 let detail = try await service.getTVShowDetails(id: id)
-                tvShow.update(from: service.mapToTVShow(detail))
+                let providers = detail.watchProviders?.results?[service.currentRegion]
+                tvShow.update(from: service.mapToTVShow(detail, providers: providers))
             } else if let movie = item.movie {
-                async let detailTask = service.getMovieDetails(id: id)
-                async let providersTask = service.getMovieWatchProviders(id: id)
-                let detail = try await detailTask
-                let providers = try await providersTask
+                let detail = try await service.getMovieDetails(id: id)
+                let providers = detail.watchProviders?.results?[service.currentRegion]
                 movie.update(from: service.mapToMovie(detail, providers: providers))
             }
         } catch {

@@ -63,7 +63,7 @@ final class TMDBService {
         let endpoint = "/tv/\(id)"
         return try await performRequest(
             endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,content_ratings,videos,similar,recommendations")]
+            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,content_ratings,videos,similar,recommendations,watch/providers")]
         )
     }
 
@@ -72,7 +72,7 @@ final class TMDBService {
         let endpoint = "/movie/\(id)"
         return try await performRequest(
             endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,release_dates,videos,similar,recommendations")]
+            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,release_dates,videos,similar,recommendations,watch/providers")]
         )
     }
 
@@ -564,6 +564,8 @@ final class TMDBService {
 
     // MARK: - Private Helpers
 
+    private let deduplicator = RequestDeduplicator()
+
     private func performRequest<T: Decodable>(
         endpoint: String,
         queryItems: [URLQueryItem]
@@ -577,14 +579,18 @@ final class TMDBService {
             throw TMDBError.invalidURL
         }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let data = try await deduplicator.deduplicated(for: url) {
+            let (data, response) = try await URLSession.shared.data(from: url)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw TMDBError.invalidResponse
-        }
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw TMDBError.invalidResponse
+            }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw TMDBError.httpError(statusCode: httpResponse.statusCode)
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw TMDBError.httpError(statusCode: httpResponse.statusCode)
+            }
+
+            return data
         }
 
         do {
@@ -592,6 +598,20 @@ final class TMDBService {
         } catch {
             throw TMDBError.decodingError(error)
         }
+    }
+}
+
+private actor RequestDeduplicator {
+    private var inFlight: [URL: Task<Data, any Error>] = [:]
+
+    func deduplicated(for url: URL, perform: @Sendable @escaping () async throws -> Data) async throws -> Data {
+        if let existing = inFlight[url] {
+            return try await existing.value
+        }
+        let task = Task { try await perform() }
+        inFlight[url] = task
+        defer { inFlight.removeValue(forKey: url) }
+        return try await task.value
     }
 }
 
