@@ -18,13 +18,24 @@ echo "Info.plist generated successfully"
 # To bump the major version, change MAJOR_VERSION below.
 MAJOR_VERSION=1
 
-if [ -n "$CI_BUILD_NUMBER" ]; then
-    cd "$CI_PRIMARY_REPOSITORY_PATH"
+echo "CI_BUILD_NUMBER=$CI_BUILD_NUMBER"
+echo "CI_PRIMARY_REPOSITORY_PATH=$CI_PRIMARY_REPOSITORY_PATH"
 
-    echo "Setting build number to $CI_BUILD_NUMBER..."
-    agvtool new-version -all "$CI_BUILD_NUMBER"
-
-    VERSION="${MAJOR_VERSION}.${CI_BUILD_NUMBER}"
-    echo "Setting marketing version to $VERSION..."
-    agvtool new-marketing-version "$VERSION"
+if [ -z "$CI_BUILD_NUMBER" ]; then
+    echo "ERROR: CI_BUILD_NUMBER is not set — version will not be updated!"
+    exit 1
 fi
+
+PBXPROJ="$CI_PRIMARY_REPOSITORY_PATH/Up Next.xcodeproj/project.pbxproj"
+VERSION="${MAJOR_VERSION}.${CI_BUILD_NUMBER}"
+
+echo "Setting build number to $CI_BUILD_NUMBER..."
+sed -i '' "s/CURRENT_PROJECT_VERSION = [^;]*/CURRENT_PROJECT_VERSION = $CI_BUILD_NUMBER/" "$PBXPROJ"
+
+echo "Setting marketing version to $VERSION..."
+sed -i '' "s/MARKETING_VERSION = [^;]*/MARKETING_VERSION = $VERSION/" "$PBXPROJ"
+
+# Verify the change took effect
+echo "Verifying version in project file..."
+grep "MARKETING_VERSION" "$PBXPROJ"
+grep "CURRENT_PROJECT_VERSION" "$PBXPROJ"
