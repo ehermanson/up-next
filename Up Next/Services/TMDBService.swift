@@ -76,6 +76,12 @@ final class TMDBService {
         )
     }
 
+    /// Get details for a movie collection (e.g. "Dune Collection")
+    func getCollectionDetails(id: Int) async throws -> TMDBCollectionDetail {
+        let endpoint = "/collection/\(id)"
+        return try await performRequest(endpoint: endpoint, queryItems: [])
+    }
+
     /// Get watch providers for a movie (per country). Uses device locale by default.
     func getMovieWatchProviders(id: Int, countryCode: String? = nil) async throws
         -> TMDBWatchProviderCountry?

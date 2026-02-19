@@ -25,6 +25,8 @@ struct MediaDetailView: View {
     @State private var showingTrailer = false
     @State private var selectedSimilarItem: ListItem?
     @State private var addedSimilarIDs: Set<String> = []
+    @State private var collectionName: String?
+    @State private var collectionParts: [TMDBCollectionPart] = []
 
     private let service = TMDBService.shared
 
@@ -201,6 +203,15 @@ struct MediaDetailView: View {
                                 }
                             }
 
+                            CollectionSection(
+                                collectionName: collectionName,
+                                parts: collectionParts,
+                                currentMovieID: listItem.movie.map { Int($0.id) ?? 0 },
+                                existingIDs: existingIDs.union(addedSimilarIDs),
+                                onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addCollectionItem($0) } : nil,
+                                onTap: { openCollectionDetail($0) }
+                            )
+
                             SimilarSection(
                                 title: "Similar",
                                 items: similarItems,
@@ -342,6 +353,18 @@ struct MediaDetailView: View {
                     SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
                 }
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
+
+                if let collection = detail.belongsToCollection {
+                    collectionName = collection.name
+                    do {
+                        let collectionDetail = try await service.getCollectionDetails(id: collection.id)
+                        collectionParts = collectionDetail.parts.sorted {
+                            ($0.releaseDate ?? "") < ($1.releaseDate ?? "")
+                        }
+                    } catch {
+                        collectionParts = []
+                    }
+                }
             }
         } catch {
             if showLoading {
@@ -392,6 +415,31 @@ struct MediaDetailView: View {
             let movie = Movie(id: String(item.id), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
             selectedSimilarItem = ListItem(movie: movie)
         }
+    }
+
+    private func addCollectionItem(_ part: TMDBCollectionPart) {
+        let stringID = String(part.id)
+        guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
+        addedSimilarIDs.insert(stringID)
+        onItemAdded?(part.title)
+
+        Task {
+            let movie: Movie
+            do {
+                async let d = service.getMovieDetails(id: part.id)
+                async let p = service.getMovieWatchProviders(id: part.id)
+                movie = service.mapToMovie(try await d, providers: try await p)
+            } catch {
+                movie = Movie(id: stringID, title: part.title, thumbnailURL: service.imageURL(path: part.posterPath), voteAverage: part.voteAverage)
+            }
+            onMovieAdded?(movie)
+        }
+    }
+
+    private func openCollectionDetail(_ part: TMDBCollectionPart) {
+        let posterURL = service.imageURL(path: part.posterPath)
+        let movie = Movie(id: String(part.id), title: part.title, thumbnailURL: posterURL, voteAverage: part.voteAverage)
+        selectedSimilarItem = ListItem(movie: movie)
     }
 
     private func addSimilarFromDetail(_ item: ListItem) {
@@ -1095,6 +1143,130 @@ struct CastSection: View {
             .foregroundStyle(.tertiary)
             .frame(width: imageSize, height: imageSize)
             .glassEffect(.regular, in: .circle)
+    }
+}
+
+// MARK: - Collection
+
+private struct CollectionSection: View {
+    let collectionName: String?
+    let parts: [TMDBCollectionPart]
+    var currentMovieID: Int?
+    var existingIDs: Set<String> = []
+    var onAdd: ((TMDBCollectionPart) -> Void)?
+    var onTap: ((TMDBCollectionPart) -> Void)?
+
+    private let cardWidth: CGFloat = 120
+    private let posterHeight: CGFloat = 170
+
+    var body: some View {
+        if let name = collectionName, !parts.isEmpty {
+            Divider().padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(name)
+                    .font(.headline)
+
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(parts) { part in
+                            collectionCard(for: part)
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                    .padding(.vertical, 2)
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+    }
+
+    private func isCurrent(_ part: TMDBCollectionPart) -> Bool {
+        part.id == currentMovieID
+    }
+
+    private func isAdded(_ part: TMDBCollectionPart) -> Bool {
+        existingIDs.contains(String(part.id))
+    }
+
+    private func collectionCard(for part: TMDBCollectionPart) -> some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                posterImage(path: part.posterPath)
+                    .frame(width: cardWidth, height: posterHeight)
+                    .clipShape(.rect(cornerRadius: 12))
+                    .overlay {
+                        if isCurrent(part) {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(.white.opacity(0.5), lineWidth: 2)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if !isCurrent(part) { onTap?(part) }
+                    }
+
+                if let onAdd, !isCurrent(part) {
+                    let added = isAdded(part)
+                    Button {
+                        if !added { onAdd(part) }
+                    } label: {
+                        Image(systemName: added ? "checkmark.circle.fill" : "plus.circle.fill")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(added ? .green : .white)
+                            .shadow(color: .black.opacity(0.5), radius: 4)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Text(part.title)
+                .font(.caption)
+                .fontWeight(.medium)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(isCurrent(part) ? .primary : .primary)
+                .onTapGesture {
+                    if !isCurrent(part) { onTap?(part) }
+                }
+
+            if let year = part.releaseYear {
+                Text(year)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: cardWidth)
+    }
+
+    @ViewBuilder
+    private func posterImage(path: String?) -> some View {
+        if let url = TMDBService.shared.imageURL(path: path, size: .w342) {
+            CachedAsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    posterPlaceholder
+                }
+            }
+        } else {
+            posterPlaceholder
+        }
+    }
+
+    private var posterPlaceholder: some View {
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .overlay {
+                Image(systemName: "film")
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
+            }
     }
 }
 

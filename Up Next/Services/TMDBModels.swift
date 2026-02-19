@@ -92,6 +92,37 @@ struct TMDBMovieDetail: Codable {
     let similar: TMDBMovieSearchResponse?
     let recommendations: TMDBMovieSearchResponse?
     let videos: TMDBVideosResponse?
+    let belongsToCollection: TMDBBelongsToCollection?
+}
+
+struct TMDBBelongsToCollection: Codable {
+    let id: Int
+    let name: String
+    let posterPath: String?
+    let backdropPath: String?
+}
+
+struct TMDBCollectionDetail: Codable {
+    let id: Int
+    let name: String
+    let overview: String?
+    let posterPath: String?
+    let backdropPath: String?
+    let parts: [TMDBCollectionPart]
+}
+
+struct TMDBCollectionPart: Codable, Identifiable {
+    let id: Int
+    let title: String
+    let overview: String?
+    let posterPath: String?
+    let releaseDate: String?
+    let voteAverage: Double?
+
+    var releaseYear: String? {
+        guard let date = releaseDate, date.count >= 4 else { return nil }
+        return String(date.prefix(4))
+    }
 }
 
 // Watch Providers (per country)
