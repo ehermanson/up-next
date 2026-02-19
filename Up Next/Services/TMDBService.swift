@@ -61,19 +61,23 @@ final class TMDBService {
     /// Get detailed information for a TV show
     func getTVShowDetails(id: Int) async throws -> TMDBTVShowDetail {
         let endpoint = "/tv/\(id)"
-        return try await performRequest(
+        let detail: TMDBTVShowDetail = try await performRequest(
             endpoint: endpoint,
             queryItems: [URLQueryItem(name: "append_to_response", value: "credits,content_ratings,videos,similar,recommendations,watch/providers")]
         )
+        cacheProviderAvailability(from: detail.watchProviders, mediaId: id, mediaType: .tvShow)
+        return detail
     }
 
     /// Get detailed information for a movie
     func getMovieDetails(id: Int) async throws -> TMDBMovieDetail {
         let endpoint = "/movie/\(id)"
-        return try await performRequest(
+        let detail: TMDBMovieDetail = try await performRequest(
             endpoint: endpoint,
             queryItems: [URLQueryItem(name: "append_to_response", value: "credits,release_dates,videos,similar,recommendations,watch/providers")]
         )
+        cacheProviderAvailability(from: detail.watchProviders, mediaId: id, mediaType: .movie)
+        return detail
     }
 
     /// Get details for a movie collection (e.g. "Dune Collection")
@@ -167,6 +171,31 @@ final class TMDBService {
         let isOnUserServices: Bool
     }
 
+    /// Pre-populate provider availability cache from an embedded watch/providers response.
+    /// Called automatically by getTVShowDetails/getMovieDetails so that subsequent
+    /// checkProviderAvailability calls hit the cache instead of making standalone API requests.
+    private func cacheProviderAvailability(
+        from watchProviders: TMDBWatchProvidersResponse?,
+        mediaId: Int,
+        mediaType: MediaType
+    ) {
+        let cacheKey = "\(mediaType == .tvShow ? "tv" : "movie")_\(mediaId)"
+        guard providerAvailabilityCache[cacheKey] == nil else { return }
+
+        let providers = watchProviders?.results?[currentRegion]
+        var providerIDs = Set<Int>()
+        if let p = providers {
+            providerIDs.formUnion(p.flatrate?.map(\.providerId) ?? [])
+            providerIDs.formUnion(p.ads?.map(\.providerId) ?? [])
+            providerIDs.formUnion(p.rent?.map(\.providerId) ?? [])
+            providerIDs.formUnion(p.buy?.map(\.providerId) ?? [])
+        }
+
+        let selectedIDs = ProviderSettings.shared.selectedProviderIDs
+        let isOnUserServices = !selectedIDs.isEmpty && !providerIDs.isDisjoint(with: selectedIDs)
+        providerAvailabilityCache[cacheKey] = ProviderAvailability(providerIDs: providerIDs, isOnUserServices: isOnUserServices)
+    }
+
     /// Check if a media item is available on user's selected streaming services.
     /// Results are cached to avoid redundant API calls.
     func checkProviderAvailability(mediaId: Int, mediaType: MediaType) async -> ProviderAvailability {
@@ -210,6 +239,11 @@ final class TMDBService {
     /// Clear the provider availability cache (e.g., when user changes provider selections)
     func clearProviderAvailabilityCache() {
         providerAvailabilityCache.removeAll()
+    }
+
+    /// Clear the response cache to force fresh data on next request
+    func clearResponseCache() async {
+        await deduplicator.clearCache()
     }
 
     // MARK: - Image URLs
@@ -603,15 +637,38 @@ final class TMDBService {
 
 private actor RequestDeduplicator {
     private var inFlight: [URL: Task<Data, any Error>] = [:]
+    private var cache: [URL: CachedResponse] = [:]
+
+    private struct CachedResponse {
+        let data: Data
+        let timestamp: Date
+    }
+
+    /// Default time-to-live for cached responses (10 minutes)
+    private let ttl: TimeInterval = 600
 
     func deduplicated(for url: URL, perform: @Sendable @escaping () async throws -> Data) async throws -> Data {
+        // Return cached response if within TTL
+        if let cached = cache[url], Date().timeIntervalSince(cached.timestamp) < ttl {
+            return cached.data
+        }
+
+        // Coalesce concurrent requests for the same URL
         if let existing = inFlight[url] {
             return try await existing.value
         }
+
         let task = Task { try await perform() }
         inFlight[url] = task
         defer { inFlight.removeValue(forKey: url) }
-        return try await task.value
+
+        let data = try await task.value
+        cache[url] = CachedResponse(data: data, timestamp: Date())
+        return data
+    }
+
+    func clearCache() {
+        cache.removeAll()
     }
 }
 
