@@ -11,16 +11,7 @@ struct CustomListDetailView: View {
     var body: some View {
         Group {
             if list.items?.isEmpty ?? true {
-                VStack(spacing: 16) {
-                    Image(systemName: list.iconName)
-                        .font(.system(size: 40))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 80, height: 80)
-                        .glassEffect(.regular, in: .circle)
-                    Text("No items yet")
-                        .font(.title3)
-                        .fontDesign(.rounded)
-                        .foregroundStyle(.secondary)
+                EmptyStateView(icon: list.iconName, title: "No items yet") {
                     Button {
                         showingAddItems = true
                     } label: {
@@ -36,7 +27,6 @@ struct CustomListDetailView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AppBackground())
             } else {
                 GlassEffectContainer(spacing: 8) {
@@ -188,7 +178,7 @@ private struct CustomListItemDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    headerImage
+                    HeaderImageView(imageURL: item.media?.thumbnailURL)
 
                     GlassEffectContainer(spacing: 10) {
                         VStack(alignment: .leading, spacing: 14) {
@@ -198,15 +188,21 @@ private struct CustomListItemDetailView: View {
 
                             metadataRow
 
-                            genreSection
+                            GenreSection(genres: item.media?.genres ?? [])
 
                             Divider().padding(.vertical, 4)
 
-                            descriptionSection
+                            DescriptionSection(
+                                isLoading: isLoadingDetails,
+                                descriptionText: item.media?.descriptionText,
+                                errorMessage: detailError)
 
                             Divider().padding(.vertical, 4)
 
-                            castSection
+                            CastSection(
+                                cast: item.media?.cast ?? [],
+                                castImagePaths: item.media?.castImagePaths ?? [],
+                                castCharacters: item.media?.castCharacters ?? [])
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
@@ -238,166 +234,24 @@ private struct CustomListItemDetailView: View {
     }
 
     @ViewBuilder
-    private var headerImage: some View {
-        if let imageURL = item.media?.thumbnailURL {
-            CachedAsyncImage(url: imageURL) { phase in
-                switch phase {
-                case .empty:
-                    ProgressView().frame(height: 350)
-                case .success(let image):
-                    ZStack(alignment: .bottom) {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                            .frame(maxWidth: .infinity).frame(height: 350).clipped()
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0.0),
-                                .init(color: Color.black.opacity(0.3), location: 0.4),
-                                .init(color: Color.black.opacity(0.8), location: 1.0),
-                            ],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    }
-                case .failure:
-                    Color.gray.frame(height: 350)
-                @unknown default:
-                    EmptyView()
-                }
-            }
-        } else {
-            Color.gray.frame(height: 350)
-        }
-    }
-
-    @ViewBuilder
     private var metadataRow: some View {
         HStack(spacing: 8) {
             if let tvShow = item.tvShow {
                 if let seasons = tvShow.numberOfSeasons {
-                    metadataPill("\(seasons) Season\(seasons == 1 ? "" : "s")")
+                    MetadataPill(text: "\(seasons) Season\(seasons == 1 ? "" : "s")")
                 }
                 if let episodes = tvShow.numberOfEpisodes {
-                    metadataPill("\(episodes) Episodes")
+                    MetadataPill(text: "\(episodes) Episodes")
                 }
             } else if let movie = item.movie {
                 if let year = movie.releaseYear {
-                    metadataPill(year)
+                    MetadataPill(text: year)
                 }
                 if let runtime = movie.runtime {
-                    metadataPill("\(runtime) min")
+                    MetadataPill(text: "\(runtime) min")
                 }
             }
         }
-    }
-
-    private func metadataPill(_ text: String) -> some View {
-        Text(text)
-            .font(.subheadline)
-            .fontWeight(.medium)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .glassEffect(.regular, in: .capsule)
-    }
-
-    @ViewBuilder
-    private var genreSection: some View {
-        let genres = item.media?.genres ?? []
-        if !genres.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(genres, id: \.self) { genre in
-                        Text(genre)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .glassEffect(.regular, in: .capsule)
-                    }
-                }
-                .padding(.horizontal, 1)
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-
-    @ViewBuilder
-    private var descriptionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Description").font(.headline)
-            if isLoadingDetails {
-                HStack {
-                    ProgressView().scaleEffect(0.8)
-                    Text("Loading details...").font(.body).foregroundStyle(.secondary)
-                }
-            } else if let error = detailError {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
-                    Text(error).font(.body).foregroundStyle(.secondary)
-                }
-            } else if let desc = item.media?.descriptionText, !desc.isEmpty {
-                Text(desc).font(.body).foregroundStyle(.secondary)
-            } else {
-                Text("No description available.").font(.body).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var castSection: some View {
-        let cast = item.media?.cast ?? []
-        let castImagePaths = item.media?.castImagePaths ?? []
-        let castCharacters = item.media?.castCharacters ?? []
-        if !cast.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Cast").font(.headline)
-                ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: 12) {
-                        ForEach(Array(cast.prefix(10).enumerated()), id: \.offset) { index, member in
-                            VStack(spacing: 6) {
-                                castImage(path: index < castImagePaths.count ? castImagePaths[index] : "")
-                                    .frame(width: 64, height: 64)
-                                    .clipShape(Circle())
-                                Text(member)
-                                    .font(.caption).fontWeight(.medium)
-                                    .lineLimit(2).multilineTextAlignment(.center)
-                                let character = index < castCharacters.count ? castCharacters[index] : ""
-                                if !character.isEmpty {
-                                    Text(character)
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                        .lineLimit(2).multilineTextAlignment(.center)
-                                }
-                            }
-                            .frame(width: 80)
-                        }
-                    }
-                    .padding(.horizontal, 1).padding(.vertical, 2)
-                }
-                .scrollIndicators(.hidden)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func castImage(path: String) -> some View {
-        if let url = service.imageURL(path: path.isEmpty ? nil : path, size: .w185) {
-            CachedAsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().scaledToFill()
-                default:
-                    castPlaceholder
-                }
-            }
-        } else {
-            castPlaceholder
-        }
-    }
-
-    private var castPlaceholder: some View {
-        Image(systemName: "person.fill")
-            .font(.title2).foregroundStyle(.tertiary)
-            .frame(width: 64, height: 64)
-            .glassEffect(.regular, in: .circle)
     }
 
     @MainActor

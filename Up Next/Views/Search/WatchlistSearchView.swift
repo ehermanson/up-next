@@ -158,18 +158,7 @@ struct WatchlistSearchView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        VStack(spacing: 16) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 40))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 80, height: 80)
-                                .glassEffect(.regular, in: .circle)
-                            Text(emptyPromptText)
-                                .font(.title3)
-                                .fontDesign(.rounded)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
                     } else if hasNoResults {
                         VStack(spacing: 16) {
                             Image(systemName: "magnifyingglass.circle")

@@ -227,14 +227,7 @@ struct SearchResultRow: View {
 
                 HStack(spacing: 8) {
                     if let vote = voteAverage, vote > 0 {
-                        HStack(spacing: 3) {
-                            Image(systemName: "star.fill")
-                                .font(.caption2)
-                                .foregroundStyle(.yellow)
-                            Text(String(format: "%.1f", vote))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                        StarRatingLabel(vote: vote)
                     }
                     availabilityBadge
                 }

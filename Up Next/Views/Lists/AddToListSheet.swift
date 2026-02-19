@@ -14,21 +14,11 @@ struct AddToListSheet: View {
         NavigationStack {
             Group {
                 if viewModel.customLists.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "tray")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 80, height: 80)
-                            .glassEffect(.regular, in: .circle)
-                        Text("No lists yet")
-                            .font(.title3)
-                            .fontDesign(.rounded)
-                            .foregroundStyle(.secondary)
-                        Text("Create a list from the My Lists tab first.")
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    EmptyStateView(
+                        icon: "tray",
+                        title: "No lists yet",
+                        subtitle: "Create a list from the My Lists tab first."
+                    )
                     .background(AppBackground())
                 } else {
                     GlassEffectContainer(spacing: 8) {

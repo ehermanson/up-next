@@ -518,24 +518,7 @@ private struct DetailProviderRow: View {
     }
 
     private func providerLogo(for network: Network) -> some View {
-        let radius = logoSize * 0.22
-        return Group {
-            if let logoURL = TMDBService.shared.imageURL(path: network.logoPath, size: .w92) {
-                CachedAsyncImage(url: logoURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        Color.gray.opacity(0.1)
-                    }
-                }
-            } else {
-                Color.gray.opacity(0.1)
-            }
-        }
-        .frame(width: logoSize, height: logoSize)
-        .clipShape(.rect(cornerRadius: radius))
-        .glassEffect(.regular, in: .rect(cornerRadius: radius))
+        ProviderLogoView(network: network, size: logoSize)
     }
 }
 
@@ -591,18 +574,7 @@ private struct HiddenProvidersPopover: View {
 
     private func hiddenProviderRow(_ network: Network) -> some View {
         HStack(spacing: 10) {
-            if let logoURL = TMDBService.shared.imageURL(path: network.logoPath, size: .w92) {
-                CachedAsyncImage(url: logoURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFit().padding(3)
-                    default:
-                        Color.gray.opacity(0.1)
-                    }
-                }
-                .frame(width: 30, height: 30)
-                .background(Color.white.opacity(0.85), in: .rect(cornerRadius: 6))
-            }
+            ProviderLogoView(network: network, size: 30)
             Text(network.name)
                 .font(.subheadline)
         }
@@ -731,7 +703,7 @@ private struct ContentRatingPill: View {
     }
 }
 
-private struct MetadataPill: View {
+struct MetadataPill: View {
     let text: String
 
     var body: some View {
@@ -939,7 +911,7 @@ private struct SeasonChecklistCard: View {
     }
 }
 
-private struct HeaderImageView: View {
+struct HeaderImageView: View {
     let imageURL: URL?
 
     var body: some View {
@@ -982,7 +954,7 @@ private struct HeaderImageView: View {
     }
 }
 
-private struct DescriptionSection: View {
+struct DescriptionSection: View {
     let isLoading: Bool
     let descriptionText: String?
     let errorMessage: String?
@@ -1020,7 +992,7 @@ private struct DescriptionSection: View {
     }
 }
 
-private struct GenreSection: View {
+struct GenreSection: View {
     let genres: [String]
 
     var body: some View {
@@ -1043,7 +1015,7 @@ private struct GenreSection: View {
     }
 }
 
-private struct CastSection: View {
+struct CastSection: View {
     let cast: [String]
     let castImagePaths: [String]
     let castCharacters: [String]

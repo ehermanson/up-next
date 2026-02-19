@@ -1,5 +1,31 @@
 import SwiftUI
 
+struct ProviderLogoView: View {
+    let network: Network
+    let size: CGFloat
+
+    var body: some View {
+        let radius = size * 0.22
+        Group {
+            if let logoURL = TMDBService.shared.imageURL(path: network.logoPath, size: .w92) {
+                CachedAsyncImage(url: logoURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Color.gray.opacity(0.1)
+                    }
+                }
+            } else {
+                Color.gray.opacity(0.1)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(.rect(cornerRadius: radius))
+        .glassEffect(.regular, in: .rect(cornerRadius: radius))
+    }
+}
+
 struct NetworkLogosView: View {
     let networks: [Network]
     /// Maximum number of logos to display inline before showing "+N"
@@ -20,23 +46,7 @@ struct NetworkLogosView: View {
         if !networks.isEmpty {
             HStack(spacing: 8) {
                 ForEach(Array(networks.prefix(maxVisible)), id: \.id) { network in
-                    if let logoURL = TMDBService.shared.imageURL(
-                        path: network.logoPath, size: .w92)
-                    {
-                        CachedAsyncImage(url: logoURL) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            default:
-                                Color.gray.opacity(0.1)
-                            }
-                        }
-                        .frame(width: logoSize, height: logoSize)
-                        .clipShape(.rect(cornerRadius: logoSize * 0.22))
-                        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.22))
-                    }
+                    ProviderLogoView(network: network, size: logoSize)
                 }
 
                 let overflow = max(0, networks.count - maxVisible) + additionalCount

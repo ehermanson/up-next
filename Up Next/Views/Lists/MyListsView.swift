@@ -11,21 +11,11 @@ struct MyListsView: View {
         NavigationStack(path: $navigationPath) {
             Group {
                 if viewModel.customLists.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "tray")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 80, height: 80)
-                            .glassEffect(.regular, in: .circle)
-                        Text("No lists yet")
-                            .font(.title3)
-                            .fontDesign(.rounded)
-                            .foregroundStyle(.secondary)
-                        Text("Create a collection to organize your favorites.")
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
+                    EmptyStateView(
+                        icon: "tray",
+                        title: "No lists yet",
+                        subtitle: "Create a collection to organize your favorites."
+                    ) {
                         Button {
                             showingCreateList = true
                         } label: {
@@ -41,7 +31,6 @@ struct MyListsView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(AppBackground())
                 } else {
                     GlassEffectContainer(spacing: 8) {
