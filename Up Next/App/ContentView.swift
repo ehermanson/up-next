@@ -377,13 +377,20 @@ struct ContentView: View {
         return meta.isEmpty ? nil : meta.joined(separator: " \u{2022} ")
     }
 
+    private static let airDateInput: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    private static let airDateDisplay: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
     private func formatAirDate(_ dateString: String) -> String? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard let date = formatter.date(from: dateString) else { return nil }
-        let display = DateFormatter()
-        display.dateFormat = "MMM d"
-        return "Next: \(display.string(from: date))"
+        guard let date = Self.airDateInput.date(from: dateString) else { return nil }
+        return "Next: \(Self.airDateDisplay.string(from: date))"
     }
 }
 

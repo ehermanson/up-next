@@ -13,10 +13,10 @@ final class TMDBService {
         return decoder
     }()
 
-    /// Cache for provider availability checks (keyed by "movie_123" or "tv_456")
-    private var providerAvailabilityCache: [String: ProviderAvailability] = [:]
+    /// Thread-safe cache for provider availability checks
+    private let availabilityCache = ProviderAvailabilityCache()
 
-    private var apiKey: String {
+    private let apiKey: String = {
         guard let key = Bundle.main.infoDictionary?["TMDB_API_KEY"] as? String,
             key != "YOUR_API_KEY_HERE"
         else {
@@ -24,7 +24,7 @@ final class TMDBService {
             return ""
         }
         return key
-    }
+    }()
 
     private init() {}
 
@@ -180,7 +180,6 @@ final class TMDBService {
         mediaType: MediaType
     ) {
         let cacheKey = "\(mediaType == .tvShow ? "tv" : "movie")_\(mediaId)"
-        guard providerAvailabilityCache[cacheKey] == nil else { return }
 
         let providers = watchProviders?.results?[currentRegion]
         var providerIDs = Set<Int>()
@@ -193,7 +192,9 @@ final class TMDBService {
 
         let selectedIDs = ProviderSettings.shared.selectedProviderIDs
         let isOnUserServices = !selectedIDs.isEmpty && !providerIDs.isDisjoint(with: selectedIDs)
-        providerAvailabilityCache[cacheKey] = ProviderAvailability(providerIDs: providerIDs, isOnUserServices: isOnUserServices)
+        let result = ProviderAvailability(providerIDs: providerIDs, isOnUserServices: isOnUserServices)
+
+        Task { await availabilityCache.setIfAbsent(cacheKey, value: result) }
     }
 
     /// Check if a media item is available on user's selected streaming services.
@@ -202,7 +203,7 @@ final class TMDBService {
         let cacheKey = "\(mediaType == .tvShow ? "tv" : "movie")_\(mediaId)"
 
         // Return cached result if available
-        if let cached = providerAvailabilityCache[cacheKey] {
+        if let cached = await availabilityCache.get(cacheKey) {
             return cached
         }
 
@@ -232,13 +233,13 @@ final class TMDBService {
         let isOnUserServices = !selectedIDs.isEmpty && !providerIDs.isDisjoint(with: selectedIDs)
 
         let result = ProviderAvailability(providerIDs: providerIDs, isOnUserServices: isOnUserServices)
-        providerAvailabilityCache[cacheKey] = result
+        await availabilityCache.set(cacheKey, value: result)
         return result
     }
 
     /// Clear the provider availability cache (e.g., when user changes provider selections)
     func clearProviderAvailabilityCache() {
-        providerAvailabilityCache.removeAll()
+        Task { await availabilityCache.removeAll() }
     }
 
     /// Clear the response cache to force fresh data on next request
@@ -633,6 +634,18 @@ final class TMDBService {
             throw TMDBError.decodingError(error)
         }
     }
+}
+
+private actor ProviderAvailabilityCache {
+    private var store: [String: TMDBService.ProviderAvailability] = [:]
+
+    func get(_ key: String) -> TMDBService.ProviderAvailability? { store[key] }
+    func set(_ key: String, value: TMDBService.ProviderAvailability) { store[key] = value }
+    func setIfAbsent(_ key: String, value: TMDBService.ProviderAvailability) {
+        guard store[key] == nil else { return }
+        store[key] = value
+    }
+    func removeAll() { store.removeAll() }
 }
 
 private actor RequestDeduplicator {

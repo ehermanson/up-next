@@ -88,10 +88,14 @@ final class DiscoverViewModel {
 
     // MARK: - State
 
+    private var reloadTask: Task<Void, Never>?
+    private var browseReloadTask: Task<Void, Never>?
+
     var selectedMediaType: DiscoverMediaType = .tvShows {
         didSet {
             guard oldValue != selectedMediaType else { return }
-            Task { await reload() }
+            reloadTask?.cancel()
+            reloadTask = Task { await reload() }
         }
     }
 
@@ -108,13 +112,15 @@ final class DiscoverViewModel {
     var selectedGenre: TMDBGenre? {
         didSet {
             guard oldValue?.id != selectedGenre?.id else { return }
-            Task { await reloadBrowse() }
+            browseReloadTask?.cancel()
+            browseReloadTask = Task { await reloadBrowse() }
         }
     }
     var selectedSort: SortOption = .popular {
         didSet {
             guard oldValue != selectedSort else { return }
-            Task { await reloadBrowse() }
+            browseReloadTask?.cancel()
+            browseReloadTask = Task { await reloadBrowse() }
         }
     }
 

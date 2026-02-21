@@ -16,6 +16,20 @@ final class MediaLibraryViewModel {
     private var tvList: MediaList?
     private var movieList: MediaList?
     private var currentUser: UserIdentity?
+    private var refreshTask: Task<Void, Never>?
+
+    private static let lastRefreshVersionKey = "lastFullRefreshVersion"
+
+    private var needsFullRefresh: Bool {
+        let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        let last = UserDefaults.standard.string(forKey: Self.lastRefreshVersionKey)
+        return last != current
+    }
+
+    private func markRefreshComplete() {
+        let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        UserDefaults.standard.set(current, forKey: Self.lastRefreshVersionKey)
+    }
 
     func configure(modelContext: ModelContext) async {
         guard self.modelContext == nil else { return }
@@ -23,8 +37,12 @@ final class MediaLibraryViewModel {
         await ensureDefaults()
         let didSeed = await loadItems()
         isLoaded = true
-        if !didSeed {
-            Task { await refreshAllItems() }
+        if !didSeed && needsFullRefresh {
+            refreshTask?.cancel()
+            refreshTask = Task {
+                await refreshAllItems()
+                markRefreshComplete()
+            }
         }
     }
 
@@ -172,33 +190,65 @@ final class MediaLibraryViewModel {
 
     // MARK: - Private helpers
 
+    private enum RefreshWork {
+        case tv(item: ListItem, tvShow: TVShow, id: Int)
+        case movie(movie: Movie, id: Int)
+    }
+
     private func refreshAllItems() async {
         guard let context = modelContext else { return }
         let service = TMDBService.shared
 
-        for item in tvShows {
-            guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { continue }
-            do {
-                let previousSeasonCount = tvShow.numberOfSeasons
-                let detail = try await service.getTVShowDetails(id: id)
-                let providers = detail.watchProviders?.results?[service.currentRegion]
-                tvShow.update(from: service.mapToTVShow(detail, providers: providers))
-
-                if let newCount = tvShow.numberOfSeasons,
-                   let prev = previousSeasonCount,
-                   newCount > prev {
-                    handleSeasonCountUpdate(for: item, previousSeasonCount: previousSeasonCount)
-                }
-            } catch { }
+        // Capture snapshots for concurrent fetching
+        let tvItems = tvShows.compactMap { item -> (ListItem, TVShow, Int)? in
+            guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { return nil }
+            return (item, tvShow, id)
+        }
+        let movieItems = movies.compactMap { item -> (ListItem, Movie, Int)? in
+            guard let movie = item.movie, let id = Int(movie.id) else { return nil }
+            return (item, movie, id)
         }
 
-        for item in movies {
-            guard let movie = item.movie, let id = Int(movie.id) else { continue }
-            do {
-                let detail = try await service.getMovieDetails(id: id)
-                let providers = detail.watchProviders?.results?[service.currentRegion]
-                movie.update(from: service.mapToMovie(detail, providers: providers))
-            } catch { }
+        // Fetch details concurrently in batches to stay under TMDB rate limits (~40 req/10s)
+        let maxConcurrent = 8
+        let allItems: [RefreshWork] =
+            tvItems.map { .tv(item: $0.0, tvShow: $0.1, id: $0.2) } +
+            movieItems.map { .movie(movie: $0.1, id: $0.2) }
+
+        for batch in stride(from: 0, to: allItems.count, by: maxConcurrent) {
+            let end = min(batch + maxConcurrent, allItems.count)
+            let slice = allItems[batch..<end]
+
+            await withTaskGroup(of: Void.self) { group in
+                for work in slice {
+                    group.addTask {
+                        switch work {
+                        case .tv(let item, let tvShow, let id):
+                            do {
+                                let previousSeasonCount = tvShow.numberOfSeasons
+                                let detail = try await service.getTVShowDetails(id: id)
+                                let providers = detail.watchProviders?.results?[service.currentRegion]
+                                await MainActor.run {
+                                    tvShow.update(from: service.mapToTVShow(detail, providers: providers))
+                                    if let newCount = tvShow.numberOfSeasons,
+                                       let prev = previousSeasonCount,
+                                       newCount > prev {
+                                        self.handleSeasonCountUpdate(for: item, previousSeasonCount: previousSeasonCount)
+                                    }
+                                }
+                            } catch { }
+                        case .movie(let movie, let id):
+                            do {
+                                let detail = try await service.getMovieDetails(id: id)
+                                let providers = detail.watchProviders?.results?[service.currentRegion]
+                                await MainActor.run {
+                                    movie.update(from: service.mapToMovie(detail, providers: providers))
+                                }
+                            } catch { }
+                        }
+                    }
+                }
+            }
         }
 
         syncUnwatched(for: .tvShow)

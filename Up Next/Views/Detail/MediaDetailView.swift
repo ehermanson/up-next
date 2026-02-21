@@ -705,13 +705,22 @@ private struct MetadataRow: View {
 }
 
 extension MetadataRow {
+    private enum AirDateFormatter {
+        static let input: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            return f
+        }()
+        static let display: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "MMM d"
+            return f
+        }()
+    }
+
     static func formatAirDate(_ dateString: String) -> String? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard let date = formatter.date(from: dateString) else { return nil }
-        let display = DateFormatter()
-        display.dateFormat = "MMM d"
-        return "Next: \(display.string(from: date))"
+        guard let date = AirDateFormatter.input.date(from: dateString) else { return nil }
+        return "Next: \(AirDateFormatter.display.string(from: date))"
     }
 }
 
