@@ -16,11 +16,11 @@ struct WatchlistSearchView: View {
     let onMovieAdded: (Movie) -> Void
     var customListViewModel: CustomListViewModel?
     var onDone: (() -> Void)?
-    var onItemAdded: ((String) -> Void)?
     var libraryTVShows: [ListItem] = []
     var libraryMovies: [ListItem] = []
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(ToastState.self) private var toast
 
     @State private var searchText = ""
     @State private var selectedMediaType: MediaType = .tvShow
@@ -35,6 +35,7 @@ struct WatchlistSearchView: View {
     @State private var movieRecommendations: [TMDBMovieSearchResult] = []
     @State private var isLoadingRecommendations = false
     @State private var recommendationTask: Task<Void, Never>?
+    @State private var detailListItem: ListItem?
 
     private let service = TMDBService.shared
 
@@ -143,56 +144,7 @@ struct WatchlistSearchView: View {
                     .padding(.vertical, 8)
                 }
 
-                Group {
-                    if context == .myLists && selectedList == nil {
-                        noListSelectedView
-                    } else if isLoading {
-                        ShimmerLoadingView()
-                            .background(AppBackground())
-                    } else if let error = errorMessage {
-                        VStack(spacing: 12) {
-                            Image(systemName: "exclamationmark.triangle")
-                                .font(.system(size: 40))
-                                .foregroundStyle(.orange)
-                                .frame(width: 80, height: 80)
-                                .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .circle)
-                            Text(error)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        if isLoadingRecommendations {
-                            ShimmerLoadingView()
-                                .background(AppBackground())
-                        } else if hasRecommendations {
-                            recommendationsList
-                        } else {
-                            EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
-                        }
-                    } else if hasNoResults {
-                        VStack(spacing: 16) {
-                            Image(systemName: "magnifyingglass.circle")
-                                .font(.system(size: 40))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 80, height: 80)
-                                .glassEffect(.regular, in: .circle)
-                            Text("No Results Found")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .fontDesign(.rounded)
-                                .foregroundStyle(.primary)
-                            Text("Try adjusting your search")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .fontDesign(.rounded)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        searchResultsList
-                    }
-                }
+                mainContent
             }
             .background(AppBackground())
             .navigationTitle(navigationTitleText)
@@ -243,6 +195,75 @@ struct WatchlistSearchView: View {
                 searchTask?.cancel()
                 recommendationTask?.cancel()
             }
+            .sheet(item: $detailListItem) { item in
+                detailSheet(for: item)
+            }
+        }
+        .toastOverlay()
+    }
+
+    private func detailSheet(for item: ListItem) -> some View {
+        MediaDetailView(
+            listItem: detailBinding(for: item),
+            dismiss: { detailListItem = nil },
+            onRemove: { detailListItem = nil },
+            customListViewModel: isListMode ? nil : customListViewModel,
+            onAdd: { addFromDetail(item) },
+            existingIDs: allExistingIDs,
+            onTVShowAdded: isListMode ? nil : { onTVShowAdded($0) },
+            onMovieAdded: isListMode ? nil : { onMovieAdded($0) }
+        )
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if context == .myLists && selectedList == nil {
+            noListSelectedView
+        } else if isLoading {
+            ShimmerLoadingView()
+                .background(AppBackground())
+        } else if let error = errorMessage {
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.orange)
+                    .frame(width: 80, height: 80)
+                    .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .circle)
+                Text(error)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if isLoadingRecommendations {
+                ShimmerLoadingView()
+                    .background(AppBackground())
+            } else if hasRecommendations {
+                recommendationsList
+            } else {
+                EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
+            }
+        } else if hasNoResults {
+            VStack(spacing: 16) {
+                Image(systemName: "magnifyingglass.circle")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 80, height: 80)
+                    .glassEffect(.regular, in: .circle)
+                Text("No Results Found")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(.primary)
+                Text("Try adjusting your search")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fontDesign(.rounded)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            searchResultsList
         }
     }
 
@@ -326,6 +347,7 @@ struct WatchlistSearchView: View {
                             mediaType: .tvShow,
                             isAdded: isAlreadyAdded(id: result.id),
                             onAdd: { addTVShow(result) },
+                            onTap: { openTVShowDetail(result) },
                             voteAverage: result.voteAverage
                         )
                     }
@@ -339,6 +361,7 @@ struct WatchlistSearchView: View {
                             mediaType: .movie,
                             isAdded: isAlreadyAdded(id: result.id),
                             onAdd: { addMovie(result) },
+                            onTap: { openMovieDetail(result) },
                             voteAverage: result.voteAverage
                         )
                     }
@@ -376,6 +399,7 @@ struct WatchlistSearchView: View {
                                 mediaType: .tvShow,
                                 isAdded: isAlreadyAdded(id: result.id),
                                 onAdd: { addTVShow(result) },
+                                onTap: { openTVShowDetail(result) },
                                 voteAverage: result.voteAverage
                             )
                         }
@@ -389,6 +413,7 @@ struct WatchlistSearchView: View {
                                 mediaType: .movie,
                                 isAdded: isAlreadyAdded(id: result.id),
                                 onAdd: { addMovie(result) },
+                                onTap: { openMovieDetail(result) },
                                 voteAverage: result.voteAverage
                             )
                         }
@@ -788,6 +813,50 @@ struct WatchlistSearchView: View {
             .joined(separator: " ")
     }
 
+    // MARK: - Detail Sheet
+
+    private var allExistingIDs: Set<String> {
+        existingTVShowIDs.union(existingMovieIDs).union(addedIDs)
+    }
+
+    private func openTVShowDetail(_ result: TMDBTVShowSearchResult) {
+        let tvShow = service.mapToTVShow(result)
+        detailListItem = ListItem(tvShow: tvShow)
+    }
+
+    private func openMovieDetail(_ result: TMDBMovieSearchResult) {
+        let movie = service.mapToMovie(result)
+        detailListItem = ListItem(movie: movie)
+    }
+
+    private func addFromDetail(_ item: ListItem) {
+        guard let media = item.media else { return }
+        let stringID = media.id
+        guard let intID = Int(stringID), !isAlreadyAdded(id: intID) else { return }
+        addedIDs.insert(stringID)
+
+        if let tvShow = item.tvShow {
+            if isListMode, let list = selectedList {
+                customListViewModel?.addItem(tvShow: tvShow, to: list)
+            } else {
+                onTVShowAdded(tvShow)
+            }
+        } else if let movie = item.movie {
+            if isListMode, let list = selectedList {
+                customListViewModel?.addItem(movie: movie, to: list)
+            } else {
+                onMovieAdded(movie)
+            }
+        }
+    }
+
+    private func detailBinding(for item: ListItem) -> Binding<ListItem> {
+        Binding(
+            get: { detailListItem ?? item },
+            set: { detailListItem = $0 }
+        )
+    }
+
     // MARK: - Search
 
     private func syncActiveList() {
@@ -858,7 +927,7 @@ struct WatchlistSearchView: View {
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
-        onItemAdded?(result.name)
+        toast.show("\(result.name) has been added")
         Task {
             let tvShow: TVShow
             do {
@@ -879,7 +948,7 @@ struct WatchlistSearchView: View {
     private func addMovie(_ result: TMDBMovieSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
         addedIDs.insert(String(result.id))
-        onItemAdded?(result.title)
+        toast.show("\(result.title) has been added")
         Task {
             let movie: Movie
             do {

@@ -5,8 +5,8 @@ struct DiscoverView: View {
     let existingMovieIDs: Set<String>
     let onTVShowAdded: (TVShow) -> Void
     let onMovieAdded: (Movie) -> Void
-    var onItemAdded: ((String) -> Void)?
 
+    @Environment(ToastState.self) private var toast
     @State private var viewModel = DiscoverViewModel()
     @State private var addedIDs: Set<String> = []
     @State private var detailListItem: ListItem?
@@ -41,9 +41,9 @@ struct DiscoverView: View {
                 },
                 existingIDs: existingTVShowIDs.union(existingMovieIDs).union(addedIDs),
                 onTVShowAdded: { onTVShowAdded($0) },
-                onMovieAdded: { onMovieAdded($0) },
-                onItemAdded: onItemAdded
+                onMovieAdded: { onMovieAdded($0) }
             )
+            .toastOverlay()
         }
     }
 
@@ -312,7 +312,6 @@ struct DiscoverView: View {
         let stringID = media.id
         guard !addedIDs.contains(stringID) else { return }
         addedIDs.insert(stringID)
-        onItemAdded?(media.title)
 
         if let tvShow = item.tvShow {
             onTVShowAdded(tvShow)
@@ -327,7 +326,7 @@ struct DiscoverView: View {
         let stringID = String(item.tmdbId)
         guard !addedIDs.contains(stringID) else { return }
         addedIDs.insert(stringID)
-        onItemAdded?(item.title)
+        toast.show("\(item.title) has been added")
 
         Task {
             switch item {

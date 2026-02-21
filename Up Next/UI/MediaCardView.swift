@@ -40,8 +40,8 @@ struct MediaCardView: View {
         return selectedStreamingNetworks
     }
 
-    private var imageSize: CGSize {
-        isCompact ? CGSize(width: 54, height: 78) : CGSize(width: 70, height: 100)
+    private var posterSize: CGSize {
+        isCompact ? CGSize(width: 60, height: 90) : CGSize(width: 82, height: 123)
     }
 
     private var cardCornerRadius: CGFloat {
@@ -68,15 +68,13 @@ struct MediaCardView: View {
                         Color.gray.opacity(0.1)
                     }
                 }
-                .frame(width: imageSize.width)
-                .frame(minHeight: imageSize.height, maxHeight: .infinity)
+                .frame(width: posterSize.width, height: posterSize.height)
                 .clipShape(leadingClipShape)
                 .clipped()
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
-                    .frame(width: imageSize.width)
-                    .frame(minHeight: imageSize.height, maxHeight: .infinity)
+                    .frame(width: posterSize.width, height: posterSize.height)
                     .clipShape(leadingClipShape)
             }
 
@@ -140,6 +138,7 @@ struct MediaCardView: View {
             .padding(.vertical, isCompact ? 10 : 12)
             .padding(.trailing, isCompact ? 10 : 12)
         }
+        .frame(minHeight: posterSize.height, alignment: .leading)
         .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: cardCornerRadius))
     }
 }

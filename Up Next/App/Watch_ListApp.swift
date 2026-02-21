@@ -46,9 +46,12 @@ struct Watch_ListApp: App {
         loadRocketSimConnect()
     }
 
+    @State private var toastState = ToastState()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(toastState)
         }
         .modelContainer(sharedModelContainer)
     }

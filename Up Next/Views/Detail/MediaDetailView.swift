@@ -11,7 +11,8 @@ struct MediaDetailView: View {
     var existingIDs: Set<String> = []
     var onTVShowAdded: ((TVShow) -> Void)?
     var onMovieAdded: ((Movie) -> Void)?
-    var onItemAdded: ((String) -> Void)?
+
+    @Environment(ToastState.self) private var toast
 
     @State private var isLoadingDetails = false
     @State private var detailError: String?
@@ -241,6 +242,9 @@ struct MediaDetailView: View {
                     if let onAdd {
                         Button {
                             onAdd()
+                            if let title = listItem.media?.title {
+                                toast.show("\(title) has been added")
+                            }
                             dismiss()
                         } label: {
                             Label("Add to Watchlist", systemImage: "plus")
@@ -283,10 +287,10 @@ struct MediaDetailView: View {
                     onAdd: { addSimilarFromDetail(item) },
                     existingIDs: existingIDs.union(addedSimilarIDs),
                     onTVShowAdded: onTVShowAdded,
-                    onMovieAdded: onMovieAdded,
-                    onItemAdded: onItemAdded
+                    onMovieAdded: onMovieAdded
                 )
             }
+            .toastOverlay()
         }
     }
 
@@ -368,7 +372,7 @@ struct MediaDetailView: View {
         let stringID = String(item.id)
         guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
         addedSimilarIDs.insert(stringID)
-        onItemAdded?(item.title)
+        toast.show("\(item.title) has been added")
 
         Task {
             if item.mediaType == .tvShow {
@@ -410,7 +414,7 @@ struct MediaDetailView: View {
         let stringID = String(part.id)
         guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
         addedSimilarIDs.insert(stringID)
-        onItemAdded?(part.title)
+        toast.show("\(part.title) has been added")
 
         Task {
             let movie: Movie
@@ -436,7 +440,7 @@ struct MediaDetailView: View {
         let stringID = media.id
         guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
         addedSimilarIDs.insert(stringID)
-        onItemAdded?(media.title)
+        toast.show("\(media.title) has been added")
         if let tvShow = item.tvShow {
             onTVShowAdded?(tvShow)
         } else if let movie = item.movie {

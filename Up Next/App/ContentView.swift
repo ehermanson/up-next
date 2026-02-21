@@ -23,8 +23,6 @@ struct ContentView: View {
     @State private var showingSettings = false
     @State private var showingSearch = false
 
-    @State private var toastMessage: String?
-
     private var selectedTVShow: ListItem? {
         guard let id = expandedTVShowID else { return nil }
         return viewModel.tvShows.first(where: { $0.media?.id == id })
@@ -97,27 +95,7 @@ struct ContentView: View {
 
     var body: some View {
         mainTabView
-            .overlay(alignment: .bottom) {
-                if let message = toastMessage {
-                    Text(message)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .fontDesign(.rounded)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .glassEffect(.regular.tint(.green.opacity(0.2)), in: .capsule)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.bottom, 100)
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    toastMessage = nil
-                                }
-                            }
-                        }
-                }
-            }
-            .animation(.spring(duration: 0.4), value: toastMessage)
+            .toastOverlay(bottomPadding: 100)
             .sheet(isPresented: $showingSettings) {
                 ProviderSettingsView()
             }
@@ -243,8 +221,7 @@ struct ContentView: View {
                 customListViewModel: customListViewModel,
                 existingIDs: existingIDs(for: .tvShow).union(existingIDs(for: .movie)),
                 onTVShowAdded: { viewModel.addTVShow($0) },
-                onMovieAdded: { viewModel.addMovie($0) },
-                onItemAdded: { toastMessage = "\($0) has been added" }
+                onMovieAdded: { viewModel.addMovie($0) }
             )
         }
     }
@@ -301,8 +278,7 @@ struct ContentView: View {
                 customListViewModel: customListViewModel,
                 existingIDs: existingIDs(for: .tvShow).union(existingIDs(for: .movie)),
                 onTVShowAdded: { viewModel.addTVShow($0) },
-                onMovieAdded: { viewModel.addMovie($0) },
-                onItemAdded: { toastMessage = "\($0) has been added" }
+                onMovieAdded: { viewModel.addMovie($0) }
             )
         }
     }
@@ -321,10 +297,7 @@ struct ContentView: View {
             existingTVShowIDs: existingIDs(for: .tvShow),
             existingMovieIDs: existingIDs(for: .movie),
             onTVShowAdded: { viewModel.addTVShow($0) },
-            onMovieAdded: { viewModel.addMovie($0) },
-            onItemAdded: { title in
-                toastMessage = "\(title) has been added"
-            }
+            onMovieAdded: { viewModel.addMovie($0) }
         )
     }
 
@@ -336,9 +309,6 @@ struct ContentView: View {
             onTVShowAdded: { viewModel.addTVShow($0) },
             onMovieAdded: { viewModel.addMovie($0) },
             customListViewModel: customListViewModel,
-            onItemAdded: { title in
-                toastMessage = "\(title) has been added"
-            },
             libraryTVShows: viewModel.tvShows,
             libraryMovies: viewModel.movies
         )
