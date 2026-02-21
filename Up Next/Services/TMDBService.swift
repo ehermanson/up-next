@@ -147,6 +147,7 @@ final class TMDBService: @unchecked Sendable {
             2,      // Apple iTunes
             3,      // Google Play Movies
             7,      // Vudu
+            10,     // Amazon Video
             68,     // Microsoft Store
             192,    // YouTube
             652,    // Apple TV
