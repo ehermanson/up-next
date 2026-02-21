@@ -64,20 +64,62 @@ extension EmptyStateView where Actions == EmptyView {
 
 @MainActor @Observable
 final class ToastState {
-    var message: String?
+    private(set) var current: ToastItem?
     private(set) var triggerCount = 0
+    private var queue: [String] = []
     private var dismissTask: Task<Void, Never>?
+    private var nextID = 0
+
+    struct ToastItem: Equatable {
+        let id: Int
+        let message: String
+    }
 
     func show(_ message: String) {
-        dismissTask?.cancel()
-        withAnimation(.spring(duration: 0.35, bounce: 0.3)) {
-            self.message = message
-        }
         triggerCount += 1
+        queue.append(message)
+
+        if current == nil {
+            advanceQueue()
+        } else {
+            quickDismissThenAdvance()
+        }
+    }
+
+    private func advanceQueue() {
+        guard !queue.isEmpty else { return }
+        let message = queue.removeFirst()
+        let item = ToastItem(id: nextID, message: message)
+        nextID += 1
+        withAnimation(.spring(duration: 0.35, bounce: 0.3)) {
+            current = item
+        }
+        scheduleAutoDismiss()
+    }
+
+    private func quickDismissThenAdvance() {
+        dismissTask?.cancel()
+        withAnimation(.easeOut(duration: 0.15)) {
+            current = nil
+        }
+        dismissTask = Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            advanceQueue()
+        }
+    }
+
+    private func scheduleAutoDismiss() {
+        dismissTask?.cancel()
         dismissTask = Task {
             try? await Task.sleep(for: .seconds(2.5))
-            withAnimation(.easeOut(duration: 0.3)) {
-                self.message = nil
+            guard !Task.isCancelled else { return }
+            if queue.isEmpty {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    current = nil
+                }
+            } else {
+                quickDismissThenAdvance()
             }
         }
     }
@@ -103,14 +145,15 @@ struct ToastOverlayModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .overlay(alignment: .bottom) {
-                if let msg = toast.message {
+                if let item = toast.current {
                     HStack(spacing: 8) {
                         ToastCheckmark()
-                        Text(msg)
+                        Text(item.message)
                             .font(.callout)
                             .fontWeight(.semibold)
                             .fontDesign(.rounded)
                     }
+                    .id(item.id)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
                     .glassEffect(.regular.tint(.green.opacity(0.25)), in: .capsule)
