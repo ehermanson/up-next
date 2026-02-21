@@ -61,6 +61,8 @@ struct MyListsView: View {
                                             .font(.caption.weight(.semibold))
                                             .foregroundStyle(.tertiary)
                                     }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(.rect)
                                     .padding(.vertical, 10)
                                     .padding(.horizontal, 14)
                                 }
