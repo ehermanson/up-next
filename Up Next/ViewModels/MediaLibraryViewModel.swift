@@ -190,64 +190,69 @@ final class MediaLibraryViewModel {
 
     // MARK: - Private helpers
 
-    private enum RefreshWork {
-        case tv(item: ListItem, tvShow: TVShow, id: Int)
-        case movie(movie: Movie, id: Int)
-    }
-
     private func refreshAllItems() async {
         guard let context = modelContext else { return }
         let service = TMDBService.shared
-
-        // Capture snapshots for concurrent fetching
-        let tvItems = tvShows.compactMap { item -> (ListItem, TVShow, Int)? in
-            guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { return nil }
-            return (item, tvShow, id)
-        }
-        let movieItems = movies.compactMap { item -> (ListItem, Movie, Int)? in
-            guard let movie = item.movie, let id = Int(movie.id) else { return nil }
-            return (item, movie, id)
-        }
-
-        // Fetch details concurrently in batches to stay under TMDB rate limits (~40 req/10s)
         let maxConcurrent = 8
-        let allItems: [RefreshWork] =
-            tvItems.map { .tv(item: $0.0, tvShow: $0.1, id: $0.2) } +
-            movieItems.map { .movie(movie: $0.1, id: $0.2) }
 
-        for batch in stride(from: 0, to: allItems.count, by: maxConcurrent) {
-            let end = min(batch + maxConcurrent, allItems.count)
-            let slice = allItems[batch..<end]
+        // Collect value-type inputs — no @Model captures in task closures
+        let tvInputs: [(index: Int, id: Int, prevSeasons: Int?)] = tvShows.enumerated().compactMap { i, item in
+            guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { return nil }
+            return (i, id, tvShow.numberOfSeasons)
+        }
+        let movieInputs: [(index: Int, id: Int)] = movies.enumerated().compactMap { i, item in
+            guard let movie = item.movie, let id = Int(movie.id) else { return nil }
+            return (i, id)
+        }
 
-            await withTaskGroup(of: Void.self) { group in
-                for work in slice {
+        // Fetch TV details in batches, returning Codable results
+        for batch in stride(from: 0, to: tvInputs.count, by: maxConcurrent) {
+            let slice = tvInputs[batch..<min(batch + maxConcurrent, tvInputs.count)]
+            let results = await withTaskGroup(of: (Int, Int?, TMDBTVShowDetail?).self) { group in
+                for input in slice {
                     group.addTask {
-                        switch work {
-                        case .tv(let item, let tvShow, let id):
-                            do {
-                                let previousSeasonCount = tvShow.numberOfSeasons
-                                let detail = try await service.getTVShowDetails(id: id)
-                                let providers = detail.watchProviders?.results?[service.currentRegion]
-                                await MainActor.run {
-                                    tvShow.update(from: service.mapToTVShow(detail, providers: providers))
-                                    if let newCount = tvShow.numberOfSeasons,
-                                       let prev = previousSeasonCount,
-                                       newCount > prev {
-                                        self.handleSeasonCountUpdate(for: item, previousSeasonCount: previousSeasonCount)
-                                    }
-                                }
-                            } catch { }
-                        case .movie(let movie, let id):
-                            do {
-                                let detail = try await service.getMovieDetails(id: id)
-                                let providers = detail.watchProviders?.results?[service.currentRegion]
-                                await MainActor.run {
-                                    movie.update(from: service.mapToMovie(detail, providers: providers))
-                                }
-                            } catch { }
-                        }
+                        let detail = try? await service.getTVShowDetails(id: input.id)
+                        return (input.index, input.prevSeasons, detail)
                     }
                 }
+                var out: [(Int, Int?, TMDBTVShowDetail?)] = []
+                for await result in group { out.append(result) }
+                return out
+            }
+
+            // Apply updates on main actor (no isolation crossing)
+            for (index, prevSeasons, detail) in results {
+                guard let detail, index < tvShows.count,
+                      let tvShow = tvShows[index].tvShow else { continue }
+                let providers = detail.watchProviders?.results?[service.currentRegion]
+                tvShow.update(from: service.mapToTVShow(detail, providers: providers))
+                if let newCount = tvShow.numberOfSeasons,
+                   let prev = prevSeasons, newCount > prev {
+                    handleSeasonCountUpdate(for: tvShows[index], previousSeasonCount: prevSeasons)
+                }
+            }
+        }
+
+        // Fetch movie details in batches
+        for batch in stride(from: 0, to: movieInputs.count, by: maxConcurrent) {
+            let slice = movieInputs[batch..<min(batch + maxConcurrent, movieInputs.count)]
+            let results = await withTaskGroup(of: (Int, TMDBMovieDetail?).self) { group in
+                for input in slice {
+                    group.addTask {
+                        let detail = try? await service.getMovieDetails(id: input.id)
+                        return (input.index, detail)
+                    }
+                }
+                var out: [(Int, TMDBMovieDetail?)] = []
+                for await result in group { out.append(result) }
+                return out
+            }
+
+            for (index, detail) in results {
+                guard let detail, index < movies.count,
+                      let movie = movies[index].movie else { continue }
+                let providers = detail.watchProviders?.results?[service.currentRegion]
+                movie.update(from: service.mapToMovie(detail, providers: providers))
             }
         }
 

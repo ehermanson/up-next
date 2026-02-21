@@ -2,7 +2,9 @@ import Foundation
 import SwiftData
 
 /// Service for interacting with The Movie Database (TMDB) API
-final class TMDBService {
+/// All stored properties are either `let` values or actor-isolated caches,
+/// so cross-isolation capture is safe.
+final class TMDBService: @unchecked Sendable {
     static let shared = TMDBService()
 
     private let baseURL = "https://api.themoviedb.org/3"
