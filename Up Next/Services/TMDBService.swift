@@ -82,6 +82,24 @@ final class TMDBService: @unchecked Sendable {
         return detail
     }
 
+    // MARK: - Recommendations
+
+    /// Get recommended TV shows based on a specific TV show
+    func fetchTVRecommendations(id: Int) async throws -> [TMDBTVShowSearchResult] {
+        let response: TMDBTVShowSearchResponse = try await performRequest(
+            endpoint: "/tv/\(id)/recommendations", queryItems: []
+        )
+        return response.results
+    }
+
+    /// Get recommended movies based on a specific movie
+    func fetchMovieRecommendations(id: Int) async throws -> [TMDBMovieSearchResult] {
+        let response: TMDBMovieSearchResponse = try await performRequest(
+            endpoint: "/movie/\(id)/recommendations", queryItems: []
+        )
+        return response.results
+    }
+
     /// Get details for a movie collection (e.g. "Dune Collection")
     func getCollectionDetails(id: Int) async throws -> TMDBCollectionDetail {
         let endpoint = "/collection/\(id)"

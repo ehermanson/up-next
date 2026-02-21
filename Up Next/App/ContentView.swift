@@ -338,7 +338,9 @@ struct ContentView: View {
             customListViewModel: customListViewModel,
             onItemAdded: { title in
                 toastMessage = "\(title) has been added"
-            }
+            },
+            libraryTVShows: viewModel.tvShows,
+            libraryMovies: viewModel.movies
         )
     }
 

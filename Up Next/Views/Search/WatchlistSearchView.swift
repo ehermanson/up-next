@@ -17,11 +17,12 @@ struct WatchlistSearchView: View {
     var customListViewModel: CustomListViewModel?
     var onDone: (() -> Void)?
     var onItemAdded: ((String) -> Void)?
+    var libraryTVShows: [ListItem] = []
+    var libraryMovies: [ListItem] = []
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
-    @State private var isSearchPresented = false
     @State private var selectedMediaType: MediaType = .tvShow
     @State private var tvShowResults: [TMDBTVShowSearchResult] = []
     @State private var movieResults: [TMDBMovieSearchResult] = []
@@ -30,6 +31,10 @@ struct WatchlistSearchView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var addedIDs: Set<String> = []
     @State private var selectedListID: UUID?
+    @State private var tvRecommendations: [TMDBTVShowSearchResult] = []
+    @State private var movieRecommendations: [TMDBMovieSearchResult] = []
+    @State private var isLoadingRecommendations = false
+    @State private var recommendationTask: Task<Void, Never>?
 
     private let service = TMDBService.shared
 
@@ -158,7 +163,14 @@ struct WatchlistSearchView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
+                        if !isListMode && isLoadingRecommendations {
+                            ShimmerLoadingView()
+                                .background(AppBackground())
+                        } else if !isListMode && hasRecommendations {
+                            recommendationsList
+                        } else {
+                            EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
+                        }
                     } else if hasNoResults {
                         VStack(spacing: 16) {
                             Image(systemName: "magnifyingglass.circle")
@@ -194,7 +206,6 @@ struct WatchlistSearchView: View {
             }
             .searchable(
                 text: $searchText,
-                isPresented: $isSearchPresented,
                 placement: .navigationBarDrawer(displayMode: .automatic),
                 prompt: "Search..."
             )
@@ -206,6 +217,8 @@ struct WatchlistSearchView: View {
             .onChange(of: selectedMediaType) { _, _ in
                 if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     scheduleSearch(for: searchText)
+                } else {
+                    loadRecommendations()
                 }
             }
             .onChange(of: context) { _, _ in
@@ -216,11 +229,11 @@ struct WatchlistSearchView: View {
                 syncActiveList()
             }
             .task {
-                try? await Task.sleep(for: .milliseconds(100))
-                isSearchPresented = true
+                loadRecommendations()
             }
             .onDisappear {
                 searchTask?.cancel()
+                recommendationTask?.cancel()
             }
         }
     }
@@ -326,6 +339,198 @@ struct WatchlistSearchView: View {
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
         }
+    }
+
+    // MARK: - Recommendations
+
+    private var hasRecommendations: Bool {
+        effectiveMediaType == .tvShow ? !tvRecommendations.isEmpty : !movieRecommendations.isEmpty
+    }
+
+    private var recommendationsList: some View {
+        GlassEffectContainer(spacing: 8) {
+            List {
+                Section {
+                    if effectiveMediaType == .tvShow {
+                        ForEach(tvRecommendations) { result in
+                            SearchResultRowWithImage(
+                                title: result.name,
+                                overview: result.overview,
+                                posterPath: result.posterPath,
+                                mediaId: result.id,
+                                mediaType: .tvShow,
+                                isAdded: isAlreadyAdded(id: result.id),
+                                onAdd: { addTVShow(result) },
+                                voteAverage: result.voteAverage
+                            )
+                        }
+                    } else {
+                        ForEach(movieRecommendations) { result in
+                            SearchResultRowWithImage(
+                                title: result.title,
+                                overview: result.overview,
+                                posterPath: result.posterPath,
+                                mediaId: result.id,
+                                mediaType: .movie,
+                                isAdded: isAlreadyAdded(id: result.id),
+                                onAdd: { addMovie(result) },
+                                voteAverage: result.voteAverage
+                            )
+                        }
+                    }
+                } header: {
+                    Label("Recommended For You", systemImage: "sparkles")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .fontDesign(.rounded)
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .listStyle(.plain)
+        }
+    }
+
+    private func loadRecommendations() {
+        guard !isListMode else { return }
+
+        let libraryItems = effectiveMediaType == .tvShow ? libraryTVShows : libraryMovies
+        guard !libraryItems.isEmpty else { return }
+
+        recommendationTask?.cancel()
+        isLoadingRecommendations = true
+
+        recommendationTask = Task {
+            defer { isLoadingRecommendations = false }
+
+            let seeds = selectSeeds(from: libraryItems)
+            guard !seeds.isEmpty, !Task.isCancelled else { return }
+
+            let existingIDs = effectiveMediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
+            let allExisting = existingIDs.union(addedIDs)
+
+            if effectiveMediaType == .tvShow {
+                let results = await fetchTVRecommendations(seeds: seeds, excluding: allExisting)
+                guard !Task.isCancelled else { return }
+                tvRecommendations = results
+            } else {
+                let results = await fetchMovieRecommendations(seeds: seeds, excluding: allExisting)
+                guard !Task.isCancelled else { return }
+                movieRecommendations = results
+            }
+        }
+    }
+
+    private func selectSeeds(from items: [ListItem]) -> [Int] {
+        // Priority 1: Thumbs-up rated items (strongest quality signal for "more like this")
+        let thumbsUp = items
+            .filter { $0.userRating == 1 }
+            .sorted { $0.addedAt > $1.addedAt }
+
+        // Priority 2: Recently added unwatched items (current-interest signal)
+        let unwatched = items
+            .filter { !$0.isWatched && $0.userRating != 1 }
+            .sorted { $0.addedAt > $1.addedAt }
+
+        // Priority 3: Recently watched items (fallback)
+        let recentlyWatched = items
+            .filter { $0.isWatched && $0.userRating != 1 }
+            .sorted { ($0.watchedAt ?? .distantPast) > ($1.watchedAt ?? .distantPast) }
+
+        var seeds: [Int] = []
+        var seenIDs = Set<String>()
+
+        for item in thumbsUp + unwatched + recentlyWatched {
+            guard seeds.count < 5 else { break }
+            guard let id = item.media?.id, !seenIDs.contains(id), let intID = Int(id) else { continue }
+            seenIDs.insert(id)
+            seeds.append(intID)
+        }
+
+        return seeds
+    }
+
+    private func fetchTVRecommendations(seeds: [Int], excluding existingIDs: Set<String>) async -> [TMDBTVShowSearchResult] {
+        var allResults: [TMDBTVShowSearchResult] = []
+
+        await withTaskGroup(of: [TMDBTVShowSearchResult].self) { group in
+            for seedID in seeds {
+                group.addTask {
+                    (try? await service.fetchTVRecommendations(id: seedID)) ?? []
+                }
+            }
+            for await results in group {
+                allResults.append(contentsOf: results)
+            }
+        }
+
+        return aggregateTV(allResults, excluding: existingIDs)
+    }
+
+    private func fetchMovieRecommendations(seeds: [Int], excluding existingIDs: Set<String>) async -> [TMDBMovieSearchResult] {
+        var allResults: [TMDBMovieSearchResult] = []
+
+        await withTaskGroup(of: [TMDBMovieSearchResult].self) { group in
+            for seedID in seeds {
+                group.addTask {
+                    (try? await service.fetchMovieRecommendations(id: seedID)) ?? []
+                }
+            }
+            for await results in group {
+                allResults.append(contentsOf: results)
+            }
+        }
+
+        return aggregateMovies(allResults, excluding: existingIDs)
+    }
+
+    private func aggregateTV(_ results: [TMDBTVShowSearchResult], excluding existingIDs: Set<String>) -> [TMDBTVShowSearchResult] {
+        var frequency: [Int: Int] = [:]
+        var bestByID: [Int: TMDBTVShowSearchResult] = [:]
+
+        for result in results {
+            guard !existingIDs.contains(String(result.id)) else { continue }
+            guard (result.voteAverage ?? 0) >= 6.0 else { continue }
+            frequency[result.id, default: 0] += 1
+            if bestByID[result.id] == nil {
+                bestByID[result.id] = result
+            }
+        }
+
+        return bestByID.values
+            .sorted { a, b in
+                let freqA = frequency[a.id] ?? 0
+                let freqB = frequency[b.id] ?? 0
+                if freqA != freqB { return freqA > freqB }
+                return (a.voteAverage ?? 0) > (b.voteAverage ?? 0)
+            }
+            .prefix(20)
+            .map { $0 }
+    }
+
+    private func aggregateMovies(_ results: [TMDBMovieSearchResult], excluding existingIDs: Set<String>) -> [TMDBMovieSearchResult] {
+        var frequency: [Int: Int] = [:]
+        var bestByID: [Int: TMDBMovieSearchResult] = [:]
+
+        for result in results {
+            guard !existingIDs.contains(String(result.id)) else { continue }
+            guard (result.voteAverage ?? 0) >= 6.0 else { continue }
+            frequency[result.id, default: 0] += 1
+            if bestByID[result.id] == nil {
+                bestByID[result.id] = result
+            }
+        }
+
+        return bestByID.values
+            .sorted { a, b in
+                let freqA = frequency[a.id] ?? 0
+                let freqB = frequency[b.id] ?? 0
+                if freqA != freqB { return freqA > freqB }
+                return (a.voteAverage ?? 0) > (b.voteAverage ?? 0)
+            }
+            .prefix(20)
+            .map { $0 }
     }
 
     // MARK: - Search
