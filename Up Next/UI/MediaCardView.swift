@@ -40,11 +40,6 @@ struct MediaCardView: View {
         return selectedStreamingNetworks
     }
 
-    /// True when user has providers selected but no streaming services match
-    private var showNotStreamingBadge: Bool {
-        settings.hasSelectedProviders && selectedStreamingNetworks.isEmpty && !networks.isEmpty
-    }
-
     private var imageSize: CGSize {
         isCompact ? CGSize(width: 54, height: 78) : CGSize(width: 70, height: 100)
     }
@@ -134,19 +129,12 @@ struct MediaCardView: View {
                     }
                 }
                 if !isCompact {
-                    if showNotStreamingBadge {
-                        Text("Not on your services")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 2)
-                    } else {
-                        NetworkLogosView(
-                            networks: visibleNetworks,
-                            maxVisible: 4,
-                            logoSize: 28,
-                            additionalCount: settings.hasSelectedProviders ? additionalNetworkCount : 0
-                        )
-                    }
+                    NetworkLogosView(
+                        networks: visibleNetworks,
+                        maxVisible: 4,
+                        logoSize: 28,
+                        additionalCount: settings.hasSelectedProviders ? additionalNetworkCount : 0
+                    )
                 }
             }
             .padding(.vertical, isCompact ? 10 : 12)

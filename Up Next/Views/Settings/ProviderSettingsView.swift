@@ -56,7 +56,7 @@ struct ProviderSettingsView: View {
 
     private var descriptionSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Select the streaming services you subscribe to. Only these will appear on your library items.")
+            Text("Select the streaming services you subscribe to. Your selections are highlighted first on library cards.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

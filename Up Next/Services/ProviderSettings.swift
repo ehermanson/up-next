@@ -9,8 +9,6 @@ final class ProviderSettings {
     var selectedProviderIDs: Set<Int> {
         didSet {
             saveSelectedProviders()
-            // Clear availability cache since selections changed
-            TMDBService.shared.clearProviderAvailabilityCache()
         }
     }
 

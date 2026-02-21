@@ -127,15 +127,6 @@ final class DiscoverViewModel {
     var genres: [TMDBGenre] = []
 
     private let service = TMDBService.shared
-    private let settings = ProviderSettings.shared
-
-    // MARK: - Provider String
-
-    private var providerString: String? {
-        let ids = settings.selectedProviderIDs
-        guard !ids.isEmpty else { return nil }
-        return ids.map(String.init).joined(separator: "|")
-    }
 
     // MARK: - Loading
 
@@ -152,21 +143,19 @@ final class DiscoverViewModel {
 
     private func loadCarousels() async {
         isCarouselLoading = true
-        let providers = providerString
-        let region = service.currentRegion
 
         await withTaskGroup(of: (String, [DiscoverItem]).self) { group in
             group.addTask { [selectedMediaType] in
                 let items = await self.fetchItems(
                     mediaType: selectedMediaType, sortBy: "popularity.desc",
-                    providers: providers, region: region, voteCountGte: nil, page: 1
+                    voteCountGte: nil, page: 1
                 )
                 return ("trending", items)
             }
             group.addTask { [selectedMediaType] in
                 let items = await self.fetchItems(
                     mediaType: selectedMediaType, sortBy: "vote_average.desc",
-                    providers: providers, region: region, voteCountGte: 200, page: 1
+                    voteCountGte: 200, page: 1
                 )
                 return ("topRated", items)
             }
@@ -175,7 +164,7 @@ final class DiscoverViewModel {
                     ? "primary_release_date.desc" : "first_air_date.desc"
                 let items = await self.fetchItems(
                     mediaType: selectedMediaType, sortBy: sortBy,
-                    providers: providers, region: region, voteCountGte: 50, page: 1
+                    voteCountGte: 50, page: 1
                 )
                 return ("newReleases", items)
             }
@@ -206,8 +195,6 @@ final class DiscoverViewModel {
 
     private func loadBrowsePage() async {
         isBrowseLoading = true
-        let providers = providerString
-        let region = service.currentRegion
         let genreID = selectedGenre.map { String($0.id) }
         let sortBy = selectedMediaType == .movies
             ? selectedSort.movieSortBy : selectedSort.tvSortBy
@@ -218,7 +205,6 @@ final class DiscoverViewModel {
             if selectedMediaType == .tvShows {
                 let response = try await service.discoverTVShows(
                     page: browsePage, sortBy: sortBy, withGenres: genreID,
-                    withWatchProviders: providers, watchRegion: region,
                     voteCountGte: voteCountGte
                 )
                 let newItems = response.results.map { DiscoverItem.tvShow($0) }
@@ -231,7 +217,6 @@ final class DiscoverViewModel {
             } else {
                 let response = try await service.discoverMovies(
                     page: browsePage, sortBy: sortBy, withGenres: genreID,
-                    withWatchProviders: providers, watchRegion: region,
                     voteCountGte: voteCountGte
                 )
                 let newItems = response.results.map { DiscoverItem.movie($0) }
@@ -262,20 +247,17 @@ final class DiscoverViewModel {
 
     private func fetchItems(
         mediaType: DiscoverMediaType, sortBy: String,
-        providers: String?, region: String,
         voteCountGte: Int?, page: Int
     ) async -> [DiscoverItem] {
         do {
             if mediaType == .tvShows {
                 let response = try await service.discoverTVShows(
-                    page: page, sortBy: sortBy, withWatchProviders: providers,
-                    watchRegion: region, voteCountGte: voteCountGte
+                    page: page, sortBy: sortBy, voteCountGte: voteCountGte
                 )
                 return response.results.map { .tvShow($0) }
             } else {
                 let response = try await service.discoverMovies(
-                    page: page, sortBy: sortBy, withWatchProviders: providers,
-                    watchRegion: region, voteCountGte: voteCountGte
+                    page: page, sortBy: sortBy, voteCountGte: voteCountGte
                 )
                 return response.results.map { .movie($0) }
             }

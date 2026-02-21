@@ -15,9 +15,6 @@ final class TMDBService: @unchecked Sendable {
         return decoder
     }()
 
-    /// Thread-safe cache for provider availability checks
-    private let availabilityCache = ProviderAvailabilityCache()
-
     private let apiKey: String = {
         guard let key = Bundle.main.infoDictionary?["TMDB_API_KEY"] as? String,
             key != "YOUR_API_KEY_HERE"
@@ -63,23 +60,19 @@ final class TMDBService: @unchecked Sendable {
     /// Get detailed information for a TV show
     func getTVShowDetails(id: Int) async throws -> TMDBTVShowDetail {
         let endpoint = "/tv/\(id)"
-        let detail: TMDBTVShowDetail = try await performRequest(
+        return try await performRequest(
             endpoint: endpoint,
             queryItems: [URLQueryItem(name: "append_to_response", value: "credits,content_ratings,videos,similar,recommendations,watch/providers")]
         )
-        cacheProviderAvailability(from: detail.watchProviders, mediaId: id, mediaType: .tvShow)
-        return detail
     }
 
     /// Get detailed information for a movie
     func getMovieDetails(id: Int) async throws -> TMDBMovieDetail {
         let endpoint = "/movie/\(id)"
-        let detail: TMDBMovieDetail = try await performRequest(
+        return try await performRequest(
             endpoint: endpoint,
             queryItems: [URLQueryItem(name: "append_to_response", value: "credits,release_dates,videos,similar,recommendations,watch/providers")]
         )
-        cacheProviderAvailability(from: detail.watchProviders, mediaId: id, mediaType: .movie)
-        return detail
     }
 
     // MARK: - Recommendations
@@ -133,133 +126,70 @@ final class TMDBService: @unchecked Sendable {
     }
 
     /// Fetch all available watch providers for a region, merged from movie and TV endpoints.
-    /// Deduplicates by provider ID and sorts by provider name.
+    /// Filters out channel variants and known rent/buy storefronts, then sorts by TMDB display priority.
     func fetchWatchProviders(for region: String? = nil) async throws -> [TMDBWatchProviderInfo] {
         let regionCode = region ?? currentRegion
 
-        let movieProviders: TMDBWatchProviderListResponse = try await performRequest(
+        async let movieProvidersTask: TMDBWatchProviderListResponse = performRequest(
             endpoint: "/watch/providers/movie",
             queryItems: [URLQueryItem(name: "watch_region", value: regionCode)]
         )
 
-        let tvProviders: TMDBWatchProviderListResponse = try await performRequest(
+        async let tvProvidersTask: TMDBWatchProviderListResponse = performRequest(
             endpoint: "/watch/providers/tv",
             queryItems: [URLQueryItem(name: "watch_region", value: regionCode)]
         )
 
-        // Curated list of streaming subscription services
-        // These are services people actually subscribe to - no rent/buy stores
-        let streamingProviderIDs: Set<Int> = [
-            8,      // Netflix
-            9,      // Amazon Prime Video
-            337,    // Disney Plus
-            1899,   // Max
-            15,     // Hulu
-            2303,   // Paramount+
-            386,    // Peacock
-            350,    // Apple TV+
-            43,     // Starz
-            526,    // AMC+
-            283,    // Crunchyroll
-            73,     // Tubi (free)
-            300,    // Pluto TV (free)
+        let (movieProviders, tvProviders) = try await (movieProvidersTask, tvProvidersTask)
+
+        // Storefront-style rent/buy-only providers that should not appear in the selection grid.
+        let rentBuyOnlyProviderIDs: Set<Int> = [
+            2,      // Apple iTunes
+            3,      // Google Play Movies
+            7,      // Vudu
+            68,     // Microsoft Store
+            192,    // YouTube
+            652,    // Apple TV
         ]
 
-        // Merge and deduplicate, only keeping whitelisted providers
         var seenIds = Set<Int>()
+        var seenNames = Set<String>()
         var merged: [TMDBWatchProviderInfo] = []
 
         for provider in movieProviders.results + tvProviders.results {
             guard !seenIds.contains(provider.providerId) else { continue }
-            guard streamingProviderIDs.contains(provider.providerId) else { continue }
+            guard !rentBuyOnlyProviderIDs.contains(provider.providerId) else { continue }
+
+            let isChannelVariant = Self.channelSuffixes.contains { provider.providerName.hasSuffix($0) }
+            guard !isChannelVariant else { continue }
+
+            let canonicalName = Self.providerAliases[provider.providerName] ?? provider.providerName
+            guard !seenNames.contains(canonicalName) else { continue }
 
             seenIds.insert(provider.providerId)
-            merged.append(provider)
-        }
+            seenNames.insert(canonicalName)
 
-        // Sort alphabetically
-        return merged.sorted {
-            $0.providerName.localizedCaseInsensitiveCompare($1.providerName) == .orderedAscending
-        }
-    }
-
-    // MARK: - Provider Availability Check
-
-    /// Result of checking provider availability for a media item
-    struct ProviderAvailability: Sendable {
-        let providerIDs: Set<Int>
-        let isOnUserServices: Bool
-    }
-
-    /// Pre-populate provider availability cache from an embedded watch/providers response.
-    /// Called automatically by getTVShowDetails/getMovieDetails so that subsequent
-    /// checkProviderAvailability calls hit the cache instead of making standalone API requests.
-    private func cacheProviderAvailability(
-        from watchProviders: TMDBWatchProvidersResponse?,
-        mediaId: Int,
-        mediaType: MediaType
-    ) {
-        let cacheKey = "\(mediaType == .tvShow ? "tv" : "movie")_\(mediaId)"
-
-        let providers = watchProviders?.results?[currentRegion]
-        var providerIDs = Set<Int>()
-        if let p = providers {
-            providerIDs.formUnion(p.flatrate?.map(\.providerId) ?? [])
-            providerIDs.formUnion(p.ads?.map(\.providerId) ?? [])
-            providerIDs.formUnion(p.rent?.map(\.providerId) ?? [])
-            providerIDs.formUnion(p.buy?.map(\.providerId) ?? [])
-        }
-
-        let selectedIDs = ProviderSettings.shared.selectedProviderIDs
-        let isOnUserServices = !selectedIDs.isEmpty && !providerIDs.isDisjoint(with: selectedIDs)
-        let result = ProviderAvailability(providerIDs: providerIDs, isOnUserServices: isOnUserServices)
-
-        Task { await availabilityCache.setIfAbsent(cacheKey, value: result) }
-    }
-
-    /// Check if a media item is available on user's selected streaming services.
-    /// Results are cached to avoid redundant API calls.
-    func checkProviderAvailability(mediaId: Int, mediaType: MediaType) async -> ProviderAvailability {
-        let cacheKey = "\(mediaType == .tvShow ? "tv" : "movie")_\(mediaId)"
-
-        // Return cached result if available
-        if let cached = await availabilityCache.get(cacheKey) {
-            return cached
-        }
-
-        // Fetch provider info
-        var providerIDs = Set<Int>()
-        do {
-            let providers: TMDBWatchProviderCountry?
-            if mediaType == .tvShow {
-                providers = try await getTVShowWatchProviders(id: mediaId)
+            if canonicalName == provider.providerName {
+                merged.append(provider)
             } else {
-                providers = try await getMovieWatchProviders(id: mediaId)
+                merged.append(TMDBWatchProviderInfo(
+                    providerId: provider.providerId,
+                    providerName: canonicalName,
+                    logoPath: provider.logoPath,
+                    displayPriority: provider.displayPriority
+                ))
             }
-
-            // Collect all provider IDs from all categories
-            if let p = providers {
-                providerIDs.formUnion(p.flatrate?.map(\.providerId) ?? [])
-                providerIDs.formUnion(p.ads?.map(\.providerId) ?? [])
-                providerIDs.formUnion(p.rent?.map(\.providerId) ?? [])
-                providerIDs.formUnion(p.buy?.map(\.providerId) ?? [])
-            }
-        } catch {
-            // On error, return empty (we'll show as unavailable)
         }
 
-        // Check against user's selected providers
-        let selectedIDs = ProviderSettings.shared.selectedProviderIDs
-        let isOnUserServices = !selectedIDs.isEmpty && !providerIDs.isDisjoint(with: selectedIDs)
-
-        let result = ProviderAvailability(providerIDs: providerIDs, isOnUserServices: isOnUserServices)
-        await availabilityCache.set(cacheKey, value: result)
-        return result
-    }
-
-    /// Clear the provider availability cache (e.g., when user changes provider selections)
-    func clearProviderAvailabilityCache() {
-        Task { await availabilityCache.removeAll() }
+        // TMDB lower display_priority means higher prominence.
+        return merged.sorted {
+            let leftPriority = $0.displayPriority ?? Int.max
+            let rightPriority = $1.displayPriority ?? Int.max
+            if leftPriority != rightPriority {
+                return leftPriority < rightPriority
+            }
+            return $0.providerName.localizedCaseInsensitiveCompare($1.providerName) == .orderedAscending
+        }
     }
 
     /// Clear the response cache to force fresh data on next request
@@ -654,18 +584,6 @@ final class TMDBService: @unchecked Sendable {
             throw TMDBError.decodingError(error)
         }
     }
-}
-
-private actor ProviderAvailabilityCache {
-    private var store: [String: TMDBService.ProviderAvailability] = [:]
-
-    func get(_ key: String) -> TMDBService.ProviderAvailability? { store[key] }
-    func set(_ key: String, value: TMDBService.ProviderAvailability) { store[key] = value }
-    func setIfAbsent(_ key: String, value: TMDBService.ProviderAvailability) {
-        guard store[key] == nil else { return }
-        store[key] = value
-    }
-    func removeAll() { store.removeAll() }
 }
 
 private actor RequestDeduplicator {

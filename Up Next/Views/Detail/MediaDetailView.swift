@@ -16,7 +16,6 @@ struct MediaDetailView: View {
     @State private var isLoadingDetails = false
     @State private var detailError: String?
     @State private var isConfirmingRemoval = false
-    @State private var showingHiddenProviders = false
     @State private var showingTMDBPage = false
     @State private var showingAddToList = false
     @State private var similarItems: [SimilarMediaItem] = []
@@ -36,12 +35,8 @@ struct MediaDetailView: View {
         return URL(string: "https://www.themoviedb.org/\(type)/\(media.id)")
     }
 
-    private var visibleNetworks: [Network] {
-        (listItem.media?.networks ?? []).filter { ProviderSettings.shared.isSelected($0.id) }
-    }
-
-    private var hiddenNetworks: [Network] {
-        (listItem.media?.networks ?? []).filter { !ProviderSettings.shared.isSelected($0.id) }
+    private var allNetworks: [Network] {
+        listItem.media?.networks ?? []
     }
 
     private var needsFullDetails: Bool {
@@ -84,10 +79,8 @@ struct MediaDetailView: View {
                             GenreSection(genres: listItem.media?.genres ?? [])
 
                             DetailProviderRow(
-                                visibleNetworks: visibleNetworks,
-                                hiddenNetworks: hiddenNetworks,
-                                providerCategories: listItem.media?.providerCategories ?? [:],
-                                showingHiddenProviders: $showingHiddenProviders
+                                networks: allNetworks,
+                                providerCategories: listItem.media?.providerCategories ?? [:]
                             )
 
                             Divider().padding(.vertical, 4)
@@ -461,10 +454,8 @@ struct MediaDetailView: View {
 }
 
 private struct DetailProviderRow: View {
-    let visibleNetworks: [Network]
-    let hiddenNetworks: [Network]
+    let networks: [Network]
     let providerCategories: [Int: String]
-    @Binding var showingHiddenProviders: Bool
     @State private var tooltipNetworkID: Int?
 
     private let logoSize: CGFloat = 44
@@ -474,50 +465,26 @@ private struct DetailProviderRow: View {
     }
 
     private var streamNetworks: [Network] {
-        visibleNetworks.filter { providerCategories[$0.id] == "stream" }
+        networks.filter { providerCategories[$0.id] == "stream" }
     }
 
     private var adsNetworks: [Network] {
-        visibleNetworks.filter { providerCategories[$0.id] == "ads" }
+        networks.filter { providerCategories[$0.id] == "ads" }
     }
 
     private var rentOrBuyNetworks: [Network] {
-        visibleNetworks.filter { providerCategories[$0.id] == "rent" || providerCategories[$0.id] == "buy" }
+        networks.filter { providerCategories[$0.id] == "rent" || providerCategories[$0.id] == "buy" }
     }
 
     var body: some View {
-        if visibleNetworks.isEmpty && !hiddenNetworks.isEmpty {
-            Button {
-                showingHiddenProviders = true
-            } label: {
-                Text("Available on \(hiddenNetworks.count) provider\(hiddenNetworks.count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .popover(isPresented: $showingHiddenProviders) {
-                HiddenProvidersPopover(networks: hiddenNetworks, providerCategories: providerCategories)
-            }
-        } else if !visibleNetworks.isEmpty {
+        if !networks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 if hasCategories {
                     providerSection("Stream", networks: streamNetworks)
                     providerSection("Free with Ads", networks: adsNetworks)
                     providerSection("Rent or Buy", networks: rentOrBuyNetworks)
                 } else {
-                    providerLogoRow(networks: visibleNetworks)
-                }
-
-                if !hiddenNetworks.isEmpty {
-                    Button {
-                        showingHiddenProviders = true
-                    } label: {
-                        Text("+\(hiddenNetworks.count) hidden provider\(hiddenNetworks.count == 1 ? "" : "s")")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .popover(isPresented: $showingHiddenProviders) {
-                        HiddenProvidersPopover(networks: hiddenNetworks, providerCategories: providerCategories)
-                    }
+                    providerLogoRow(networks: networks)
                 }
             }
         }
@@ -563,66 +530,6 @@ private struct DetailProviderRow: View {
 
     private func providerLogo(for network: Network) -> some View {
         ProviderLogoView(network: network, size: logoSize)
-    }
-}
-
-private struct HiddenProvidersPopover: View {
-    let networks: [Network]
-    let providerCategories: [Int: String]
-
-    private var hasCategories: Bool { !providerCategories.isEmpty }
-
-    private func networksFor(_ categories: Set<String>) -> [Network] {
-        networks.filter { categories.contains(providerCategories[$0.id] ?? "") }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Hidden Providers")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
-                .fontWeight(.semibold)
-
-            if hasCategories {
-                hiddenSection("Stream", networks: networksFor(["stream"]))
-                hiddenSection("Free with Ads", networks: networksFor(["ads"]))
-                hiddenSection("Rent or Buy", networks: networksFor(["rent", "buy"]))
-            } else {
-                ForEach(networks, id: \.id) { network in
-                    hiddenProviderRow(network)
-                }
-            }
-
-            Text("Update your providers in Settings")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .padding(.top, 4)
-        }
-        .padding(16)
-        .presentationCompactAdaptation(.popover)
-    }
-
-    @ViewBuilder
-    private func hiddenSection(_ title: String, networks: [Network]) -> some View {
-        if !networks.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-                ForEach(networks, id: \.id) { network in
-                    hiddenProviderRow(network)
-                }
-            }
-        }
-    }
-
-    private func hiddenProviderRow(_ network: Network) -> some View {
-        HStack(spacing: 10) {
-            ProviderLogoView(network: network, size: 30)
-            Text(network.name)
-                .font(.subheadline)
-        }
     }
 }
 

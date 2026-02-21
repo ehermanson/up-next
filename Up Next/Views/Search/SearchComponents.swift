@@ -102,9 +102,7 @@ struct SearchResultRowWithImage: View {
     var voteAverage: Double?
 
     @State private var imageURL: URL?
-    @State private var availabilityState: SearchResultRow.AvailabilityState = .loading
     private let service = TMDBService.shared
-    private let settings = ProviderSettings.shared
 
     var body: some View {
         SearchResultRow(
@@ -112,7 +110,6 @@ struct SearchResultRowWithImage: View {
             overview: overview,
             imageURL: imageURL,
             isAdded: isAdded,
-            availabilityState: availabilityState,
             onAdd: onAdd,
             onTap: onTap,
             voteAverage: voteAverage
@@ -123,20 +120,6 @@ struct SearchResultRowWithImage: View {
                 imageURL = url
             }
         }
-        .task(id: mediaId) {
-            await checkAvailability()
-        }
-    }
-
-    private func checkAvailability() async {
-        // Skip check if user hasn't selected any providers
-        guard settings.hasSelectedProviders else {
-            availabilityState = .noProvidersSelected
-            return
-        }
-
-        let result = await service.checkProviderAvailability(mediaId: mediaId, mediaType: mediaType)
-        availabilityState = result.isOnUserServices ? .available : .notAvailable
     }
 }
 
@@ -145,17 +128,9 @@ struct SearchResultRow: View {
     let overview: String?
     let imageURL: URL?
     let isAdded: Bool
-    let availabilityState: AvailabilityState
     let onAdd: () -> Void
     var onTap: (() -> Void)?
     var voteAverage: Double?
-
-    enum AvailabilityState {
-        case loading
-        case available
-        case notAvailable
-        case noProvidersSelected
-    }
 
     var body: some View {
         Group {
@@ -225,11 +200,8 @@ struct SearchResultRow: View {
                         .lineLimit(3)
                 }
 
-                HStack(spacing: 8) {
-                    if let vote = voteAverage, vote > 0 {
-                        StarRatingLabel(vote: vote)
-                    }
-                    availabilityBadge
+                if let vote = voteAverage, vote > 0 {
+                    StarRatingLabel(vote: vote)
                 }
             }
 
@@ -260,52 +232,5 @@ struct SearchResultRow: View {
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("Add to list")
         }
-    }
-
-    @ViewBuilder
-    private var availabilityBadge: some View {
-        switch availabilityState {
-        case .loading:
-            AvailabilityShimmer()
-        case .available:
-            Label("On your services", systemImage: "checkmark.circle.fill")
-                .font(.caption2)
-                .fontDesign(.rounded)
-                .foregroundStyle(.green)
-                .transition(.opacity)
-        case .notAvailable:
-            Label("Not on your services", systemImage: "xmark.circle")
-                .font(.caption2)
-                .fontDesign(.rounded)
-                .foregroundStyle(.secondary)
-                .transition(.opacity)
-        case .noProvidersSelected:
-            EmptyView()
-        }
-    }
-}
-
-private struct AvailabilityShimmer: View {
-    @State private var shimmerOffset: CGFloat = -50
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.white.opacity(0.1))
-            .frame(width: 100, height: 14)
-            .overlay(
-                LinearGradient(
-                    colors: [.clear, Color.white.opacity(0.15), .clear],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: 40)
-                .offset(x: shimmerOffset)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .onAppear {
-                withAnimation(.linear(duration: 1.0).repeatForever(autoreverses: false)) {
-                    shimmerOffset = 100
-                }
-            }
     }
 }
