@@ -161,7 +161,7 @@ final class TMDBService: @unchecked Sendable {
             guard !seenIds.contains(provider.providerId) else { continue }
             guard !rentBuyOnlyProviderIDs.contains(provider.providerId) else { continue }
 
-            let isChannelVariant = Self.channelSuffixes.contains { provider.providerName.hasSuffix($0) }
+            let isChannelVariant = Self.isChannelVariant(named: provider.providerName)
             guard !isChannelVariant else { continue }
 
             let canonicalName = Self.providerAliases[provider.providerName] ?? provider.providerName
@@ -364,7 +364,26 @@ final class TMDBService: @unchecked Sendable {
     }
 
     /// Suffixes that indicate a resold channel variant (e.g. "HBO Max Amazon Channel").
-    private static let channelSuffixes = [" Amazon Channel", " Apple TV Channel", " Roku Premium Channel"]
+    /// Stored normalized (lowercased, collapsed whitespace).
+    private static let channelSuffixes = [
+        "amazon channel",
+        "apple tv channel",
+        "apple tv+ channel",
+        "roku premium channel",
+    ]
+
+    private static func normalizedProviderName(_ name: String) -> String {
+        name
+            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private static func isChannelVariant(named providerName: String) -> Bool {
+        let normalized = normalizedProviderName(providerName)
+        return channelSuffixes.contains { normalized.hasSuffix($0) }
+    }
 
     /// Maps originating network names to their streaming provider IDs.
     /// Used when a show's network (e.g., "AMC") should match the user's selected provider (e.g., AMC+ ID 526).
@@ -428,7 +447,7 @@ final class TMDBService: @unchecked Sendable {
         for (category, entries) in categorized {
             for entry in entries {
                 guard !seenIDs.contains(entry.providerId) else { continue }
-                let isChannel = Self.channelSuffixes.contains { entry.providerName.hasSuffix($0) }
+                let isChannel = Self.isChannelVariant(named: entry.providerName)
                 guard !isChannel else { continue }
 
                 let canonicalName = Self.providerAliases[entry.providerName] ?? entry.providerName
