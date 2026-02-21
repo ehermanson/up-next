@@ -163,10 +163,10 @@ struct WatchlistSearchView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        if !isListMode && isLoadingRecommendations {
+                        if isLoadingRecommendations {
                             ShimmerLoadingView()
                                 .background(AppBackground())
-                        } else if !isListMode && hasRecommendations {
+                        } else if hasRecommendations {
                             recommendationsList
                         } else {
                             EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
@@ -224,6 +224,14 @@ struct WatchlistSearchView: View {
             .onChange(of: context) { _, _ in
                 resetSearch()
                 syncActiveList()
+            }
+            .onChange(of: selectedListID) { _, _ in
+                guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                loadRecommendations()
+            }
+            .onChange(of: addedIDs) { _, _ in
+                guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                loadRecommendations()
             }
             .onAppear {
                 syncActiveList()
@@ -347,6 +355,13 @@ struct WatchlistSearchView: View {
         effectiveMediaType == .tvShow ? !tvRecommendations.isEmpty : !movieRecommendations.isEmpty
     }
 
+    private var recommendationHeaderText: String {
+        if isListMode, let list = selectedList {
+            return "Recommended for \(list.name)"
+        }
+        return "Recommended For You"
+    }
+
     private var recommendationsList: some View {
         GlassEffectContainer(spacing: 8) {
             List {
@@ -379,7 +394,7 @@ struct WatchlistSearchView: View {
                         }
                     }
                 } header: {
-                    Label("Recommended For You", systemImage: "sparkles")
+                    Label(recommendationHeaderText, systemImage: "sparkles")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .fontDesign(.rounded)
@@ -393,29 +408,100 @@ struct WatchlistSearchView: View {
     }
 
     private func loadRecommendations() {
-        guard !isListMode else { return }
-
-        let libraryItems = effectiveMediaType == .tvShow ? libraryTVShows : libraryMovies
-        guard !libraryItems.isEmpty else { return }
-
         recommendationTask?.cancel()
+
+        let mediaType = effectiveMediaType
+        let seeds: [Int]
+        let allExisting: Set<String>
+        let listName: String?
+        let minimumFrequency: Int
+
+        if isListMode {
+            guard let list = selectedList else {
+                clearRecommendations(for: mediaType)
+                isLoadingRecommendations = false
+                return
+            }
+
+            let listItems = list.items ?? []
+            seeds = selectListSeeds(from: listItems, mediaType: mediaType)
+            allExisting = existingIDs(in: listItems, mediaType: mediaType).union(addedIDs)
+            listName = list.name
+        } else {
+            let libraryItems = mediaType == .tvShow ? libraryTVShows : libraryMovies
+            seeds = selectSeeds(from: libraryItems)
+            let existingIDs = mediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
+            allExisting = existingIDs.union(addedIDs)
+            listName = nil
+        }
+
+        guard !seeds.isEmpty else {
+            // No seeds for this media type — fall back to thematic search if list has keywords
+            let keywords = thematicKeywords(for: listName)
+            guard isListMode, let name = listName, !keywords.isEmpty else {
+                clearRecommendations(for: mediaType)
+                isLoadingRecommendations = false
+                return
+            }
+
+            let query = thematicSearchQuery(for: name)
+            guard !query.isEmpty else {
+                clearRecommendations(for: mediaType)
+                isLoadingRecommendations = false
+                return
+            }
+
+            isLoadingRecommendations = true
+            recommendationTask = Task {
+                defer { isLoadingRecommendations = false }
+                if mediaType == .tvShow {
+                    let results = await searchThematicResults(
+                        query: query,
+                        excluding: allExisting,
+                        thematicKeywords: keywords
+                    ) { try await service.searchTVShows(query: $0) }
+                    guard !Task.isCancelled else { return }
+                    tvRecommendations = results
+                } else {
+                    let results = await searchThematicResults(
+                        query: query,
+                        excluding: allExisting,
+                        thematicKeywords: keywords
+                    ) { try await service.searchMovies(query: $0) }
+                    guard !Task.isCancelled else { return }
+                    movieRecommendations = results
+                }
+            }
+            return
+        }
+
+        minimumFrequency = recommendationMinimumFrequency(seedCount: seeds.count, isListMode: isListMode)
+        let keywords = thematicKeywords(for: listName)
         isLoadingRecommendations = true
 
         recommendationTask = Task {
             defer { isLoadingRecommendations = false }
 
-            let seeds = selectSeeds(from: libraryItems)
-            guard !seeds.isEmpty, !Task.isCancelled else { return }
-
-            let existingIDs = effectiveMediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
-            let allExisting = existingIDs.union(addedIDs)
-
-            if effectiveMediaType == .tvShow {
-                let results = await fetchTVRecommendations(seeds: seeds, excluding: allExisting)
+            if mediaType == .tvShow {
+                let results: [TMDBTVShowSearchResult] = await fetchRecommendations(
+                    seeds: seeds,
+                    excluding: allExisting,
+                    minimumFrequency: minimumFrequency,
+                    thematicKeywords: keywords
+                ) { id in
+                    (try? await service.fetchTVRecommendations(id: id)) ?? []
+                }
                 guard !Task.isCancelled else { return }
                 tvRecommendations = results
             } else {
-                let results = await fetchMovieRecommendations(seeds: seeds, excluding: allExisting)
+                let results: [TMDBMovieSearchResult] = await fetchRecommendations(
+                    seeds: seeds,
+                    excluding: allExisting,
+                    minimumFrequency: minimumFrequency,
+                    thematicKeywords: keywords
+                ) { id in
+                    (try? await service.fetchMovieRecommendations(id: id)) ?? []
+                }
                 guard !Task.isCancelled else { return }
                 movieRecommendations = results
             }
@@ -451,13 +537,62 @@ struct WatchlistSearchView: View {
         return seeds
     }
 
-    private func fetchTVRecommendations(seeds: [Int], excluding existingIDs: Set<String>) async -> [TMDBTVShowSearchResult] {
-        var allResults: [TMDBTVShowSearchResult] = []
+    private func selectListSeeds(from items: [CustomListItem], mediaType: MediaType) -> [Int] {
+        let filtered = items
+            .filter { item in
+                if mediaType == .tvShow { return item.tvShow != nil }
+                return item.movie != nil
+            }
+            .sorted { $0.addedAt > $1.addedAt }
 
-        await withTaskGroup(of: [TMDBTVShowSearchResult].self) { group in
+        var seeds: [Int] = []
+        var seenIDs = Set<String>()
+
+        for item in filtered {
+            guard seeds.count < 8 else { break }
+            guard let id = item.media?.id, !seenIDs.contains(id), let intID = Int(id) else { continue }
+            seenIDs.insert(id)
+            seeds.append(intID)
+        }
+
+        return seeds
+    }
+
+    private func existingIDs(in items: [CustomListItem], mediaType: MediaType) -> Set<String> {
+        Set(items.compactMap { item in
+            if mediaType == .tvShow {
+                return item.tvShow?.id
+            }
+            return item.movie?.id
+        })
+    }
+
+    private func clearRecommendations(for mediaType: MediaType) {
+        if mediaType == .tvShow {
+            tvRecommendations = []
+        } else {
+            movieRecommendations = []
+        }
+    }
+
+    private func recommendationMinimumFrequency(seedCount: Int, isListMode: Bool) -> Int {
+        guard isListMode else { return 1 }
+        return seedCount >= 2 ? 2 : 1
+    }
+
+    private func fetchRecommendations<T: RecommendableResult>(
+        seeds: [Int],
+        excluding existingIDs: Set<String>,
+        minimumFrequency: Int,
+        thematicKeywords: Set<String>,
+        fetcher: @escaping @Sendable (Int) async throws -> [T]
+    ) async -> [T] {
+        var allResults: [T] = []
+
+        await withTaskGroup(of: [T].self) { group in
             for seedID in seeds {
                 group.addTask {
-                    (try? await service.fetchTVRecommendations(id: seedID)) ?? []
+                    (try? await fetcher(seedID)) ?? []
                 }
             }
             for await results in group {
@@ -465,29 +600,18 @@ struct WatchlistSearchView: View {
             }
         }
 
-        return aggregateTV(allResults, excluding: existingIDs)
+        return aggregate(allResults, excluding: existingIDs, minimumFrequency: minimumFrequency, thematicKeywords: thematicKeywords)
     }
 
-    private func fetchMovieRecommendations(seeds: [Int], excluding existingIDs: Set<String>) async -> [TMDBMovieSearchResult] {
-        var allResults: [TMDBMovieSearchResult] = []
-
-        await withTaskGroup(of: [TMDBMovieSearchResult].self) { group in
-            for seedID in seeds {
-                group.addTask {
-                    (try? await service.fetchMovieRecommendations(id: seedID)) ?? []
-                }
-            }
-            for await results in group {
-                allResults.append(contentsOf: results)
-            }
-        }
-
-        return aggregateMovies(allResults, excluding: existingIDs)
-    }
-
-    private func aggregateTV(_ results: [TMDBTVShowSearchResult], excluding existingIDs: Set<String>) -> [TMDBTVShowSearchResult] {
+    private func aggregate<T: RecommendableResult>(
+        _ results: [T],
+        excluding existingIDs: Set<String>,
+        minimumFrequency: Int,
+        thematicKeywords: Set<String>
+    ) -> [T] {
         var frequency: [Int: Int] = [:]
-        var bestByID: [Int: TMDBTVShowSearchResult] = [:]
+        var bestByID: [Int: T] = [:]
+        var thematicScoreByID: [Int: Int] = [:]
 
         for result in results {
             guard !existingIDs.contains(String(result.id)) else { continue }
@@ -496,41 +620,172 @@ struct WatchlistSearchView: View {
             if bestByID[result.id] == nil {
                 bestByID[result.id] = result
             }
+            let combinedText = "\(result.displayTitle) \(result.overview ?? "")"
+            thematicScoreByID[result.id] = thematicScore(in: combinedText, keywords: thematicKeywords)
         }
 
-        return bestByID.values
+        let strictSorted = bestByID.values
+            .filter { (frequency[$0.id] ?? 0) >= minimumFrequency }
             .sorted { a, b in
                 let freqA = frequency[a.id] ?? 0
                 let freqB = frequency[b.id] ?? 0
                 if freqA != freqB { return freqA > freqB }
+                let thematicA = thematicScoreByID[a.id] ?? 0
+                let thematicB = thematicScoreByID[b.id] ?? 0
+                if thematicA != thematicB { return thematicA > thematicB }
+                return (a.voteAverage ?? 0) > (b.voteAverage ?? 0)
+            }
+
+        let sorted: [T]
+        if strictSorted.isEmpty && minimumFrequency > 1 {
+            sorted = bestByID.values
+                .filter { (frequency[$0.id] ?? 0) >= 1 }
+                .sorted { a, b in
+                    let freqA = frequency[a.id] ?? 0
+                    let freqB = frequency[b.id] ?? 0
+                    if freqA != freqB { return freqA > freqB }
+                    let thematicA = thematicScoreByID[a.id] ?? 0
+                    let thematicB = thematicScoreByID[b.id] ?? 0
+                    if thematicA != thematicB { return thematicA > thematicB }
+                    return (a.voteAverage ?? 0) > (b.voteAverage ?? 0)
+                }
+        } else {
+            sorted = strictSorted
+        }
+
+        if !thematicKeywords.isEmpty {
+            let themed = sorted.filter { (thematicScoreByID[$0.id] ?? 0) > 0 }
+            if themed.count >= 3 {
+                return themed.prefix(20).map { $0 }
+            }
+        }
+
+        return sorted.prefix(20).map { $0 }
+    }
+
+    private func searchThematicResults<T: RecommendableResult>(
+        query: String,
+        excluding existingIDs: Set<String>,
+        thematicKeywords: Set<String>,
+        searcher: (String) async throws -> [T]
+    ) async -> [T] {
+        guard let results = try? await searcher(query) else { return [] }
+
+        var scoreByID: [Int: Int] = [:]
+        var bestByID: [Int: T] = [:]
+
+        for result in results {
+            guard !existingIDs.contains(String(result.id)) else { continue }
+            let score = thematicScore(in: "\(result.displayTitle) \(result.overview ?? "")", keywords: thematicKeywords)
+            guard score > 0 else { continue }
+            if bestByID[result.id] == nil {
+                bestByID[result.id] = result
+                scoreByID[result.id] = score
+            }
+        }
+
+        return bestByID.values
+            .sorted { a, b in
+                let scoreA = scoreByID[a.id] ?? 0
+                let scoreB = scoreByID[b.id] ?? 0
+                if scoreA != scoreB { return scoreA > scoreB }
                 return (a.voteAverage ?? 0) > (b.voteAverage ?? 0)
             }
             .prefix(20)
             .map { $0 }
     }
 
-    private func aggregateMovies(_ results: [TMDBMovieSearchResult], excluding existingIDs: Set<String>) -> [TMDBMovieSearchResult] {
-        var frequency: [Int: Int] = [:]
-        var bestByID: [Int: TMDBMovieSearchResult] = [:]
+    private static let themeExpansions: [String: Set<String>] = [
+        "christmas": ["christmas", "xmas", "holiday", "santa", "reindeer", "snow", "grinch", "noel", "nutcracker"],
+        "xmas": ["christmas", "xmas", "holiday", "santa", "reindeer", "snow", "grinch", "noel", "nutcracker"],
+        "holiday": ["christmas", "xmas", "holiday", "santa", "thanksgiving", "halloween"],
+        "halloween": ["halloween", "horror", "haunted", "ghost", "witch", "zombie", "vampire", "monster"],
+        "horror": ["horror", "scary", "haunted", "ghost", "slasher", "zombie", "vampire", "demon"],
+        "anime": ["anime", "manga", "japanese", "animation", "studio ghibli"],
+        "sci fi": ["sci fi", "science fiction", "space", "alien", "robot", "future", "dystopia"],
+        "romance": ["romance", "romantic", "love", "wedding", "valentine"],
+        "war": ["war", "military", "soldier", "battle", "army", "combat"],
+        "superhero": ["superhero", "marvel", "dc comics", "avengers", "batman", "spider man"],
+    ]
 
-        for result in results {
-            guard !existingIDs.contains(String(result.id)) else { continue }
-            guard (result.voteAverage ?? 0) >= 6.0 else { continue }
-            frequency[result.id, default: 0] += 1
-            if bestByID[result.id] == nil {
-                bestByID[result.id] = result
+    private static let stopWords: Set<String> = ["list", "lists", "stuff", "things", "my", "the", "and", "for", "best", "top", "all", "time"]
+
+    private func thematicKeywords(for listName: String?) -> Set<String> {
+        guard let listName else { return [] }
+
+        let words = normalizedWords(from: listName)
+        let tokens = words.filter { $0.count >= 3 && !Self.stopWords.contains($0) }
+
+        var keywords = Set(tokens)
+        let normalizedListText = normalizedText(from: listName)
+
+        for (theme, expansion) in Self.themeExpansions {
+            let themeWords = theme.split(separator: " ").map(String.init)
+            if themeWords.allSatisfy({ words.contains($0) }) || normalizedListText.contains(theme) {
+                for item in expansion {
+                    let normalized = normalizedText(from: item)
+                    if !normalized.isEmpty {
+                        keywords.insert(normalized)
+                    }
+                }
             }
         }
 
-        return bestByID.values
-            .sorted { a, b in
-                let freqA = frequency[a.id] ?? 0
-                let freqB = frequency[b.id] ?? 0
-                if freqA != freqB { return freqA > freqB }
-                return (a.voteAverage ?? 0) > (b.voteAverage ?? 0)
+        return keywords
+    }
+
+    private func thematicScore(in text: String, keywords: Set<String>) -> Int {
+        guard !keywords.isEmpty else { return 0 }
+        let normalizedHaystack = normalizedText(from: text)
+        let words = Set(normalizedWords(from: text))
+
+        return keywords.reduce(into: 0) { score, keyword in
+            let normalizedKeyword = normalizedText(from: keyword)
+            guard !normalizedKeyword.isEmpty else { return }
+
+            if normalizedKeyword.contains(" ") {
+                let keywordWords = normalizedKeyword.split(separator: " ").map(String.init)
+                if normalizedHaystack.contains(normalizedKeyword)
+                    || keywordWords.allSatisfy({ words.contains($0) })
+                {
+                    score += 1
+                }
+            } else {
+                if words.contains(normalizedKeyword) { score += 1 }
             }
-            .prefix(20)
-            .map { $0 }
+        }
+    }
+
+    /// Extracts a targeted search query from the list name — uses the primary thematic
+    /// token (e.g. "christmas" from "Christmas Movies") rather than the raw name.
+    private func thematicSearchQuery(for listName: String) -> String {
+        let words = normalizedWords(from: listName)
+        let tokens = words.filter { $0.count >= 3 && !Self.stopWords.contains($0) }
+        let normalizedListText = normalizedText(from: listName)
+
+        // Prefer the token that matches a theme expansion (most thematic)
+        if let thematic = Self.themeExpansions.keys.first(
+            where: { theme in
+                let themeWords = theme.split(separator: " ").map(String.init)
+                return themeWords.allSatisfy({ words.contains($0) }) || normalizedListText.contains(theme)
+            }
+        ) {
+            return thematic
+        }
+        // Fall back to all meaningful tokens joined
+        return tokens.joined(separator: " ")
+    }
+
+    private func normalizedWords(from text: String) -> [String] {
+        normalizedText(from: text)
+            .split(separator: " ")
+            .map(String.init)
+    }
+
+    private func normalizedText(from text: String) -> String {
+        text.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .joined(separator: " ")
     }
 
     // MARK: - Search
@@ -641,4 +896,19 @@ struct WatchlistSearchView: View {
             }
         }
     }
+}
+
+private protocol RecommendableResult: Sendable {
+    var id: Int { get }
+    var voteAverage: Double? { get }
+    var displayTitle: String { get }
+    var overview: String? { get }
+}
+
+extension TMDBTVShowSearchResult: RecommendableResult {
+    var displayTitle: String { name }
+}
+
+extension TMDBMovieSearchResult: RecommendableResult {
+    var displayTitle: String { title }
 }
