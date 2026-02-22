@@ -287,6 +287,14 @@ final class TMDBService: @unchecked Sendable {
             return numbered.map { $0.episodeCount ?? 0 }
         }()
 
+        let seasonDescriptions: [String] = {
+            guard let seasons = detail.seasons else { return [] }
+            let numbered = seasons
+                .filter { $0.seasonNumber > 0 }
+                .sorted { $0.seasonNumber < $1.seasonNumber }
+            return numbered.map { $0.overview ?? "" }
+        }()
+
         // Start with watch providers (using provider IDs which match user selections)
         let (watchNetworks, watchCategories) = mapProviders(providers)
         var seenNames = Set<String>()
@@ -341,6 +349,7 @@ final class TMDBService: @unchecked Sendable {
             numberOfSeasons: detail.numberOfSeasons,
             numberOfEpisodes: detail.numberOfEpisodes,
             seasonEpisodeCounts: seasonEpisodeCounts,
+            seasonDescriptions: seasonDescriptions,
             contentRating: extractTVContentRating(from: detail),
             episodeRunTime: detail.episodeRunTime?.first,
             nextEpisodeAirDate: detail.nextEpisodeToAir?.airDate,

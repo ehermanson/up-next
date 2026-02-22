@@ -150,6 +150,9 @@ final class TVShow: MediaItemProtocol {
     /// Episode count per season (index 0 = season 1)
     var seasonEpisodeCounts: [Int] = []
 
+    /// Season descriptions/overviews (index 0 = season 1)
+    var seasonDescriptions: [String] = []
+
     /// Average episode runtime in minutes
     var episodeRunTime: Int?
 
@@ -180,6 +183,7 @@ final class TVShow: MediaItemProtocol {
         numberOfSeasons: Int? = nil,
         numberOfEpisodes: Int? = nil,
         seasonEpisodeCounts: [Int] = [],
+        seasonDescriptions: [String] = [],
         contentRating: String? = nil,
         episodeRunTime: Int? = nil,
         nextEpisodeAirDate: String? = nil,
@@ -198,6 +202,7 @@ final class TVShow: MediaItemProtocol {
         self.numberOfSeasons = numberOfSeasons
         self.numberOfEpisodes = numberOfEpisodes
         self.seasonEpisodeCounts = seasonEpisodeCounts
+        self.seasonDescriptions = seasonDescriptions
         self.contentRating = contentRating
         self.episodeRunTime = episodeRunTime
         self.nextEpisodeAirDate = nextEpisodeAirDate
@@ -248,6 +253,7 @@ extension TVShow {
         numberOfSeasons = source.numberOfSeasons
         numberOfEpisodes = source.numberOfEpisodes
         seasonEpisodeCounts = source.seasonEpisodeCounts
+        seasonDescriptions = source.seasonDescriptions
         contentRating = source.contentRating
         episodeRunTime = source.episodeRunTime
         nextEpisodeAirDate = source.nextEpisodeAirDate

@@ -108,9 +108,12 @@ struct MediaDetailView: View {
                                     DoneWatchingCard(listItem: $listItem)
                                 }
 
-                                Divider().padding(.vertical, 4)
+                                let hasSeasonChecklist = listItem.tvShow != nil && (listItem.tvShow?.numberOfSeasons ?? 0) > 1
+                                if !listItem.isDropped && !hasSeasonChecklist {
+                                    Divider().padding(.vertical, 4)
 
-                                WatchedToggleCard(listItem: $listItem)
+                                    WatchedToggleCard(listItem: $listItem)
+                                }
 
                                 if listItem.isWatched {
                                     Divider().padding(.vertical, 4)
@@ -120,83 +123,75 @@ struct MediaDetailView: View {
                                 }
                             }
 
-                            if let customListVM = customListViewModel, !customListVM.customLists.isEmpty {
-                                Divider().padding(.vertical, 4)
+                            Divider().padding(.vertical, 4)
 
-                                Button {
-                                    showingAddToList = true
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "tray.full")
-                                            .font(.body)
-                                        Text("Add to List")
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
+                            HStack(spacing: 10) {
+                                if let customListVM = customListViewModel, !customListVM.customLists.isEmpty {
+                                    Button { showingAddToList = true } label: {
+                                        VStack(spacing: 4) {
+                                            Image(systemName: "tray.full")
+                                                .font(.body)
+                                            Text("Lists")
+                                                .font(.caption2)
+                                                .fontWeight(.medium)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
                                     }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .glassEffect(.regular.tint(.indigo.opacity(0.15)).interactive(), in: .rect(cornerRadius: 16))
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
-                                .sheet(isPresented: $showingAddToList) {
-                                    AddToListSheet(
-                                        viewModel: customListVM,
-                                        movie: listItem.movie,
-                                        tvShow: listItem.tvShow
-                                    )
-                                }
-                            }
-
-                            if trailerKey != nil {
-                                Divider().padding(.vertical, 4)
-
-                                Button {
-                                    showingTrailer = true
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "play.fill")
-                                            .font(.body)
-                                        Text("Watch Trailer")
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                                    .sheet(isPresented: $showingAddToList) {
+                                        AddToListSheet(
+                                            viewModel: customListVM,
+                                            movie: listItem.movie,
+                                            tvShow: listItem.tvShow
+                                        )
                                     }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .glassEffect(.regular.tint(.red.opacity(0.15)).interactive(), in: .rect(cornerRadius: 16))
                                 }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
-                                .sheet(isPresented: $showingTrailer) {
-                                    if let url = URL(string: "https://www.youtube.com/watch?v=\(trailerKey ?? "")") {
-                                        SafariView(url: url)
+
+                                if trailerKey != nil {
+                                    Button { showingTrailer = true } label: {
+                                        VStack(spacing: 4) {
+                                            Image(systemName: "play.fill")
+                                                .font(.body)
+                                            Text("Trailer")
+                                                .font(.caption2)
+                                                .fontWeight(.medium)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                                    .sheet(isPresented: $showingTrailer) {
+                                        if let url = URL(string: "https://www.youtube.com/watch?v=\(trailerKey ?? "")") {
+                                            SafariView(url: url)
+                                                .ignoresSafeArea()
+                                        }
+                                    }
+                                }
+
+                                if let tmdbURL {
+                                    Button { showingTMDBPage = true } label: {
+                                        VStack(spacing: 4) {
+                                            Image(systemName: "film")
+                                                .font(.body)
+                                            Text("TMDB")
+                                                .font(.caption2)
+                                                .fontWeight(.medium)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                                    .sheet(isPresented: $showingTMDBPage) {
+                                        SafariView(url: tmdbURL)
                                             .ignoresSafeArea()
                                     }
-                                }
-                            }
-
-                            if let tmdbURL {
-                                Divider().padding(.vertical, 4)
-
-                                Button {
-                                    showingTMDBPage = true
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "film")
-                                            .font(.body)
-                                        Text("View on TMDB")
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
-                                .sheet(isPresented: $showingTMDBPage) {
-                                    SafariView(url: tmdbURL)
-                                        .ignoresSafeArea()
                                 }
                             }
 
@@ -826,6 +821,12 @@ private struct SeasonChecklistCard: View {
         listItem.tvShow?.seasonEpisodeCounts ?? []
     }
 
+    private var seasonDescriptions: [String] {
+        listItem.tvShow?.seasonDescriptions ?? []
+    }
+
+    @State private var expandedSeasons: Set<Int> = []
+
     private let circleSize: CGFloat = 28
 
     var body: some View {
@@ -858,58 +859,73 @@ private struct SeasonChecklistCard: View {
     private func seasonRow(season: Int) -> some View {
         let isWatched = listItem.watchedSeasons.contains(season)
         let episodeCount = season <= episodeCounts.count ? episodeCounts[season - 1] : nil
+        let description = season <= seasonDescriptions.count ? seasonDescriptions[season - 1] : nil
         let isLast = season == totalSeasons
+        let isExpanded = expandedSeasons.contains(season)
 
-        return Button {
-            toggleSeason(season)
-        } label: {
-            HStack(alignment: .top, spacing: 12) {
-                // Timeline: circle + connector line
-                VStack(spacing: 0) {
-                    ZStack {
-                        Circle()
-                            .fill(isWatched ? Color.green.opacity(0.15) : Color.white.opacity(0.05))
-                        Circle()
-                            .strokeBorder(isWatched ? Color.green.opacity(0.6) : Color.white.opacity(0.15), lineWidth: 1.5)
-                        if isWatched {
-                            Image(systemName: "checkmark")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.green)
-                        }
-                    }
-                    .frame(width: circleSize, height: circleSize)
-
-                    if !isLast {
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(isWatched ? Color.green.opacity(0.3) : Color.white.opacity(0.06))
-                            .frame(width: 2)
-                            .frame(maxHeight: .infinity)
+        return HStack(alignment: .top, spacing: 12) {
+            // Timeline: circle + connector line
+            VStack(spacing: 0) {
+                ZStack {
+                    Circle()
+                        .fill(isWatched ? Color.green.opacity(0.15) : Color.white.opacity(0.05))
+                    Circle()
+                        .strokeBorder(isWatched ? Color.green.opacity(0.6) : Color.white.opacity(0.15), lineWidth: 1.5)
+                    if isWatched {
+                        Image(systemName: "checkmark")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.green)
                     }
                 }
-                .frame(width: circleSize)
+                .frame(width: circleSize, height: circleSize)
 
-                // Season info
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Season \(season)")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.primary)
-
-                    if let count = episodeCount, count > 0 {
-                        Text("\(count) episode\(count == 1 ? "" : "s")")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                if !isLast {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(isWatched ? Color.green.opacity(0.3) : Color.white.opacity(0.06))
+                        .frame(width: 2)
+                        .frame(maxHeight: .infinity)
                 }
-                .padding(.top, 4)
-
-                Spacer()
             }
-            .padding(.bottom, isLast ? 0 : 12)
-            .contentShape(Rectangle())
+            .frame(width: circleSize)
+
+            // Season info
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Season \(season)")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+
+                if let count = episodeCount, count > 0 {
+                    Text("\(count) episode\(count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let description, !description.isEmpty {
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(isExpanded ? nil : 2)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                if isExpanded {
+                                    expandedSeasons.remove(season)
+                                } else {
+                                    expandedSeasons.insert(season)
+                                }
+                            }
+                        }
+                }
+            }
+            .padding(.top, 4)
+
+            Spacer()
         }
-        .buttonStyle(.plain)
+        .padding(.bottom, isLast ? 0 : 12)
+        .contentShape(Rectangle())
+        .onTapGesture { toggleSeason(season) }
     }
 }
 
@@ -936,36 +952,48 @@ private struct DoneWatchingCard: View {
                 Button {
                     listItem.resumeShow()
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 12) {
                         Image(systemName: "arrow.uturn.backward.circle.fill")
-                            .font(.body)
-                        Text("Resume Watching")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Pick Back Up")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text("Move back to your watchlist")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular.tint(.blue.opacity(0.15)).interactive(), in: .rect(cornerRadius: 16))
+                    .padding(14)
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             } else {
                 Button {
                     listItem.dropShow()
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "flag.circle.fill")
-                            .font(.body)
-                        Text("Done Watching")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                    HStack(spacing: 12) {
+                        Image(systemName: "archivebox")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Drop Show")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text("Move to your watched list")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular.tint(.orange.opacity(0.15)).interactive(), in: .rect(cornerRadius: 16))
+                    .padding(14)
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             }
         }
     }

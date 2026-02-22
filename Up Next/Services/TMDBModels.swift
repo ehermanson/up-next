@@ -72,6 +72,7 @@ struct TMDBSeason: Codable {
     let seasonNumber: Int
     let name: String?
     let episodeCount: Int?
+    let overview: String?
 }
 
 // MARK: - Movie Models
