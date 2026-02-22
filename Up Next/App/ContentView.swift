@@ -160,6 +160,13 @@ struct ContentView: View {
             subtitleProvider: { item in
                 guard let tvShow = item.tvShow else { return nil }
 
+                // Dropped shows get a special subtitle
+                if item.isDropped {
+                    let count = item.watchedSeasons.count
+                    let total = tvShow.numberOfSeasons ?? 0
+                    return total > 0 ? "Dropped \u{2022} \(count) of \(total) seasons" : "Dropped"
+                }
+
                 var base: String?
 
                 // Show "Next Season: S{next}" for partially-watched multi-season shows

@@ -272,6 +272,16 @@ struct MediaListView: View {
     }
 
     private func toggleWatched(_ item: ListItem) {
+        // If a dropped show is being toggled from watched → unwatched, resume instead
+        if item.isDropped && item.isWatched {
+            item.resumeShow()
+            if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
+                allItems[index] = item
+            }
+            onWatchedToggled()
+            return
+        }
+
         item.isWatched.toggle()
         item.watchedAt = item.isWatched ? Date() : nil
 
@@ -408,6 +418,15 @@ struct MediaListRow: View {
     let onWatchedToggled: () -> Void
     let onDeleteRequested: () -> Void
 
+    /// Show progress bar for any TV show with partial season progress
+    private var seasonProgress: (watchedSeasons: [Int], total: Int)? {
+        guard let total = item.tvShow?.numberOfSeasons, total > 0 else { return nil }
+        let watched = item.watchedSeasons
+        // Only show when there's partial progress (not 0/N or N/N unless dropped)
+        guard !watched.isEmpty, (watched.count < total || item.isDropped) else { return nil }
+        return (watchedSeasons: watched, total: total)
+    }
+
     var body: some View {
         Button {
             onItemExpanded(expandedItemID == itemID ? nil : itemID)
@@ -424,7 +443,8 @@ struct MediaListRow: View {
                 },
                 voteAverage: item.media?.voteAverage,
                 genres: item.media?.genres ?? [],
-                userRating: item.userRating
+                userRating: item.userRating,
+                seasonProgress: seasonProgress
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

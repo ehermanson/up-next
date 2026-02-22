@@ -14,6 +14,7 @@ struct MediaCardView: View {
     var voteAverage: Double?
     var genres: [String] = []
     var userRating: Int?
+    var seasonProgress: (watchedSeasons: [Int], total: Int)? = nil
 
     private let settings = ProviderSettings.shared
 
@@ -133,6 +134,10 @@ struct MediaCardView: View {
                         logoSize: 28,
                         additionalCount: settings.hasSelectedProviders ? additionalNetworkCount : 0
                     )
+
+                    if let progress = seasonProgress, progress.total > 0 {
+                        SeasonProgressBar(watchedSeasons: progress.watchedSeasons, total: progress.total)
+                    }
                 }
             }
             .padding(.vertical, isCompact ? 10 : 12)
@@ -140,6 +145,30 @@ struct MediaCardView: View {
         }
         .frame(minHeight: posterSize.height, alignment: .leading)
         .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: cardCornerRadius))
+    }
+}
+
+private struct SeasonProgressBar: View {
+    let watchedSeasons: [Int]
+    let total: Int
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(1...total, id: \.self) { season in
+                if season > 1 {
+                    let prevWatched = watchedSeasons.contains(season - 1)
+                    RoundedRectangle(cornerRadius: 0.5)
+                        .fill(prevWatched ? Color.green.opacity(0.35) : Color.white.opacity(0.06))
+                        .frame(width: 6, height: 1.5)
+                }
+
+                let isWatched = watchedSeasons.contains(season)
+                Circle()
+                    .fill(isWatched ? Color.green.opacity(0.6) : Color.white.opacity(0.06))
+                    .stroke(isWatched ? Color.green.opacity(0.6) : Color.white.opacity(0.15), lineWidth: 1)
+                    .frame(width: 6, height: 6)
+            }
+        }
     }
 }
 

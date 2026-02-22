@@ -28,6 +28,9 @@ final class ListItem {
     /// The date when the item was marked as watched (nil if not watched)
     var watchedAt: Date?
 
+    /// The date when a TV show was marked as "done watching" before all seasons were complete (nil if not dropped)
+    var droppedAt: Date?
+
     /// The order of this item within the media list for sorting purposes
     var order: Int = 0
 
@@ -39,6 +42,9 @@ final class ListItem {
 
     /// Free-text personal notes
     var userNotes: String?
+
+    /// Whether the show has been dropped (done watching before all seasons complete)
+    var isDropped: Bool { droppedAt != nil }
 
     /// Computed property to access the media item as a protocol type
     var media: (any MediaItemProtocol)? {
@@ -58,6 +64,7 @@ final class ListItem {
         addedAt: Date = Date(),
         isWatched: Bool = false,
         watchedAt: Date? = nil,
+        droppedAt: Date? = nil,
         order: Int = 0,
         watchedSeasons: [Int] = [],
         userRating: Int? = nil,
@@ -70,6 +77,7 @@ final class ListItem {
         self.addedAt = addedAt
         self.isWatched = isWatched
         self.watchedAt = watchedAt
+        self.droppedAt = droppedAt
         self.order = order
         self.watchedSeasons = watchedSeasons
         self.userRating = userRating
@@ -90,6 +98,7 @@ final class ListItem {
     /// Syncs `isWatched` / `watchedAt` based on whether all seasons are in `watchedSeasons`.
     /// No-op for movies or shows without `numberOfSeasons`.
     func syncWatchedStateFromSeasons() {
+        guard droppedAt == nil else { return }
         guard let tvShow = tvShow, let total = tvShow.numberOfSeasons, total > 0 else { return }
         let allWatched = (1...total).allSatisfy { watchedSeasons.contains($0) }
         if allWatched {
@@ -103,6 +112,20 @@ final class ListItem {
         }
     }
 
+    /// Marks the show as "done watching" — appears in Watched regardless of season completion.
+    func dropShow() {
+        let now = Date()
+        droppedAt = now
+        isWatched = true
+        watchedAt = now
+    }
+
+    /// Resumes a dropped show — clears the drop override and re-derives watched state from seasons.
+    func resumeShow() {
+        droppedAt = nil
+        syncWatchedStateFromSeasons()
+    }
+
     /// Convenience initializer for creating a ListItem with a Movie
     convenience init(
         movie: Movie,
@@ -111,6 +134,7 @@ final class ListItem {
         addedAt: Date = Date(),
         isWatched: Bool = false,
         watchedAt: Date? = nil,
+        droppedAt: Date? = nil,
         order: Int = 0,
         watchedSeasons: [Int] = [],
         userRating: Int? = nil,
@@ -124,6 +148,7 @@ final class ListItem {
             addedAt: addedAt,
             isWatched: isWatched,
             watchedAt: watchedAt,
+            droppedAt: droppedAt,
             order: order,
             watchedSeasons: watchedSeasons,
             userRating: userRating,
@@ -139,6 +164,7 @@ final class ListItem {
         addedAt: Date = Date(),
         isWatched: Bool = false,
         watchedAt: Date? = nil,
+        droppedAt: Date? = nil,
         order: Int = 0,
         watchedSeasons: [Int] = [],
         userRating: Int? = nil,
@@ -152,6 +178,7 @@ final class ListItem {
             addedAt: addedAt,
             isWatched: isWatched,
             watchedAt: watchedAt,
+            droppedAt: droppedAt,
             order: order,
             watchedSeasons: watchedSeasons,
             userRating: userRating,

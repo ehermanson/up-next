@@ -100,9 +100,12 @@ struct MediaDetailView: View {
                             )
 
                             if onAdd == nil {
-                                if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 0 {
+                                if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
                                     Divider().padding(.vertical, 4)
                                     SeasonChecklistCard(listItem: $listItem)
+
+                                    Divider().padding(.vertical, 4)
+                                    DoneWatchingCard(listItem: $listItem)
                                 }
 
                                 Divider().padding(.vertical, 4)
@@ -742,6 +745,7 @@ private struct WatchedToggleCard: View {
             Toggle("", isOn: Binding(
                 get: { listItem.isWatched },
                 set: { newValue in
+                    listItem.droppedAt = nil
                     if let tvShow = listItem.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
                         if newValue {
                             listItem.watchedSeasons = Array(1...total)
@@ -822,12 +826,14 @@ private struct SeasonChecklistCard: View {
         listItem.tvShow?.seasonEpisodeCounts ?? []
     }
 
+    private let circleSize: CGFloat = 28
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Seasons")
                 .font(.headline)
 
-            VStack(spacing: 6) {
+            VStack(spacing: 0) {
                 ForEach(1...max(totalSeasons, 1), id: \.self) { season in
                     seasonRow(season: season)
                 }
@@ -835,23 +841,55 @@ private struct SeasonChecklistCard: View {
         }
     }
 
+    private func toggleSeason(_ season: Int) {
+        if listItem.watchedSeasons.contains(season) {
+            listItem.watchedSeasons.removeAll { $0 == season }
+        } else {
+            listItem.watchedSeasons.append(season)
+        }
+        // If all seasons are now watched while dropped, clear the drop (legitimately complete)
+        if listItem.isDropped, let total = listItem.tvShow?.numberOfSeasons, total > 0 {
+            let allWatched = (1...total).allSatisfy { listItem.watchedSeasons.contains($0) }
+            if allWatched { listItem.droppedAt = nil }
+        }
+        listItem.syncWatchedStateFromSeasons()
+    }
+
     private func seasonRow(season: Int) -> some View {
         let isWatched = listItem.watchedSeasons.contains(season)
         let episodeCount = season <= episodeCounts.count ? episodeCounts[season - 1] : nil
+        let isLast = season == totalSeasons
 
         return Button {
-            if isWatched {
-                listItem.watchedSeasons.removeAll { $0 == season }
-            } else {
-                listItem.watchedSeasons.append(season)
-            }
-            listItem.syncWatchedStateFromSeasons()
+            toggleSeason(season)
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isWatched ? .green : .secondary)
+            HStack(alignment: .top, spacing: 12) {
+                // Timeline: circle + connector line
+                VStack(spacing: 0) {
+                    ZStack {
+                        Circle()
+                            .fill(isWatched ? Color.green.opacity(0.15) : Color.white.opacity(0.05))
+                        Circle()
+                            .strokeBorder(isWatched ? Color.green.opacity(0.6) : Color.white.opacity(0.15), lineWidth: 1.5)
+                        if isWatched {
+                            Image(systemName: "checkmark")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    .frame(width: circleSize, height: circleSize)
 
+                    if !isLast {
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(isWatched ? Color.green.opacity(0.3) : Color.white.opacity(0.06))
+                            .frame(width: 2)
+                            .frame(maxHeight: .infinity)
+                    }
+                }
+                .frame(width: circleSize)
+
+                // Season info
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Season \(season)")
                         .font(.subheadline)
@@ -864,15 +902,72 @@ private struct SeasonChecklistCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .padding(.top, 4)
 
                 Spacer()
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .glassEffect(.regular.tint(isWatched ? .green.opacity(0.1) : .indigo.opacity(0.07)).interactive(), in: .capsule)
+            .padding(.bottom, isLast ? 0 : 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct DoneWatchingCard: View {
+    @Binding var listItem: ListItem
+
+    private var totalSeasons: Int {
+        listItem.tvShow?.numberOfSeasons ?? 0
+    }
+
+    private var allSeasonsWatched: Bool {
+        guard totalSeasons > 0 else { return false }
+        return (1...totalSeasons).allSatisfy { listItem.watchedSeasons.contains($0) }
+    }
+
+    /// Show card when: not all seasons watched (partial/none), OR already dropped
+    private var shouldShow: Bool {
+        listItem.isDropped || !allSeasonsWatched
+    }
+
+    var body: some View {
+        if shouldShow {
+            if listItem.isDropped {
+                Button {
+                    listItem.resumeShow()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.uturn.backward.circle.fill")
+                            .font(.body)
+                        Text("Resume Watching")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular.tint(.blue.opacity(0.15)).interactive(), in: .rect(cornerRadius: 16))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            } else {
+                Button {
+                    listItem.dropShow()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "flag.circle.fill")
+                            .font(.body)
+                        Text("Done Watching")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular.tint(.orange.opacity(0.15)).interactive(), in: .rect(cornerRadius: 16))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

@@ -173,6 +173,7 @@ final class MediaLibraryViewModel {
     }
 
     func handleSeasonCountUpdate(for listItem: ListItem, previousSeasonCount: Int?) {
+        guard listItem.droppedAt == nil else { return }
         guard let previous = previousSeasonCount,
               let current = listItem.tvShow?.numberOfSeasons,
               current > previous
