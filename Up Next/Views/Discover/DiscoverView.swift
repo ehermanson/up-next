@@ -335,7 +335,7 @@ struct DiscoverView: View {
                 do {
                     let detail = try await service.getTVShowDetails(id: result.id)
                     let providers = detail.watchProviders?.results?[service.currentRegion]
-                    tvShow = service.mapToTVShow(detail, providers: providers)
+                    tvShow = await service.mapToTVShow(detail, providers: providers)
                 } catch {
                     tvShow = service.mapToTVShow(result)
                 }
@@ -345,7 +345,7 @@ struct DiscoverView: View {
                 do {
                     let detail = try await service.getMovieDetails(id: result.id)
                     let providers = detail.watchProviders?.results?[service.currentRegion]
-                    movie = service.mapToMovie(detail, providers: providers)
+                    movie = await service.mapToMovie(detail, providers: providers)
                 } catch {
                     movie = service.mapToMovie(result)
                 }

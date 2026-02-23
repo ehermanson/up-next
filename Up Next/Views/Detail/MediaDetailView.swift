@@ -317,7 +317,7 @@ struct MediaDetailView: View {
                 let previousSeasonCount = tvShow.numberOfSeasons
                 let detail = try await service.getTVShowDetails(id: id)
                 let providers = detail.watchProviders?.results?[service.currentRegion]
-                tvShow.update(from: service.mapToTVShow(detail, providers: providers))
+                tvShow.update(from: await service.mapToTVShow(detail, providers: providers))
 
                 if let newCount = tvShow.numberOfSeasons,
                    previousSeasonCount != nil,
@@ -335,7 +335,7 @@ struct MediaDetailView: View {
             } else if let movie = listItem.movie {
                 let detail = try await service.getMovieDetails(id: id)
                 let providers = detail.watchProviders?.results?[service.currentRegion]
-                movie.update(from: service.mapToMovie(detail, providers: providers))
+                movie.update(from: await service.mapToMovie(detail, providers: providers))
 
                 similarItems = (detail.similar?.results ?? []).prefix(10).map {
                     SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
@@ -378,7 +378,7 @@ struct MediaDetailView: View {
                 do {
                     let d = try await service.getTVShowDetails(id: item.id)
                     let p = d.watchProviders?.results?[service.currentRegion]
-                    tvShow = service.mapToTVShow(d, providers: p)
+                    tvShow = await service.mapToTVShow(d, providers: p)
                 } catch {
                     tvShow = TVShow(id: stringID, title: item.title, thumbnailURL: service.imageURL(path: item.posterPath), voteAverage: item.voteAverage)
                 }
@@ -388,7 +388,7 @@ struct MediaDetailView: View {
                 do {
                     let d = try await service.getMovieDetails(id: item.id)
                     let p = d.watchProviders?.results?[service.currentRegion]
-                    movie = service.mapToMovie(d, providers: p)
+                    movie = await service.mapToMovie(d, providers: p)
                 } catch {
                     movie = Movie(id: stringID, title: item.title, thumbnailURL: service.imageURL(path: item.posterPath), voteAverage: item.voteAverage)
                 }
@@ -419,7 +419,7 @@ struct MediaDetailView: View {
             do {
                 let d = try await service.getMovieDetails(id: part.id)
                 let p = d.watchProviders?.results?[service.currentRegion]
-                movie = service.mapToMovie(d, providers: p)
+                movie = await service.mapToMovie(d, providers: p)
             } catch {
                 movie = Movie(id: stringID, title: part.title, thumbnailURL: service.imageURL(path: part.posterPath), voteAverage: part.voteAverage)
             }

@@ -226,7 +226,7 @@ final class MediaLibraryViewModel {
                 guard let detail, index < tvShows.count,
                       let tvShow = tvShows[index].tvShow else { continue }
                 let providers = detail.watchProviders?.results?[service.currentRegion]
-                tvShow.update(from: service.mapToTVShow(detail, providers: providers))
+                tvShow.update(from: await service.mapToTVShow(detail, providers: providers))
                 if let newCount = tvShow.numberOfSeasons,
                    let prev = prevSeasons, newCount > prev {
                     handleSeasonCountUpdate(for: tvShows[index], previousSeasonCount: prevSeasons)
@@ -253,7 +253,7 @@ final class MediaLibraryViewModel {
                 guard let detail, index < movies.count,
                       let movie = movies[index].movie else { continue }
                 let providers = detail.watchProviders?.results?[service.currentRegion]
-                movie.update(from: service.mapToMovie(detail, providers: providers))
+                movie.update(from: await service.mapToMovie(detail, providers: providers))
             }
         }
 
@@ -439,7 +439,7 @@ final class MediaLibraryViewModel {
         for (index, detail) in tvDetails {
             guard let detail else { continue }
             let providers = detail.watchProviders?.results?[service.currentRegion]
-            let tvShow = service.mapToTVShow(detail, providers: providers)
+            let tvShow = await service.mapToTVShow(detail, providers: providers)
             let seed = tvSeeds[index]
             let daysAgo = seed.watched ? Double(30 + index * 15) : 0
             let item = ListItem(
@@ -461,7 +461,7 @@ final class MediaLibraryViewModel {
         for (index, detail) in movieDetails {
             guard let detail else { continue }
             let providers = detail.watchProviders?.results?[service.currentRegion]
-            let movie = service.mapToMovie(detail, providers: providers)
+            let movie = await service.mapToMovie(detail, providers: providers)
             let seed = movieSeeds[index]
             let daysAgo = seed.watched ? Double(30 + index * 15) : 0
             let item = ListItem(
@@ -511,7 +511,7 @@ final class MediaLibraryViewModel {
         for (_, detail) in christmasDetails {
             guard let detail else { continue }
             let providers = detail.watchProviders?.results?[service.currentRegion]
-            let movie = service.mapToMovie(detail, providers: providers)
+            let movie = await service.mapToMovie(detail, providers: providers)
             let item = CustomListItem(movie: movie, customList: christmasList, addedAt: Date())
             context.insert(item)
             christmasItems.append(item)

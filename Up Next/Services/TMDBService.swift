@@ -27,6 +27,10 @@ final class TMDBService: @unchecked Sendable {
 
     private init() {}
 
+    /// Canonical provider logo paths keyed by provider ID.
+    /// Populated once per app session from the global provider list.
+    private var canonicalLogoPaths: [Int: String] = [:]
+
     /// Returns the user's region code (e.g., "US", "GB", "DE") for watch provider lookups.
     /// Falls back to "US" if the device locale doesn't provide a region.
     var currentRegion: String {
@@ -183,13 +187,34 @@ final class TMDBService: @unchecked Sendable {
         }
 
         // TMDB lower display_priority means higher prominence.
-        return merged.sorted {
+        let sorted = merged.sorted {
             let leftPriority = $0.displayPriority ?? Int.max
             let rightPriority = $1.displayPriority ?? Int.max
             if leftPriority != rightPriority {
                 return leftPriority < rightPriority
             }
             return $0.providerName.localizedCaseInsensitiveCompare($1.providerName) == .orderedAscending
+        }
+
+        // Warm the canonical logo cache so mapping functions can use it
+        for provider in sorted {
+            if let logo = provider.logoPath {
+                canonicalLogoPaths[provider.providerId] = logo
+            }
+        }
+
+        return sorted
+    }
+
+    /// Lazily loads canonical provider logos once per app session.
+    /// Falls back silently on error — per-title logos are used instead.
+    private func ensureCanonicalLogosLoaded() async {
+        guard canonicalLogoPaths.isEmpty else { return }
+        guard let providers = try? await fetchWatchProviders() else { return }
+        for provider in providers {
+            if let logo = provider.logoPath {
+                canonicalLogoPaths[provider.providerId] = logo
+            }
         }
     }
 
@@ -271,7 +296,8 @@ final class TMDBService: @unchecked Sendable {
     }
 
     /// Convert TMDB TV show detail + optional watch providers to TVShow model
-    func mapToTVShow(_ detail: TMDBTVShowDetail, providers: TMDBWatchProviderCountry? = nil) -> TVShow {
+    func mapToTVShow(_ detail: TMDBTVShowDetail, providers: TMDBWatchProviderCountry? = nil) async -> TVShow {
+        await ensureCanonicalLogosLoaded()
         let castMembers = detail.credits?.cast?.prefix(10) ?? []
         let cast = castMembers.map { $0.name }
         let castImagePaths = castMembers.map { $0.profilePath ?? "" }
@@ -323,8 +349,8 @@ final class TMDBService: @unchecked Sendable {
             seenNames.insert(canonical)
             // Use provider ID if known, otherwise fall back to network ID
             let networkID = Self.networkToProviderID[tmdbNetwork.name] ?? tmdbNetwork.id
-            // Prefer the streaming provider's logo if we have it
-            let logoPath = providerLogos[networkID] ?? tmdbNetwork.logoPath
+            // Prefer canonical logo, then streaming provider's logo, then network logo
+            let logoPath = canonicalLogoPaths[networkID] ?? providerLogos[networkID] ?? tmdbNetwork.logoPath
             let network = Network(
                 id: networkID,
                 name: canonical,
@@ -464,10 +490,11 @@ final class TMDBService: @unchecked Sendable {
 
                 seenIDs.insert(entry.providerId)
                 seenNames.insert(canonicalName)
+                let logoPath = canonicalLogoPaths[entry.providerId] ?? entry.logoPath
                 networks.append(Network(
                     id: entry.providerId,
                     name: canonicalName,
-                    logoPath: entry.logoPath,
+                    logoPath: logoPath,
                     originCountry: "US"
                 ))
                 categories[entry.providerId] = category
@@ -478,7 +505,8 @@ final class TMDBService: @unchecked Sendable {
     }
 
     /// Convert TMDB movie detail + watch providers to Movie model
-    func mapToMovie(_ detail: TMDBMovieDetail, providers: TMDBWatchProviderCountry?) -> Movie {
+    func mapToMovie(_ detail: TMDBMovieDetail, providers: TMDBWatchProviderCountry?) async -> Movie {
+        await ensureCanonicalLogosLoaded()
         let castMembers = detail.credits?.cast?.prefix(10) ?? []
         let cast = castMembers.map { $0.name }
         let castImagePaths = castMembers.map { $0.profilePath ?? "" }

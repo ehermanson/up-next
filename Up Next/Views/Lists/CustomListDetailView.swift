@@ -240,11 +240,11 @@ private struct CustomListItemDetailView: View {
             if let tvShow = item.tvShow {
                 let detail = try await service.getTVShowDetails(id: id)
                 let providers = detail.watchProviders?.results?[service.currentRegion]
-                tvShow.update(from: service.mapToTVShow(detail, providers: providers))
+                tvShow.update(from: await service.mapToTVShow(detail, providers: providers))
             } else if let movie = item.movie {
                 let detail = try await service.getMovieDetails(id: id)
                 let providers = detail.watchProviders?.results?[service.currentRegion]
-                movie.update(from: service.mapToMovie(detail, providers: providers))
+                movie.update(from: await service.mapToMovie(detail, providers: providers))
             }
         } catch {
             detailError = error.localizedDescription
