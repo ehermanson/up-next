@@ -15,8 +15,26 @@ struct MediaCardView: View {
     var genres: [String] = []
     var userRating: Int?
     var seasonProgress: (watchedSeasons: [Int], total: Int)? = nil
+    var nextAirDate: String? = nil
 
     private let settings = ProviderSettings.shared
+
+    private static let airDateInput: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    private static let airDateDisplay: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
+    private var formattedAirDate: String? {
+        guard let raw = nextAirDate,
+              let date = Self.airDateInput.date(from: raw) else { return nil }
+        return Self.airDateDisplay.string(from: date)
+    }
 
     /// Streaming networks that match user's selected providers
     private var selectedStreamingNetworks: [Network] {
@@ -49,15 +67,6 @@ struct MediaCardView: View {
         isCompact ? 16 : 20
     }
 
-    private var leadingClipShape: UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: cardCornerRadius,
-            bottomLeadingRadius: cardCornerRadius,
-            bottomTrailingRadius: 0,
-            topTrailingRadius: 0
-        )
-    }
-
     var body: some View {
         HStack(spacing: isCompact ? 10 : 12) {
             if let imageURL = imageURL {
@@ -70,13 +79,13 @@ struct MediaCardView: View {
                     }
                 }
                 .frame(width: posterSize.width, height: posterSize.height)
-                .clipShape(leadingClipShape)
+                .clipShape(.rect(cornerRadius: isCompact ? 8 : 10))
                 .clipped()
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.3))
                     .frame(width: posterSize.width, height: posterSize.height)
-                    .clipShape(leadingClipShape)
+                    .clipShape(.rect(cornerRadius: isCompact ? 8 : 10))
             }
 
             VStack(alignment: .leading, spacing: isCompact ? 3 : 5) {
@@ -106,18 +115,11 @@ struct MediaCardView: View {
                         .accessibilityLabel("Watched")
                     }
                 }
-                if let subtitle = subtitle {
-                    Text(subtitle)
-                        .font(isCompact ? .caption : .subheadline)
-                        .fontDesign(.rounded)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
                 if !isCompact {
                     HStack(spacing: 6) {
-                        if !genres.isEmpty {
-                            Text(genres.prefix(3).joined(separator: ", "))
-                                .font(.caption)
+                        if let subtitle = subtitle {
+                            Text(subtitle)
+                                .font(.subheadline)
                                 .fontDesign(.rounded)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -126,6 +128,19 @@ struct MediaCardView: View {
                             StarRatingLabel(vote: vote)
                         }
                     }
+                    if !genres.isEmpty {
+                        Text(genres.prefix(3).joined(separator: ", "))
+                            .font(.caption)
+                            .fontDesign(.rounded)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                } else if let subtitle = subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .fontDesign(.rounded)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
                 if !isCompact {
                     NetworkLogosView(
@@ -140,10 +155,24 @@ struct MediaCardView: View {
                     }
                 }
             }
-            .padding(.vertical, isCompact ? 10 : 12)
-            .padding(.trailing, isCompact ? 10 : 12)
         }
-        .frame(minHeight: posterSize.height, alignment: .leading)
+        .padding(isCompact ? 8 : 10)
+        .overlay(alignment: .bottomTrailing) {
+            if let formatted = formattedAirDate, !isCompact {
+                HStack(spacing: 3) {
+                    Image(systemName: "calendar")
+                    Text("Next: \(formatted)")
+                }
+                .font(.caption2)
+                .fontDesign(.rounded)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .glassEffect(.regular, in: .capsule)
+                .padding(6)
+            }
+        }
         .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: cardCornerRadius))
     }
 }

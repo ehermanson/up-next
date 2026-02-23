@@ -102,7 +102,8 @@ struct ReorderableMediaList: UIViewRepresentable {
                     watchedToggleAction: { _ in },
                     isCompact: parent.isCompact,
                     voteAverage: item.media?.voteAverage,
-                    genres: item.media?.genres ?? []
+                    genres: item.media?.genres ?? [],
+                    nextAirDate: item.tvShow?.nextEpisodeAirDate
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

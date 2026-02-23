@@ -444,7 +444,8 @@ struct MediaListRow: View {
                 voteAverage: item.media?.voteAverage,
                 genres: item.media?.genres ?? [],
                 userRating: item.userRating,
-                seasonProgress: seasonProgress
+                seasonProgress: seasonProgress,
+                nextAirDate: item.tvShow?.nextEpisodeAirDate
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

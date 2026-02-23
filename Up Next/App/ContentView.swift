@@ -173,19 +173,15 @@ struct ContentView: View {
                 if !item.watchedSeasons.isEmpty,
                    let total = tvShow.numberOfSeasons, total > 1,
                    let next = item.nextSeasonToWatch {
-                    let remaining = total - item.watchedSeasons.count
-                    if remaining > 1 {
-                        base = "Next Season: S\(next) (\(remaining) left)"
-                    } else {
+                    if next == total {
                         base = "Next Season: S\(next)"
+                    } else {
+                        base = "Next Season: S\(next) (of \(total))"
                     }
                 } else {
                     base = tvShow.seasonsEpisodesSummary
                 }
 
-                if let airDate = tvShow.nextEpisodeAirDate, let formatted = formatAirDate(airDate) {
-                    return [base, formatted].compactMap { $0 }.joined(separator: " \u{2022} ")
-                }
                 return base
             },
             onItemExpanded: { id in
@@ -356,21 +352,6 @@ struct ContentView: View {
         return meta.isEmpty ? nil : meta.joined(separator: " \u{2022} ")
     }
 
-    private static let airDateInput: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-    private static let airDateDisplay: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        return f
-    }()
-
-    private func formatAirDate(_ dateString: String) -> String? {
-        guard let date = Self.airDateInput.date(from: dateString) else { return nil }
-        return "Next: \(Self.airDateDisplay.string(from: date))"
-    }
 }
 
 #Preview {
