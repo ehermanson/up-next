@@ -42,3 +42,7 @@ struct TMDBAttributionView: View {
         }
     }
 }
+
+#Preview {
+    TMDBAttributionView()
+}

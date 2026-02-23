@@ -201,26 +201,75 @@ private struct SeasonProgressBar: View {
     }
 }
 
-#Preview {
-    let sampleNetworks = [
-        Network(
-            id: 8,
-            name: "Netflix",
-            logoPath: "/pbpMk2JmcoNnQwx5JGpXngfoWtp.png",
-            originCountry: "US"
-        ),
-        Network(
-            id: 1899,
-            name: "HBO Max",
-            logoPath: "/6Q3ZYUNA9Hsgj6iWnVsw2gR5V77.png",
-            originCountry: "US"
-        ),
-    ]
+// MARK: - Previews
+
+private let previewNetworks = [
+    Network(
+        id: 8,
+        name: "Netflix",
+        logoPath: "/pbpMk2JmcoNnQwx5JGpXngfoWtp.png",
+        originCountry: "US"
+    ),
+    Network(
+        id: 1899,
+        name: "HBO Max",
+        logoPath: "/6Q3ZYUNA9Hsgj6iWnVsw2gR5V77.png",
+        originCountry: "US"
+    ),
+]
+
+#Preview("Unwatched TV Show") {
+    MediaCardView(
+        title: "Severance",
+        subtitle: "Season 2",
+        imageURL: nil,
+        networks: previewNetworks,
+        providerCategories: [8: "stream"],
+        isWatched: false,
+        watchedToggleAction: { _ in },
+        voteAverage: 8.3,
+        genres: ["Drama", "Sci-Fi", "Thriller"],
+        seasonProgress: (watchedSeasons: [1], total: 2),
+        nextAirDate: "2026-03-15"
+    )
+    .padding()
+}
+
+#Preview("Unwatched Movie") {
+    MediaCardView(
+        title: "Dune: Part Two",
+        subtitle: "2024 · 166 min",
+        imageURL: nil,
+        networks: previewNetworks,
+        providerCategories: [8: "stream", 1899: "stream"],
+        isWatched: false,
+        watchedToggleAction: { _ in },
+        voteAverage: 8.1,
+        genres: ["Sci-Fi", "Adventure"]
+    )
+    .padding()
+}
+
+#Preview("Compact Card") {
+    MediaCardView(
+        title: "The Bear",
+        subtitle: "Season 3",
+        imageURL: nil,
+        networks: [],
+        providerCategories: [:],
+        isWatched: false,
+        watchedToggleAction: { _ in },
+        isCompact: true
+    )
+    .padding()
+}
+
+#Preview("Watched with Rating") {
     MediaCardView(
         title: "Example Movie Title",
-        subtitle: "2022 \u{00b7} 148 min",
+        subtitle: "2022 · 148 min",
         imageURL: nil,
-        networks: sampleNetworks,
+        networks: previewNetworks,
         providerCategories: [8: "stream", 1899: "stream"],
         isWatched: true,
         watchedToggleAction: { _ in },
@@ -228,4 +277,5 @@ private struct SeasonProgressBar: View {
         genres: ["Action", "Adventure", "Thriller"],
         userRating: 1
     )
+    .padding()
 }

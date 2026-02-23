@@ -92,3 +92,11 @@ struct SFSymbolPickerGrid: View {
         }
     }
 }
+
+#Preview {
+    @Previewable @State var selected = "star.fill"
+    ScrollView {
+        SFSymbolPickerGrid(selectedSymbol: $selected)
+            .padding()
+    }
+}

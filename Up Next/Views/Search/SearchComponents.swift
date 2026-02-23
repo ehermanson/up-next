@@ -234,3 +234,33 @@ struct SearchResultRow: View {
         }
     }
 }
+
+// MARK: - Previews
+
+#Preview("Shimmer Loading") {
+    ShimmerLoadingView()
+}
+
+#Preview("Search Result — Not Added") {
+    SearchResultRow(
+        title: "Breaking Bad",
+        overview: "A chemistry teacher diagnosed with inoperable lung cancer turns to manufacturing and selling methamphetamine.",
+        imageURL: nil,
+        isAdded: false,
+        onAdd: {},
+        voteAverage: 8.9
+    )
+    .padding()
+}
+
+#Preview("Search Result — Added") {
+    SearchResultRow(
+        title: "The Shawshank Redemption",
+        overview: "Two imprisoned men bond over a number of years, finding solace and eventual redemption through acts of common decency.",
+        imageURL: nil,
+        isAdded: true,
+        onAdd: {},
+        voteAverage: 8.7
+    )
+    .padding()
+}

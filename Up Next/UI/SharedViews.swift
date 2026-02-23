@@ -171,3 +171,38 @@ extension View {
         modifier(ToastOverlayModifier(bottomPadding: bottomPadding))
     }
 }
+
+// MARK: - Previews
+
+#Preview("Star Ratings") {
+    HStack(spacing: 20) {
+        StarRatingLabel(vote: 5.0)
+        StarRatingLabel(vote: 7.8)
+        StarRatingLabel(vote: 9.2)
+    }
+    .padding()
+}
+
+#Preview("Empty State — Full") {
+    EmptyStateView(
+        icon: "tv",
+        title: "No TV Shows",
+        subtitle: "Add shows from the Discover tab to start tracking what you watch."
+    ) {
+        Button("Browse Shows") {}
+            .buttonStyle(.borderedProminent)
+    }
+}
+
+#Preview("Empty State — Minimal") {
+    EmptyStateView(icon: "film", title: "No Movies")
+}
+
+#Preview("Toast Overlay") {
+    let toast = ToastState()
+    Color.clear
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .toastOverlay()
+        .environment(toast)
+        .onAppear { toast.show("Added to Watchlist") }
+}

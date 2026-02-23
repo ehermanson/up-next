@@ -65,7 +65,7 @@ struct NetworkLogosView: View {
     }
 }
 
-#Preview {
+#Preview("Network Logos") {
     let networks = [
         Network(id: 213, name: "Netflix", logoPath: "/pmvUqkQjmdJeuMkuGIcF1coIIJ1.png"),
         Network(id: 49, name: "HBO", logoPath: "/tuomPhY2UtuPTqqFnKMVHvSb724.png"),
@@ -77,4 +77,12 @@ struct NetworkLogosView: View {
     return NetworkLogosView(networks: networks)
         .padding()
         .previewLayout(.sizeThatFits)
+}
+
+#Preview("Provider Logo") {
+    ProviderLogoView(
+        network: Network(id: 213, name: "Netflix", logoPath: "/pmvUqkQjmdJeuMkuGIcF1coIIJ1.png"),
+        size: 44
+    )
+    .padding()
 }
