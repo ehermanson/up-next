@@ -176,26 +176,18 @@ struct MediaCardView: View {
         .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: cardCornerRadius))
     }
 }
-
+        
 private struct SeasonProgressBar: View {
     let watchedSeasons: [Int]
     let total: Int
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 4) {
             ForEach(1...total, id: \.self) { season in
-                if season > 1 {
-                    let prevWatched = watchedSeasons.contains(season - 1)
-                    RoundedRectangle(cornerRadius: 0.5)
-                        .fill(prevWatched ? Color.green.opacity(0.35) : Color.white.opacity(0.06))
-                        .frame(width: 6, height: 1.5)
-                }
-
                 let isWatched = watchedSeasons.contains(season)
-                Circle()
-                    .fill(isWatched ? Color.green.opacity(0.6) : Color.white.opacity(0.06))
-                    .stroke(isWatched ? Color.green.opacity(0.6) : Color.white.opacity(0.15), lineWidth: 1)
-                    .frame(width: 6, height: 6)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isWatched ? Color.white.opacity(0.4) : Color.white.opacity(0.1))
+                    .frame(width: 12, height: 4)
             }
         }
     }
@@ -229,7 +221,7 @@ private let previewNetworks = [
         watchedToggleAction: { _ in },
         voteAverage: 8.3,
         genres: ["Drama", "Sci-Fi", "Thriller"],
-        seasonProgress: (watchedSeasons: [1], total: 2),
+        seasonProgress: (watchedSeasons: [1, 2], total: 5),
         nextAirDate: "2026-03-15"
     )
     .padding()
