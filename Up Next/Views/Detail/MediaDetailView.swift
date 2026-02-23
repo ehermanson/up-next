@@ -225,7 +225,7 @@ struct MediaDetailView: View {
                         .glassEffect(.regular, in: .rect(cornerRadius: 28))
                     }
                     .padding(.horizontal, 12)
-                    .offset(y: -40)
+                    .offset(y: -50)
                 }
             }
             .ignoresSafeArea(.container, edges: .top)
@@ -1002,6 +1002,8 @@ private struct DoneWatchingCard: View {
 struct HeaderImageView: View {
     let imageURL: URL?
 
+    private let headerHeight: CGFloat = 420
+
     var body: some View {
         Group {
             if let imageURL {
@@ -1009,34 +1011,48 @@ struct HeaderImageView: View {
                     switch phase {
                     case .empty:
                         ProgressView()
-                            .frame(height: 350)
+                            .frame(height: headerHeight)
                     case .success(let image):
-                        ZStack(alignment: .bottom) {
+                        GeometryReader { geo in
+                            let minY = geo.frame(in: .scrollView).minY
+                            let overscroll = max(minY, 0)
+                            let scrollOffset = max(-minY, 0)
+                            let yOffset = -scrollOffset * 0.3 - overscroll
+
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 350)
-                                .clipped()
-
+                                .frame(
+                                    width: geo.size.width,
+                                    height: headerHeight + overscroll,
+                                    alignment: .top
+                                )
+                                .offset(y: yOffset)
+                        }
+                        .frame(height: headerHeight)
+                        .overlay(alignment: .bottom) {
+                            let bgColor = Color(red: 0.10, green: 0.06, blue: 0.22)
                             LinearGradient(
                                 stops: [
                                     .init(color: .clear, location: 0.0),
-                                    .init(color: Color.black.opacity(0.3), location: 0.4),
-                                    .init(color: Color.black.opacity(0.8), location: 1.0),
+                                    .init(color: bgColor.opacity(0.5), location: 0.25),
+                                    .init(color: bgColor.opacity(0.85), location: 0.6),
+                                    .init(color: bgColor, location: 1.0),
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
+                            .frame(height: 500)
+                            .offset(y: 200)
                         }
                     case .failure:
-                        Color.gray.frame(height: 350)
+                        Color.gray.frame(height: headerHeight)
                     @unknown default:
                         EmptyView()
                     }
                 }
             } else {
-                Color.gray.frame(height: 350)
+                Color.gray.frame(height: headerHeight)
             }
         }
     }
