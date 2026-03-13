@@ -12,6 +12,14 @@ final class MediaLibraryViewModel {
     var watchedMovies: [ListItem] = []
     var isLoaded = false
 
+    // Derived data — updated in syncUnwatched to avoid recomputation on every body call
+    private(set) var availableTVGenres: [String] = []
+    private(set) var availableMovieGenres: [String] = []
+    private(set) var availableTVProviderCategories: [String] = []
+    private(set) var availableMovieProviderCategories: [String] = []
+    private(set) var existingTVShowIDs: Set<String> = []
+    private(set) var existingMovieIDs: Set<String> = []
+
     private var modelContext: ModelContext?
     private var tvList: MediaList?
     private var movieList: MediaList?
@@ -138,6 +146,9 @@ final class MediaLibraryViewModel {
                     case (nil, nil): return false
                     }
                 }
+            availableTVGenres = Array(Set(unwatchedTVShows.flatMap { $0.media?.genres ?? [] })).sorted()
+            availableTVProviderCategories = providerCategoryLabels(from: unwatchedTVShows)
+            existingTVShowIDs = Set(tvShows.compactMap { $0.media?.id })
         case .movie:
             unwatchedMovies = syncUnwatchedItems(
                 allItems: movies,
@@ -152,7 +163,25 @@ final class MediaLibraryViewModel {
                     case (nil, nil): return false
                     }
                 }
+            availableMovieGenres = Array(Set(unwatchedMovies.flatMap { $0.media?.genres ?? [] })).sorted()
+            availableMovieProviderCategories = providerCategoryLabels(from: unwatchedMovies)
+            existingMovieIDs = Set(movies.compactMap { $0.media?.id })
         }
+    }
+
+    private func providerCategoryLabels(from items: [ListItem]) -> [String] {
+        var rawCategories = Set<String>()
+        for item in items {
+            guard let categories = item.media?.providerCategories else { continue }
+            for category in categories.values {
+                rawCategories.insert(category)
+            }
+        }
+        var labels: [String] = []
+        if rawCategories.contains("stream") { labels.append("Stream") }
+        if rawCategories.contains("ads") { labels.append("Free with Ads") }
+        if rawCategories.contains("rent") || rawCategories.contains("buy") { labels.append("Rent or Buy") }
+        return labels
     }
 
     func updateOrderAfterUnwatchedMove(mediaType: MediaType) {

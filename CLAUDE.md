@@ -78,12 +78,18 @@ Up Next/
 ├── Views/
 │   ├── Watchlist/
 │   │   ├── MediaListView.swift          # Main list with genre/provider filtering, watched toggle
+│   │   ├── TVShowsTabView.swift         # TV Shows tab (list + detail sheet + filter state)
+│   │   ├── MoviesTabView.swift          # Movies tab (list + detail sheet + filter state)
 │   │   ├── ReorderableMediaList.swift   # UITableView wrapper for drag-to-reorder
 │   │   └── MediaListHelpers.swift       # Helper functions for list display
 │   ├── Detail/
-│   │   └── MediaDetailView.swift        # Detail sheet: edit watched state, rating, notes, seasons
+│   │   ├── MediaDetailView.swift        # Detail sheet: edit watched state, rating, notes, seasons
+│   │   ├── MediaDetailCards.swift       # Interactive cards: watched toggle, rating, season checklist
+│   │   ├── MediaDetailMetadata.swift    # Metadata row, provider row, pills, flow layout
+│   │   └── MediaDetailSimilar.swift     # Similar/recommended sections, collection section
 │   ├── Search/
 │   │   ├── WatchlistSearchView.swift    # Context-aware search (all, TV, movies, specific lists)
+│   │   ├── RecommendationEngine.swift   # Seed selection, aggregation, thematic scoring
 │   │   └── SearchComponents.swift       # Loading states and utility views
 │   ├── Discover/
 │   │   └── DiscoverView.swift           # Browse/discover tab with carousels and filters
