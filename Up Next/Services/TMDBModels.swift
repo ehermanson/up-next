@@ -230,11 +230,11 @@ struct TMDBReleaseDateEntry: Codable {
 // MARK: - Watch Provider List Models
 
 // Response from /watch/providers/movie or /watch/providers/tv
-struct TMDBWatchProviderListResponse: Codable {
+nonisolated struct TMDBWatchProviderListResponse: Codable, Sendable {
     let results: [TMDBWatchProviderInfo]
 }
 
-struct TMDBWatchProviderInfo: Codable, Identifiable {
+nonisolated struct TMDBWatchProviderInfo: Codable, Identifiable, Sendable {
     let providerId: Int
     let providerName: String
     let logoPath: String?

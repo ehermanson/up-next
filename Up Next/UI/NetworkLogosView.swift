@@ -76,7 +76,6 @@ struct NetworkLogosView: View {
     ]
     return NetworkLogosView(networks: networks)
         .padding()
-        .previewLayout(.sizeThatFits)
 }
 
 #Preview("Provider Logo") {
