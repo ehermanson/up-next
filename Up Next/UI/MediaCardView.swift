@@ -19,21 +19,13 @@ struct MediaCardView: View {
 
     private let settings = ProviderSettings.shared
 
-    private static let airDateInput: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-    private static let airDateDisplay: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        return f
-    }()
-
-    private var formattedAirDate: String? {
-        guard let raw = nextAirDate,
-              let date = Self.airDateInput.date(from: raw) else { return nil }
-        return Self.airDateDisplay.string(from: date)
+    private var parsedAirDate: Date? {
+        guard let raw = nextAirDate else { return nil }
+        let strategy = Date.ParseStrategy(
+            format: "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits)",
+            timeZone: .gmt
+        )
+        return try? Date(raw, strategy: strategy)
     }
 
     /// Streaming networks that match user's selected providers
@@ -158,10 +150,10 @@ struct MediaCardView: View {
         }
         .padding(isCompact ? 8 : 10)
         .overlay(alignment: .bottomTrailing) {
-            if let formatted = formattedAirDate, !isCompact {
+            if let airDate = parsedAirDate, !isCompact {
                 HStack(spacing: 3) {
                     Image(systemName: "calendar")
-                    Text("Next: \(formatted)")
+                    Text("Next: \(airDate, format: .dateTime.month(.abbreviated).day())")
                 }
                 .font(.caption2)
                 .fontDesign(.rounded)

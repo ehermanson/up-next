@@ -98,46 +98,49 @@ struct DiscoverView: View {
 
         return VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topTrailing) {
-                CachedAsyncImage(url: service.imageURL(path: item.posterPath)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 140, height: 210)
-                            .clipped()
-                    case .failure:
-                        posterPlaceholder
-                    case .empty:
-                        posterPlaceholder
-                    @unknown default:
-                        posterPlaceholder
+                Button { openDetail(for: item) } label: {
+                    CachedAsyncImage(url: service.imageURL(path: item.posterPath)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 140, height: 210)
+                                .clipped()
+                        case .failure:
+                            posterPlaceholder
+                        case .empty:
+                            posterPlaceholder
+                        @unknown default:
+                            posterPlaceholder
+                        }
                     }
+                    .frame(width: 140, height: 210)
+                    .clipShape(.rect(cornerRadius: 12))
                 }
-                .frame(width: 140, height: 210)
-                .clipShape(.rect(cornerRadius: 12))
-                .onTapGesture { openDetail(for: item) }
+                .buttonStyle(.plain)
 
-                Button {
+                Button(added ? "Added" : "Add", systemImage: added ? "checkmark.circle.fill" : "plus.circle.fill") {
                     if !added { addItem(item) }
-                } label: {
-                    Image(systemName: added ? "checkmark.circle.fill" : "plus.circle.fill")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(added ? .green : .white)
-                        .shadow(color: .black.opacity(0.5), radius: 4)
-                        .padding(6)
                 }
+                .labelStyle(.iconOnly)
+                .font(.title3)
+                .fontWeight(.semibold)
+                .foregroundStyle(added ? .green : .white)
+                .shadow(color: .black.opacity(0.5), radius: 4)
+                .padding(6)
                 .buttonStyle(.plain)
             }
 
-            Text(item.title)
-                .font(.caption)
-                .fontWeight(.medium)
-                .fontDesign(.rounded)
-                .lineLimit(1)
-                .frame(width: 140, alignment: .leading)
-                .onTapGesture { openDetail(for: item) }
+            Button { openDetail(for: item) } label: {
+                Text(item.title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .fontDesign(.rounded)
+                    .lineLimit(1)
+                    .frame(width: 140, alignment: .leading)
+            }
+            .buttonStyle(.plain)
 
             if let vote = item.voteAverage, vote > 0 {
                 StarRatingLabel(vote: vote)

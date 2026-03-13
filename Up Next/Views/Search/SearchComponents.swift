@@ -136,9 +136,10 @@ struct SearchResultRow: View {
         Group {
             if let onTap {
                 HStack(spacing: 12) {
-                    rowContent
-                        .contentShape(Rectangle())
-                        .onTapGesture { onTap() }
+                    Button(action: onTap) {
+                        rowContent
+                    }
+                    .buttonStyle(.plain)
 
                     addButton
                 }

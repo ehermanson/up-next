@@ -76,10 +76,8 @@ struct CustomListDetailView: View {
         .preferredColorScheme(.dark)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                Button("Add Items", systemImage: "plus") {
                     showingAddItems = true
-                } label: {
-                    Image(systemName: "plus")
                 }
             }
         }

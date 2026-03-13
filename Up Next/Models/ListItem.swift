@@ -20,7 +20,7 @@ final class ListItem {
     var addedBy: UserIdentity?
 
     /// The date when this item was added to the list
-    var addedAt: Date = Date()
+    var addedAt: Date = Date.now
 
     /// Whether the item has been marked as watched
     var isWatched: Bool = false
@@ -61,7 +61,7 @@ final class ListItem {
         tvShow: TVShow? = nil,
         list: MediaList? = nil,
         addedBy: UserIdentity? = nil,
-        addedAt: Date = Date(),
+        addedAt: Date = Date.now,
         isWatched: Bool = false,
         watchedAt: Date? = nil,
         droppedAt: Date? = nil,
@@ -104,7 +104,7 @@ final class ListItem {
         if allWatched {
             if !isWatched {
                 isWatched = true
-                watchedAt = Date()
+                watchedAt = Date.now
             }
         } else {
             isWatched = false
@@ -114,7 +114,7 @@ final class ListItem {
 
     /// Marks the show as "done watching" — appears in Watched regardless of season completion.
     func dropShow() {
-        let now = Date()
+        let now = Date.now
         droppedAt = now
         isWatched = true
         watchedAt = now
@@ -131,7 +131,7 @@ final class ListItem {
         movie: Movie,
         list: MediaList? = nil,
         addedBy: UserIdentity? = nil,
-        addedAt: Date = Date(),
+        addedAt: Date = Date.now,
         isWatched: Bool = false,
         watchedAt: Date? = nil,
         droppedAt: Date? = nil,
@@ -161,7 +161,7 @@ final class ListItem {
         tvShow: TVShow,
         list: MediaList? = nil,
         addedBy: UserIdentity? = nil,
-        addedAt: Date = Date(),
+        addedAt: Date = Date.now,
         isWatched: Bool = false,
         watchedAt: Date? = nil,
         droppedAt: Date? = nil,

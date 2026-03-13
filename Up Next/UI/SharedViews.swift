@@ -8,7 +8,7 @@ struct StarRatingLabel: View {
             Image(systemName: "star.fill")
                 .font(.caption2)
                 .foregroundStyle(.yellow)
-            Text(String(format: "%.1f", vote))
+            Text(vote, format: .number.precision(.fractionLength(1)))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }

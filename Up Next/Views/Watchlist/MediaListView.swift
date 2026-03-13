@@ -171,15 +171,13 @@ struct MediaListView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 if let onSettingsTapped {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(action: onSettingsTapped) {
-                            Image(systemName: "gearshape")
-                        }
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Settings", systemImage: "gearshape", action: onSettingsTapped)
                     }
                 }
 
                 if isEditingOrder {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") {
                             withAnimation {
                                 isEditingOrder = false
@@ -188,14 +186,12 @@ struct MediaListView: View {
                     }
                 } else {
                     if let onSearchTapped {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button(action: onSearchTapped) {
-                                Image(systemName: "plus")
-                            }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Add", systemImage: "plus", action: onSearchTapped)
                         }
                     }
                     if canReorder {
-                        ToolbarItem(placement: .navigationBarTrailing) {
+                        ToolbarItem(placement: .topBarTrailing) {
                             Button("Edit") {
                                 withAnimation {
                                     isEditingOrder = true
@@ -283,7 +279,7 @@ struct MediaListView: View {
         }
 
         item.isWatched.toggle()
-        item.watchedAt = item.isWatched ? Date() : nil
+        item.watchedAt = item.isWatched ? Date.now : nil
 
         if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
             item.watchedSeasons = item.isWatched ? Array(1...total) : []
@@ -468,7 +464,7 @@ struct MediaListRow: View {
 
 #Preview {
     let user = UserIdentity(id: "stub-user", displayName: "Stub User")
-    let list = MediaList(name: "TV Shows", createdBy: user, createdAt: Date())
+    let list = MediaList(name: "TV Shows", createdBy: user, createdAt: Date.now)
     let sampleNetworks = [
         Network(
             id: 8,
@@ -495,7 +491,7 @@ struct MediaListRow: View {
             ),
             list: list,
             addedBy: user,
-            addedAt: Date(),
+            addedAt: Date.now,
             isWatched: false,
             watchedAt: nil,
             order: 0
@@ -510,9 +506,9 @@ struct MediaListRow: View {
             ),
             list: list,
             addedBy: user,
-            addedAt: Date(),
+            addedAt: Date.now,
             isWatched: true,
-            watchedAt: Date(),
+            watchedAt: Date.now,
             order: 0,
             userRating: 1,
             userNotes: "Loved every episode"
@@ -525,7 +521,7 @@ struct MediaListRow: View {
             ),
             list: list,
             addedBy: user,
-            addedAt: Date(),
+            addedAt: Date.now,
             isWatched: false,
             watchedAt: nil,
             order: 1
@@ -540,9 +536,9 @@ struct MediaListRow: View {
             ),
             list: list,
             addedBy: user,
-            addedAt: Date(),
+            addedAt: Date.now,
             isWatched: true,
-            watchedAt: Date(),
+            watchedAt: Date.now,
             order: 2,
             userRating: -1
         ),

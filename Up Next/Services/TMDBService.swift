@@ -657,7 +657,7 @@ private actor RequestDeduplicator {
 
     func deduplicated(for url: URL, perform: @Sendable @escaping () async throws -> Data) async throws -> Data {
         // Return cached response if within TTL
-        if let cached = cache[url], Date().timeIntervalSince(cached.timestamp) < ttl {
+        if let cached = cache[url], Date.now.timeIntervalSince(cached.timestamp) < ttl {
             return cached.data
         }
 
@@ -671,7 +671,7 @@ private actor RequestDeduplicator {
         defer { inFlight.removeValue(forKey: url) }
 
         let data = try await task.value
-        cache[url] = CachedResponse(data: data, timestamp: Date())
+        cache[url] = CachedResponse(data: data, timestamp: Date.now)
         return data
     }
 

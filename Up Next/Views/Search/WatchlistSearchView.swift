@@ -899,7 +899,7 @@ struct WatchlistSearchView: View {
         errorMessage = nil
 
         searchTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
             await performSearch(query: trimmed)
         }

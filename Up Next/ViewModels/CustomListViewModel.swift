@@ -42,7 +42,7 @@ final class CustomListViewModel {
         guard let mediaID else { return }
         guard !containsItem(mediaID: mediaID, in: list) else { return }
 
-        let item = CustomListItem(movie: movie, tvShow: tvShow, customList: list, addedAt: Date())
+        let item = CustomListItem(movie: movie, tvShow: tvShow, customList: list, addedAt: Date.now)
         context.insert(item)
         if list.items == nil {
             list.items = []

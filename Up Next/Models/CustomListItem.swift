@@ -6,7 +6,7 @@ final class CustomListItem {
     var movie: Movie?
     var tvShow: TVShow?
     var customList: CustomList?
-    var addedAt: Date = Date()
+    var addedAt: Date = Date.now
 
     var media: (any MediaItemProtocol)? {
         movie ?? tvShow
@@ -16,7 +16,7 @@ final class CustomListItem {
         movie: Movie? = nil,
         tvShow: TVShow? = nil,
         customList: CustomList? = nil,
-        addedAt: Date = Date()
+        addedAt: Date = Date.now
     ) {
         self.movie = movie
         self.tvShow = tvShow

@@ -748,10 +748,10 @@ private struct WatchedToggleCard: View {
                             listItem.watchedSeasons = []
                         }
                         listItem.isWatched = newValue
-                        listItem.watchedAt = newValue ? Date() : nil
+                        listItem.watchedAt = newValue ? Date.now : nil
                     } else {
                         listItem.isWatched = newValue
-                        listItem.watchedAt = newValue ? Date() : nil
+                        listItem.watchedAt = newValue ? Date.now : nil
                     }
                 }
             ))
@@ -1439,7 +1439,7 @@ private struct SimilarSection: View {
 
 private enum MediaDetailViewPreviewData {
     static let user = UserIdentity(id: "preview-user", displayName: "Preview User")
-    static let list = MediaList(name: "My Watchlist", createdBy: user, createdAt: Date())
+    static let list = MediaList(name: "My Watchlist", createdBy: user, createdAt: Date.now)
 
     static let netflix = Network(
         id: 8,
@@ -1474,9 +1474,9 @@ private enum MediaDetailViewPreviewData {
             movie: movie,
             list: list,
             addedBy: user,
-            addedAt: Date(),
+            addedAt: Date.now,
             isWatched: true,
-            watchedAt: Date(),
+            watchedAt: Date.now,
             order: 0,
             userRating: 1,
             userNotes: "Incredible action sequences. Best one in the series."
@@ -1502,9 +1502,9 @@ private enum MediaDetailViewPreviewData {
             tvShow: show,
             list: list,
             addedBy: user,
-            addedAt: Date(),
+            addedAt: Date.now,
             isWatched: true,
-            watchedAt: Date(),
+            watchedAt: Date.now,
             order: 1,
             userRating: 0,
             userNotes: "Great first 4 seasons, fell off hard at the end."

@@ -98,10 +98,8 @@ struct MyListsView: View {
             .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
+                    Button("New List", systemImage: "plus") {
                         showingCreateList = true
-                    } label: {
-                        Image(systemName: "plus")
                     }
                 }
             }

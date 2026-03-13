@@ -14,8 +14,10 @@ struct TMDBAttributionView: View {
         .padding(.vertical, 12)
     }
 
+    private static let tmdbURL = URL(string: "https://www.themoviedb.org")!
+
     private var tmdbLogo: some View {
-        Link(destination: URL(string: "https://www.themoviedb.org")!) {
+        Link(destination: Self.tmdbURL) {
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(

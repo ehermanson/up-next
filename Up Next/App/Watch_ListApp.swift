@@ -22,7 +22,8 @@ struct Watch_ListApp: App {
         do {
             return try ModelContainer(for: schema, configurations: configuration)
         } catch {
-            // Fall back to local-only store
+            // ⚠️ CloudKit sync is DISABLED — falling back to local-only store
+            print("⚠️ CloudKit ModelContainer failed, falling back to local-only: \(error)")
             let localOnly = ModelConfiguration("Watch_List", cloudKitDatabase: .none)
             do {
                 return try ModelContainer(for: schema, configurations: localOnly)

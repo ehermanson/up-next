@@ -11,7 +11,7 @@ final class MediaList {
     var createdBy: UserIdentity?
 
     /// The date the list was created
-    var createdAt: Date = Date()
+    var createdAt: Date = Date.now
 
     /// The list items (TV shows/movies) in this list
     @Relationship(deleteRule: .cascade, inverse: \ListItem.list) var items: [ListItem]?
@@ -19,7 +19,7 @@ final class MediaList {
     // MARK: - Inverse relationships for CloudKit
     @Relationship(inverse: \WatchListGroup.lists) var group: WatchListGroup?
 
-    init(name: String = "", createdBy: UserIdentity? = nil, createdAt: Date = Date(), items: [ListItem]? = nil) {
+    init(name: String = "", createdBy: UserIdentity? = nil, createdAt: Date = Date.now, items: [ListItem]? = nil) {
         self.name = name
         self.createdBy = createdBy
         self.createdAt = createdAt

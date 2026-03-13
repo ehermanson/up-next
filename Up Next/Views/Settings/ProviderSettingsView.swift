@@ -187,12 +187,12 @@ private struct ProviderGridCell: View {
                 }
 
                 Text(provider.providerName)
-                    .font(.caption2)
+                    .font(.caption)
                     .fontDesign(.rounded)
                     .foregroundStyle(isSelected ? .white : .secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .frame(height: 28)
+                    .frame(height: 32)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)

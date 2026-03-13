@@ -62,7 +62,7 @@ final class MediaLibraryViewModel {
             tvShow: tvShow,
             list: list,
             addedBy: user,
-            addedAt: Date(),
+            addedAt: Date.now,
             isWatched: false,
             watchedAt: nil,
             order: nextOrderValue(for: .tvShow)
@@ -83,7 +83,7 @@ final class MediaLibraryViewModel {
             movie: movie,
             list: list,
             addedBy: user,
-            addedAt: Date(),
+            addedAt: Date.now,
             isWatched: false,
             watchedAt: nil,
             order: nextOrderValue(for: .movie)
@@ -330,7 +330,7 @@ final class MediaLibraryViewModel {
             return existing
         }
         let creator = currentUser ?? UserIdentity(id: "current-user", displayName: "Current User")
-        let list = MediaList(name: name, createdBy: creator, createdAt: Date())
+        let list = MediaList(name: name, createdBy: creator, createdAt: Date.now)
         context.insert(list)
         return list
     }
@@ -339,13 +339,13 @@ final class MediaLibraryViewModel {
         switch mediaType {
         case .tvShow:
             if let list = tvList { return list }
-            let list = MediaList(name: "TV Shows", createdBy: user, createdAt: Date())
+            let list = MediaList(name: "TV Shows", createdBy: user, createdAt: Date.now)
             modelContext?.insert(list)
             tvList = list
             return list
         case .movie:
             if let list = movieList { return list }
-            let list = MediaList(name: "Movies", createdBy: user, createdAt: Date())
+            let list = MediaList(name: "Movies", createdBy: user, createdAt: Date.now)
             modelContext?.insert(list)
             movieList = list
             return list
@@ -446,9 +446,9 @@ final class MediaLibraryViewModel {
                 tvShow: tvShow,
                 list: tvList,
                 addedBy: user,
-                addedAt: Date().addingTimeInterval(-86400 * daysAgo),
+                addedAt: Date.now.addingTimeInterval(-86400 * daysAgo),
                 isWatched: seed.watched,
-                watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
+                watchedAt: seed.watched ? Date.now.addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
                 order: index,
                 userRating: seed.rating,
                 userNotes: seed.notes
@@ -468,9 +468,9 @@ final class MediaLibraryViewModel {
                 movie: movie,
                 list: movieList,
                 addedBy: user,
-                addedAt: Date().addingTimeInterval(-86400 * daysAgo),
+                addedAt: Date.now.addingTimeInterval(-86400 * daysAgo),
                 isWatched: seed.watched,
-                watchedAt: seed.watched ? Date().addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
+                watchedAt: seed.watched ? Date.now.addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
                 order: index,
                 userRating: seed.rating,
                 userNotes: seed.notes
@@ -512,7 +512,7 @@ final class MediaLibraryViewModel {
             guard let detail else { continue }
             let providers = detail.watchProviders?.results?[service.currentRegion]
             let movie = await service.mapToMovie(detail, providers: providers)
-            let item = CustomListItem(movie: movie, customList: christmasList, addedAt: Date())
+            let item = CustomListItem(movie: movie, customList: christmasList, addedAt: Date.now)
             context.insert(item)
             christmasItems.append(item)
         }
