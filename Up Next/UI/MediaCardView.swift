@@ -19,13 +19,9 @@ struct MediaCardView: View {
 
     private let settings = ProviderSettings.shared
 
-    private var parsedAirDate: Date? {
-        guard let raw = nextAirDate else { return nil }
-        let strategy = Date.ParseStrategy(
-            format: "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits)",
-            timeZone: .gmt
-        )
-        return try? Date(raw, strategy: strategy)
+    private var nextAirDateLabel: String? {
+        guard let nextAirDate else { return nil }
+        return AirDateFormat.nextLabel(from: nextAirDate)
     }
 
     /// Streaming networks that match user's selected providers
@@ -150,10 +146,10 @@ struct MediaCardView: View {
         }
         .padding(isCompact ? 8 : 10)
         .overlay(alignment: .bottomTrailing) {
-            if let airDate = parsedAirDate, !isCompact {
+            if let label = nextAirDateLabel, !isCompact {
                 HStack(spacing: 3) {
                     Image(systemName: "calendar")
-                    Text("Next: \(airDate, format: .dateTime.month(.abbreviated).day())")
+                    Text(label)
                 }
                 .font(.caption2)
                 .fontDesign(.rounded)

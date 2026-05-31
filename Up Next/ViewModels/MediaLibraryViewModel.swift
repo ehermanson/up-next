@@ -27,16 +27,26 @@ final class MediaLibraryViewModel {
     private var refreshTask: Task<Void, Never>?
 
     private static let lastRefreshVersionKey = "lastFullRefreshVersion"
+    private static let lastRefreshDateKey = "lastFullRefreshDate"
+    /// Refresh cached TMDB data (air dates, providers, season counts) at most this
+    /// often on launch, so "Next" air dates don't go stale when the app version is
+    /// unchanged but the app hasn't been opened in a while.
+    private static let refreshInterval: TimeInterval = 6 * 60 * 60
 
     private var needsFullRefresh: Bool {
         let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
         let last = UserDefaults.standard.string(forKey: Self.lastRefreshVersionKey)
-        return last != current
+        if last != current { return true }
+        guard let lastDate = UserDefaults.standard.object(forKey: Self.lastRefreshDateKey) as? Date else {
+            return true
+        }
+        return Date.now.timeIntervalSince(lastDate) >= Self.refreshInterval
     }
 
     private func markRefreshComplete() {
         let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
         UserDefaults.standard.set(current, forKey: Self.lastRefreshVersionKey)
+        UserDefaults.standard.set(Date.now, forKey: Self.lastRefreshDateKey)
     }
 
     func configure(modelContext: ModelContext) async {

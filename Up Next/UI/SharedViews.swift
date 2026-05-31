@@ -1,5 +1,33 @@
 import SwiftUI
 
+/// Single source of truth for formatting a TMDB air-date string ("yyyy-MM-dd")
+/// into a "Next: MMM d" label. Parses *and* displays in UTC so the rendered day
+/// never shifts with the device time zone — this keeps the list card and the
+/// detail view in agreement (they previously parsed the same string differently).
+enum AirDateFormat {
+    private static let input: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private static let display: DateFormatter = {
+        let f = DateFormatter()
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.setLocalizedDateFormatFromTemplate("MMMd")
+        return f
+    }()
+
+    /// Returns a "Next: Jun 15" label, or nil if the string can't be parsed.
+    static func nextLabel(from dateString: String) -> String? {
+        guard let date = input.date(from: dateString) else { return nil }
+        return "Next: \(display.string(from: date))"
+    }
+}
+
 struct StarRatingLabel: View {
     let vote: Double
 
