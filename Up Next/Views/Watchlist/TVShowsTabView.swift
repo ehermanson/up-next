@@ -6,6 +6,8 @@ struct TVShowsTabView: View {
     var onSearchTapped: () -> Void
     var onSettingsTapped: () -> Void
 
+    @Environment(ToastState.self) private var toast
+
     @State private var expandedItemID: String? = nil
     @State private var selectedGenre: String? = nil
     @State private var selectedProviderCategory: String? = nil
@@ -43,7 +45,7 @@ struct TVShowsTabView: View {
             onSearchTapped: onSearchTapped,
             onSettingsTapped: onSettingsTapped,
             onItemDeleted: { id in
-                viewModel.removeItem(withID: id, mediaType: .tvShow)
+                deleteWithUndo(id: id)
             },
             onOrderChanged: {
                 viewModel.updateOrderAfterUnwatchedMove(mediaType: .tvShow)
@@ -65,7 +67,7 @@ struct TVShowsTabView: View {
                 onRemove: {
                     if let id = item.media?.id {
                         expandedItemID = nil
-                        viewModel.removeItem(withID: id, mediaType: .tvShow)
+                        deleteWithUndo(id: id)
                     }
                 },
                 onSeasonCountChanged: { listItem, previousCount in
@@ -85,6 +87,19 @@ struct TVShowsTabView: View {
         .onChange(of: viewModel.availableTVProviderCategories) {
             if let cat = selectedProviderCategory, !viewModel.availableTVProviderCategories.contains(cat) {
                 selectedProviderCategory = nil
+            }
+        }
+    }
+
+    /// Removes an item immediately (animated) and shows a toast with an Undo action.
+    private func deleteWithUndo(id: String) {
+        let removedTitle = withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            viewModel.removeItem(withID: id, mediaType: .tvShow)
+        }
+        guard let title = removedTitle else { return }
+        toast.show("Removed \u{201C}\(title)\u{201D}", icon: "trash.circle.fill", actionLabel: "Undo") {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                viewModel.undoLastDeletion()
             }
         }
     }

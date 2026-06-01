@@ -21,43 +21,44 @@ struct AddToListSheet: View {
                     )
                     .background(AppBackground())
                 } else {
-                    GlassEffectContainer(spacing: 8) {
-                        List {
-                            ForEach(viewModel.customLists, id: \.id) { list in
-                                let isInList = mediaID.map { viewModel.containsItem(mediaID: $0, in: list) } ?? false
-                                Button {
-                                    toggleItem(in: list, isInList: isInList)
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: list.iconName)
-                                            .font(.title3)
-                                            .frame(width: 36, height: 36)
-                                            .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .rect(cornerRadius: 10))
+                    // No GlassEffectContainer: it morph-coordinates glass children across hierarchy
+                    // changes, which makes lazily-recycled rows re-form/scale-in on scroll. Each row
+                    // keeps its own glass.
+                    List {
+                        ForEach(viewModel.customLists, id: \.id) { list in
+                            let isInList = mediaID.map { viewModel.containsItem(mediaID: $0, in: list) } ?? false
+                            Button {
+                                toggleItem(in: list, isInList: isInList)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: list.iconName)
+                                        .font(.title3)
+                                        .frame(width: 36, height: 36)
+                                        .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .rect(cornerRadius: 10))
 
-                                        Text(list.name)
-                                            .font(.body)
-                                            .fontWeight(.medium)
+                                    Text(list.name)
+                                        .font(.body)
+                                        .fontWeight(.medium)
 
-                                        Spacer()
+                                    Spacer()
 
-                                        if isInList {
-                                            Image(systemName: "checkmark")
-                                                .font(.headline.weight(.semibold))
-                                                .foregroundStyle(.green)
-                                        }
+                                    if isInList {
+                                        Image(systemName: "checkmark")
+                                            .font(.headline.weight(.semibold))
+                                            .foregroundStyle(.green)
                                     }
-                                    .padding(.vertical, 6)
-                                    .padding(.horizontal, 10)
                                 }
-                                .buttonStyle(.plain)
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 16))
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 10)
                             }
+                            .buttonStyle(.plain)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 16))
                         }
-                        .scrollContentBackground(.hidden)
-                        .listStyle(.plain)
                     }
+                    .scrollContentBackground(.hidden)
+                    .listStyle(.plain)
                     .background(AppBackground())
                 }
             }

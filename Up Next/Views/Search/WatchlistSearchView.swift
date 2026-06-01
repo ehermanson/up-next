@@ -335,41 +335,41 @@ struct WatchlistSearchView: View {
     }
 
     private var searchResultsList: some View {
-        GlassEffectContainer(spacing: 8) {
-            List {
-                if effectiveMediaType == .tvShow {
-                    ForEach(tvShowResults) { result in
-                        SearchResultRowWithImage(
-                            title: result.name,
-                            overview: result.overview,
-                            posterPath: result.posterPath,
-                            mediaId: result.id,
-                            mediaType: .tvShow,
-                            isAdded: isAlreadyAdded(id: result.id),
-                            onAdd: { addTVShow(result) },
-                            onTap: { openTVShowDetail(result) },
-                            voteAverage: result.voteAverage
-                        )
-                    }
-                } else {
-                    ForEach(movieResults) { result in
-                        SearchResultRowWithImage(
-                            title: result.title,
-                            overview: result.overview,
-                            posterPath: result.posterPath,
-                            mediaId: result.id,
-                            mediaType: .movie,
-                            isAdded: isAlreadyAdded(id: result.id),
-                            onAdd: { addMovie(result) },
-                            onTap: { openMovieDetail(result) },
-                            voteAverage: result.voteAverage
-                        )
-                    }
+        // No GlassEffectContainer: it morph-coordinates glass children across hierarchy changes,
+        // which makes lazily-recycled rows re-form/scale-in on scroll. Each row keeps its own glass.
+        List {
+            if effectiveMediaType == .tvShow {
+                ForEach(tvShowResults) { result in
+                    SearchResultRowWithImage(
+                        title: result.name,
+                        overview: result.overview,
+                        posterPath: result.posterPath,
+                        mediaId: result.id,
+                        mediaType: .tvShow,
+                        isAdded: isAlreadyAdded(id: result.id),
+                        onAdd: { addTVShow(result) },
+                        onTap: { openTVShowDetail(result) },
+                        voteAverage: result.voteAverage
+                    )
+                }
+            } else {
+                ForEach(movieResults) { result in
+                    SearchResultRowWithImage(
+                        title: result.title,
+                        overview: result.overview,
+                        posterPath: result.posterPath,
+                        mediaId: result.id,
+                        mediaType: .movie,
+                        isAdded: isAlreadyAdded(id: result.id),
+                        onAdd: { addMovie(result) },
+                        onTap: { openMovieDetail(result) },
+                        voteAverage: result.voteAverage
+                    )
                 }
             }
-            .scrollContentBackground(.hidden)
-            .listStyle(.plain)
         }
+        .scrollContentBackground(.hidden)
+        .listStyle(.plain)
     }
 
     // MARK: - Recommendations
@@ -386,50 +386,50 @@ struct WatchlistSearchView: View {
     }
 
     private var recommendationsList: some View {
-        GlassEffectContainer(spacing: 8) {
-            List {
-                Section {
-                    if effectiveMediaType == .tvShow {
-                        ForEach(tvRecommendations) { result in
-                            SearchResultRowWithImage(
-                                title: result.name,
-                                overview: result.overview,
-                                posterPath: result.posterPath,
-                                mediaId: result.id,
-                                mediaType: .tvShow,
-                                isAdded: isAlreadyAdded(id: result.id),
-                                onAdd: { addTVShow(result) },
-                                onTap: { openTVShowDetail(result) },
-                                voteAverage: result.voteAverage
-                            )
-                        }
-                    } else {
-                        ForEach(movieRecommendations) { result in
-                            SearchResultRowWithImage(
-                                title: result.title,
-                                overview: result.overview,
-                                posterPath: result.posterPath,
-                                mediaId: result.id,
-                                mediaType: .movie,
-                                isAdded: isAlreadyAdded(id: result.id),
-                                onAdd: { addMovie(result) },
-                                onTap: { openMovieDetail(result) },
-                                voteAverage: result.voteAverage
-                            )
-                        }
+        // No GlassEffectContainer: it morph-coordinates glass children across hierarchy changes,
+        // which makes lazily-recycled rows re-form/scale-in on scroll. Each row keeps its own glass.
+        List {
+            Section {
+                if effectiveMediaType == .tvShow {
+                    ForEach(tvRecommendations) { result in
+                        SearchResultRowWithImage(
+                            title: result.name,
+                            overview: result.overview,
+                            posterPath: result.posterPath,
+                            mediaId: result.id,
+                            mediaType: .tvShow,
+                            isAdded: isAlreadyAdded(id: result.id),
+                            onAdd: { addTVShow(result) },
+                            onTap: { openTVShowDetail(result) },
+                            voteAverage: result.voteAverage
+                        )
                     }
-                } header: {
-                    Label(recommendationHeaderText, systemImage: "sparkles")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .fontDesign(.rounded)
-                        .foregroundStyle(.secondary)
-                        .textCase(nil)
+                } else {
+                    ForEach(movieRecommendations) { result in
+                        SearchResultRowWithImage(
+                            title: result.title,
+                            overview: result.overview,
+                            posterPath: result.posterPath,
+                            mediaId: result.id,
+                            mediaType: .movie,
+                            isAdded: isAlreadyAdded(id: result.id),
+                            onAdd: { addMovie(result) },
+                            onTap: { openMovieDetail(result) },
+                            voteAverage: result.voteAverage
+                        )
+                    }
                 }
+            } header: {
+                Label(recommendationHeaderText, systemImage: "sparkles")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
             }
-            .scrollContentBackground(.hidden)
-            .listStyle(.plain)
         }
+        .scrollContentBackground(.hidden)
+        .listStyle(.plain)
     }
 
     private func loadRecommendations() {

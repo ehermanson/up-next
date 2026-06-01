@@ -253,24 +253,24 @@ struct DiscoverView: View {
     }
 
     private var browseList: some View {
-        GlassEffectContainer(spacing: 8) {
-            LazyVStack(spacing: 8) {
-                ForEach(viewModel.browseItems) { item in
-                    browseRow(item)
-                }
+        // No GlassEffectContainer: it morph-coordinates glass children across hierarchy changes,
+        // which makes lazily-recycled rows re-form/scale-in on scroll. Each row keeps its own glass.
+        LazyVStack(spacing: 8) {
+            ForEach(viewModel.browseItems) { item in
+                browseRow(item)
+            }
 
-                if viewModel.isBrowseLoading {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 20)
-                } else if viewModel.browsePage < viewModel.browseTotalPages {
-                    Color.clear
-                        .frame(height: 1)
-                        .onAppear {
-                            Task { await viewModel.loadNextBrowsePage() }
-                        }
-                }
+            if viewModel.isBrowseLoading {
+                ProgressView()
+                    .tint(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+            } else if viewModel.browsePage < viewModel.browseTotalPages {
+                Color.clear
+                    .frame(height: 1)
+                    .onAppear {
+                        Task { await viewModel.loadNextBrowsePage() }
+                    }
             }
         }
         .padding(.horizontal, 16)

@@ -28,44 +28,45 @@ struct CustomListDetailView: View {
                 }
                 .background(AppBackground())
             } else {
-                GlassEffectContainer(spacing: 8) {
-                    List {
-                        ForEach((list.items ?? []).sorted(by: { $0.addedAt < $1.addedAt }), id: \.persistentModelID) { item in
-                            Button {
-                                selectedItem = item
+                // No GlassEffectContainer: it morph-coordinates glass children across hierarchy
+                // changes, which makes lazily-recycled rows re-form/scale-in on scroll (and on
+                // delete). Each card keeps its own glass.
+                List {
+                    ForEach((list.items ?? []).sorted(by: { $0.addedAt < $1.addedAt }), id: \.persistentModelID) { item in
+                        Button {
+                            selectedItem = item
+                        } label: {
+                            MediaCardView(
+                                title: item.media?.title ?? "",
+                                subtitle: customListSubtitle(for: item),
+                                imageURL: item.media?.thumbnailURL,
+                                networks: item.media?.networks ?? [],
+                                providerCategories: item.media?.providerCategories ?? [:],
+                                isWatched: false,
+                                watchedToggleAction: { _ in },
+                                voteAverage: item.media?.voteAverage,
+                                genres: item.media?.genres ?? []
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 5)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                itemToDelete = item
                             } label: {
-                                MediaCardView(
-                                    title: item.media?.title ?? "",
-                                    subtitle: customListSubtitle(for: item),
-                                    imageURL: item.media?.thumbnailURL,
-                                    networks: item.media?.networks ?? [],
-                                    providerCategories: item.media?.providerCategories ?? [:],
-                                    isWatched: false,
-                                    watchedToggleAction: { _ in },
-                                    voteAverage: item.media?.voteAverage,
-                                    genres: item.media?.genres ?? []
-                                )
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 5)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    itemToDelete = item
-                                } label: {
-                                    Label("Remove", systemImage: "trash")
-                                }
+                                Label("Remove", systemImage: "trash")
                             }
                         }
                     }
-                    .scrollContentBackground(.hidden)
-                    .listStyle(.plain)
                 }
+                .scrollContentBackground(.hidden)
+                .listStyle(.plain)
                 .padding(.horizontal, 12)
                 .background(AppBackground())
             }

@@ -123,7 +123,7 @@ Up Next/
 └── Watch_List.xcdatamodeld/             # Legacy CoreData model (unused, can ignore)
 
 ci_scripts/
-└── ci_post_clone.sh                     # Xcode Cloud: generates Info.plist, sets MARKETING_VERSION & build number
+└── ci_post_clone.sh                     # Xcode Cloud: generates Info.plist, sets build number
 ```
 
 ## Key Patterns
@@ -157,7 +157,8 @@ CloudKit is optional — the app falls back to local-only if CloudKit is unavail
 
 `ci_scripts/ci_post_clone.sh`:
 1. Generates `Info.plist` from template using `$TMDB_API_KEY` env var
-2. Sets build number from `$CI_BUILD_NUMBER`
-3. Sets `MARKETING_VERSION` directly in project.pbxproj (currently 1.3)
+2. Sets the build number (`CURRENT_PROJECT_VERSION`) from `$CI_BUILD_NUMBER`
+
+`MARKETING_VERSION` is managed manually in the project (currently 1.6). To release a new version, bump `MARKETING_VERSION` in `project.pbxproj`, commit, and push.
 
 **Important**: Distribution Preparation must be set to "App Store Connect" to select a build for distribution.

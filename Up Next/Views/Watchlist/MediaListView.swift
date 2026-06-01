@@ -23,8 +23,12 @@ struct MediaListView: View {
     var onOrderChanged: (() -> Void)?
     var isLoaded: Bool = true
 
-    @State private var itemToDelete: ListItem?
     @State private var isEditingOrder = false
+
+    /// Animation used for user-driven list changes (watched toggle, delete). A watched-toggle is a
+    /// *move* across the Up Next / Watched sections, so both sections must diff in one explicit
+    /// transaction — an implicit animation keyed on a single section's count can't capture that.
+    private static let listChangeAnimation: Animation = .spring(response: 0.4, dampingFraction: 0.85)
 
     private var hasActiveFilter: Bool {
         selectedGenre != nil || selectedProviderCategory != nil
@@ -36,6 +40,16 @@ struct MediaListView: View {
 
     private var isEmpty: Bool {
         unwatchedItems.isEmpty && watchedItems.isEmpty
+    }
+
+    /// Rows actually rendered — drop any item without a stable media id so the two sections can't
+    /// collide on a shared `nil` identity during a watched-toggle move.
+    private var displayedUnwatchedItems: [ListItem] {
+        filteredUnwatchedItems.filter { $0.media?.id != nil }
+    }
+
+    private var displayedWatchedItems: [ListItem] {
+        watchedItems.filter { $0.media?.id != nil }
     }
 
     var body: some View {
@@ -82,86 +96,87 @@ struct MediaListView: View {
                 } else if isEditingOrder {
                     editModeContent
                 } else {
-                    GlassEffectContainer(spacing: 10) {
-                        List {
-                            if unwatchedItems.isEmpty {
-                                VStack(spacing: 12) {
-                                    Text("You're all caught up!")
-                                        .font(.headline)
-                                        .fontDesign(.rounded)
-                                    if let onSearchTapped {
-                                        Button(action: onSearchTapped) {
-                                            HStack(spacing: 6) {
-                                                Image(systemName: "plus")
-                                                Text("Add More")
-                                            }
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                            .glassEffect(.regular.tint(.indigo.opacity(0.3)).interactive(), in: .capsule)
+                    // No GlassEffectContainer here: it morph-coordinates its glass children across
+                    // hierarchy changes, but a lazy List recycles rows on scroll and shifts them on
+                    // delete — which made cards re-form/scale-in until the list was rebuilt. Each card
+                    // keeps its own .glassEffect; they just aren't container-coordinated.
+                    List {
+                        if unwatchedItems.isEmpty {
+                            VStack(spacing: 12) {
+                                Text("You're all caught up!")
+                                    .font(.headline)
+                                    .fontDesign(.rounded)
+                                if let onSearchTapped {
+                                    Button(action: onSearchTapped) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "plus")
+                                            Text("Add More")
                                         }
-                                        .buttonStyle(.plain)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                        .glassEffect(.regular.tint(.indigo.opacity(0.3)).interactive(), in: .capsule)
                                     }
+                                    .buttonStyle(.plain)
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 32)
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
                             }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 32)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                        }
 
-                            if !unwatchedItems.isEmpty {
-                                SectionHeader(
-                                    title: "Up Next",
-                                    count: filteredUnwatchedItems.count,
-                                    availableGenres: availableGenres,
-                                    selectedGenre: $selectedGenre,
-                                    availableProviderCategories: availableProviderCategories,
-                                    selectedProviderCategory: $selectedProviderCategory
+                        if !unwatchedItems.isEmpty {
+                            SectionHeader(
+                                title: "Up Next",
+                                count: filteredUnwatchedItems.count,
+                                availableGenres: availableGenres,
+                                selectedGenre: $selectedGenre,
+                                availableProviderCategories: availableProviderCategories,
+                                selectedProviderCategory: $selectedProviderCategory
+                            )
+
+                            ForEach(displayedUnwatchedItems, id: \.media?.id) { item in
+                                MediaListRow(
+                                    item: binding(for: item),
+                                    itemID: item.media?.id ?? "",
+                                    expandedItemID: $expandedItemID,
+                                    subtitle: subtitleProvider(item),
+                                    onItemExpanded: onItemExpanded,
+                                    onWatchedToggled: {
+                                        toggleWatched(item)
+                                    },
+                                    onDeleteRequested: {
+                                        if let id = item.media?.id { onItemDeleted?(id) }
+                                    }
                                 )
-
-                                ForEach(filteredUnwatchedItems, id: \.media?.id) { item in
-                                    MediaListRow(
-                                        item: binding(for: item),
-                                        itemID: item.media?.id ?? "",
-                                        expandedItemID: $expandedItemID,
-                                        subtitle: subtitleProvider(item),
-                                        onItemExpanded: onItemExpanded,
-                                        onWatchedToggled: {
-                                            toggleWatched(item)
-                                        },
-                                        onDeleteRequested: {
-                                            itemToDelete = item
-                                        }
-                                    )
-                                }
-                            }
-
-                            if !watchedItems.isEmpty {
-                                SectionHeader(title: "Watched", count: watchedItems.count)
-
-                                ForEach(watchedItems, id: \.media?.id) { item in
-                                    MediaListRow(
-                                        item: binding(for: item, in: $watchedItems),
-                                        itemID: item.media?.id ?? "",
-                                        expandedItemID: $expandedItemID,
-                                        subtitle: subtitleProvider(item),
-                                        onItemExpanded: onItemExpanded,
-                                        onWatchedToggled: {
-                                            toggleWatched(item)
-                                        },
-                                        onDeleteRequested: {
-                                            itemToDelete = item
-                                        }
-                                    )
-                                }
                             }
                         }
-                        .scrollContentBackground(.hidden)
-                        .listStyle(.plain)
-                        .contentMargins(.bottom, 20, for: .scrollContent)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: filteredUnwatchedItems.count)
+
+                        if !watchedItems.isEmpty {
+                            SectionHeader(title: "Watched", count: watchedItems.count)
+
+                            ForEach(displayedWatchedItems, id: \.media?.id) { item in
+                                MediaListRow(
+                                    item: binding(for: item, in: $watchedItems),
+                                    itemID: item.media?.id ?? "",
+                                    expandedItemID: $expandedItemID,
+                                    subtitle: subtitleProvider(item),
+                                    onItemExpanded: onItemExpanded,
+                                    onWatchedToggled: {
+                                        toggleWatched(item)
+                                    },
+                                    onDeleteRequested: {
+                                        if let id = item.media?.id { onItemDeleted?(id) }
+                                    }
+                                )
+                            }
+                        }
                     }
+                    .scrollContentBackground(.hidden)
+                    .listStyle(.plain)
+                    .contentMargins(.bottom, 20, for: .scrollContent)
                     .padding(.horizontal, 12)
                 }
             }
@@ -210,26 +225,6 @@ struct MediaListView: View {
         .onChange(of: unwatchedItems.count) {
             if !canReorder { isEditingOrder = false }
         }
-        .alert(
-            "Remove from Watchlist",
-            isPresented: Binding(
-                get: { itemToDelete != nil },
-                set: { if !$0 { itemToDelete = nil } }
-            ),
-            presenting: itemToDelete
-        ) { item in
-            Button("Remove", role: .destructive) {
-                if let id = item.media?.id {
-                    onItemDeleted?(id)
-                }
-                itemToDelete = nil
-            }
-            Button("Cancel", role: .cancel) {
-                itemToDelete = nil
-            }
-        } message: { item in
-            Text("Are you sure you want to remove \"\(item.media?.title ?? "this item")\" from your watchlist?")
-        }
     }
 
     @ViewBuilder
@@ -268,27 +263,27 @@ struct MediaListView: View {
     }
 
     private func toggleWatched(_ item: ListItem) {
-        // If a dropped show is being toggled from watched → unwatched, resume instead
-        if item.isDropped && item.isWatched {
-            item.resumeShow()
+        // Wrap the whole transition — the item moving between Up Next and Watched, plus the
+        // derived arrays recomputed in onWatchedToggled() — in one animation so both sections
+        // diff coherently instead of animating partially out of sync.
+        withAnimation(Self.listChangeAnimation) {
+            if item.isDropped && item.isWatched {
+                // A dropped show toggled from watched → unwatched: resume instead of un-watching.
+                item.resumeShow()
+            } else {
+                item.isWatched.toggle()
+                item.watchedAt = item.isWatched ? Date.now : nil
+
+                if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
+                    item.watchedSeasons = item.isWatched ? Array(1...total) : []
+                }
+            }
+
             if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
                 allItems[index] = item
             }
             onWatchedToggled()
-            return
         }
-
-        item.isWatched.toggle()
-        item.watchedAt = item.isWatched ? Date.now : nil
-
-        if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
-            item.watchedSeasons = item.isWatched ? Array(1...total) : []
-        }
-
-        if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
-            allItems[index] = item
-        }
-        onWatchedToggled()
     }
 }
 

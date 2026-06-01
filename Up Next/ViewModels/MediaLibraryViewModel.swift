@@ -26,6 +26,16 @@ final class MediaLibraryViewModel {
     private var currentUser: UserIdentity?
     private var refreshTask: Task<Void, Never>?
 
+    /// A swipe-deleted item that has been removed from the visible lists but not yet committed to
+    /// the store, so it can be restored via `undoLastDeletion()`.
+    private struct PendingDeletion {
+        let item: ListItem
+        let mediaType: MediaType
+        let index: Int
+    }
+    private var pendingDeletion: PendingDeletion?
+    private var pendingDeleteCommit: Task<Void, Never>?
+
     private static let lastRefreshVersionKey = "lastFullRefreshVersion"
     private static let lastRefreshDateKey = "lastFullRefreshDate"
     /// Refresh cached TMDB data (air dates, providers, season counts) at most this
@@ -73,6 +83,7 @@ final class MediaLibraryViewModel {
 
     func addTVShow(_ tvShow: TVShow) {
         guard let context = modelContext, let user = currentUser else { return }
+        commitPendingDeletion()
         guard !containsItem(withID: tvShow.id, mediaType: .tvShow) else { return }
 
         let list = ensureList(for: .tvShow, using: user)
@@ -94,6 +105,7 @@ final class MediaLibraryViewModel {
 
     func addMovie(_ movie: Movie) {
         guard let context = modelContext, let user = currentUser else { return }
+        commitPendingDeletion()
         guard !containsItem(withID: movie.id, mediaType: .movie) else { return }
 
         let list = ensureList(for: .movie, using: user)
@@ -113,24 +125,64 @@ final class MediaLibraryViewModel {
         try? context.save()
     }
 
-    func removeItem(withID id: String, mediaType: MediaType) {
-        guard let context = modelContext else { return }
+    /// Removes an item from the visible lists immediately but defers the SwiftData delete briefly so
+    /// it can be undone via `undoLastDeletion()`. Returns the removed item's title (for the toast),
+    /// or nil if nothing was removed.
+    @discardableResult
+    func removeItem(withID id: String, mediaType: MediaType) -> String? {
+        // Any previously-pending delete is now final (superseded by this one).
+        commitPendingDeletion()
+        guard modelContext != nil else { return nil }
 
+        let removed: ListItem
         switch mediaType {
         case .tvShow:
-            if let index = tvShows.firstIndex(where: { $0.media?.id == id }) {
-                let item = tvShows.remove(at: index)
-                context.delete(item)
-            }
+            guard let index = tvShows.firstIndex(where: { $0.media?.id == id }) else { return nil }
+            removed = tvShows.remove(at: index)
+            pendingDeletion = PendingDeletion(item: removed, mediaType: .tvShow, index: index)
         case .movie:
-            if let index = movies.firstIndex(where: { $0.media?.id == id }) {
-                let item = movies.remove(at: index)
-                context.delete(item)
-            }
+            guard let index = movies.firstIndex(where: { $0.media?.id == id }) else { return nil }
+            removed = movies.remove(at: index)
+            pendingDeletion = PendingDeletion(item: removed, mediaType: .movie, index: index)
         }
 
         syncUnwatched(for: mediaType)
 
+        // Commit the delete to the store once the undo window passes (outlasts the 4.5s toast).
+        pendingDeleteCommit?.cancel()
+        pendingDeleteCommit = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.commitPendingDeletion()
+        }
+
+        return removed.media?.title
+    }
+
+    /// Restores the most recently removed item if it hasn't been committed to the store yet.
+    func undoLastDeletion() {
+        pendingDeleteCommit?.cancel()
+        pendingDeleteCommit = nil
+        guard let pending = pendingDeletion else { return }
+        pendingDeletion = nil
+
+        switch pending.mediaType {
+        case .tvShow:
+            tvShows.insert(pending.item, at: min(pending.index, tvShows.count))
+        case .movie:
+            movies.insert(pending.item, at: min(pending.index, movies.count))
+        }
+        syncUnwatched(for: pending.mediaType)
+    }
+
+    /// Finalizes a pending delete by removing it from the store. No-op if nothing is pending.
+    private func commitPendingDeletion() {
+        pendingDeleteCommit?.cancel()
+        pendingDeleteCommit = nil
+        guard let pending = pendingDeletion else { return }
+        pendingDeletion = nil
+        guard let context = modelContext else { return }
+        context.delete(pending.item)
         try? context.save()
     }
 

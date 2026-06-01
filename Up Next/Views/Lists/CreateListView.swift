@@ -35,21 +35,22 @@ struct CreateListView: View {
                     }
                     .padding(.horizontal, 12)
 
-                    GlassEffectContainer(spacing: 0) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Icon")
-                                .font(.headline)
-                                .padding(.horizontal, 4)
+                    // No GlassEffectContainer: the symbol grid is a scrolling LazyVGrid of glass
+                    // buttons, and the container would morph/scale them in as they recycle on scroll.
+                    // The card keeps its own .glassEffect background.
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Icon")
+                            .font(.headline)
+                            .padding(.horizontal, 4)
 
-                            ScrollView {
-                                SFSymbolPickerGrid(selectedSymbol: $iconName)
-                                    .padding(.bottom, 8)
-                            }
-                            .frame(maxHeight: 400)
+                        ScrollView {
+                            SFSymbolPickerGrid(selectedSymbol: $iconName)
+                                .padding(.bottom, 8)
                         }
-                        .padding(20)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+                        .frame(maxHeight: 400)
                     }
+                    .padding(20)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 24))
                     .padding(.horizontal, 12)
                 }
                 .padding(.top, 16)

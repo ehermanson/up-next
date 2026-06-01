@@ -33,62 +33,63 @@ struct MyListsView: View {
                     }
                     .background(AppBackground())
                 } else {
-                    GlassEffectContainer(spacing: 8) {
-                        List {
-                            ForEach(viewModel.customLists, id: \.id) { list in
-                                Button {
-                                    viewModel.activeListID = list.id
-                                    navigationPath.append(list.id)
+                    // No GlassEffectContainer: it morph-coordinates glass children across hierarchy
+                    // changes, which makes lazily-recycled rows re-form/scale-in on scroll. Each row
+                    // keeps its own glass.
+                    List {
+                        ForEach(viewModel.customLists, id: \.id) { list in
+                            Button {
+                                viewModel.activeListID = list.id
+                                navigationPath.append(list.id)
+                            } label: {
+                                HStack(spacing: 14) {
+                                    Image(systemName: list.iconName)
+                                        .font(.title2)
+                                        .frame(width: 48, height: 48)
+                                        .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .rect(cornerRadius: 12))
+
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(list.name)
+                                            .font(.body)
+                                            .fontWeight(.medium)
+                                        Text("\(list.items?.count ?? 0) item\((list.items?.count ?? 0) == 1 ? "" : "s")")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(.rect)
+                                .padding(.vertical, 10)
+                                .padding(.horizontal, 14)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    listToDelete = list
                                 } label: {
-                                    HStack(spacing: 14) {
-                                        Image(systemName: list.iconName)
-                                            .font(.title2)
-                                            .frame(width: 48, height: 48)
-                                            .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .rect(cornerRadius: 12))
-
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            Text(list.name)
-                                                .font(.body)
-                                                .fontWeight(.medium)
-                                            Text("\(list.items?.count ?? 0) item\((list.items?.count ?? 0) == 1 ? "" : "s")")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-
-                                        Spacer()
-
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .contentShape(.rect)
-                                    .padding(.vertical, 10)
-                                    .padding(.horizontal, 14)
+                                    Label("Delete", systemImage: "trash")
                                 }
-                                .buttonStyle(.plain)
-                                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        listToDelete = list
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                    Button {
-                                        editingList = list
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
-                                    }
-                                    .tint(.indigo)
+                                Button {
+                                    editingList = list
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
                                 }
+                                .tint(.indigo)
                             }
                         }
-                        .scrollContentBackground(.hidden)
-                        .listStyle(.plain)
                     }
+                    .scrollContentBackground(.hidden)
+                    .listStyle(.plain)
                     .padding(.horizontal, 12)
                     .background(AppBackground())
                 }
