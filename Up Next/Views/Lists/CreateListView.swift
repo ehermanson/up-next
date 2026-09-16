@@ -31,7 +31,7 @@ struct CreateListView: View {
                             .padding(.vertical, 12)
                             .background(.fill.quaternary, in: .rect(cornerRadius: DesignTokens.Radius.control))
 
-                        Text("Titles in a collection stay out of Up Next. Mark one watched and it shows up in your Watched history.")
+                        Text("Titles in a collection stay out of Up Next, and watching them here doesn't change your Movies or TV Shows tabs.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)

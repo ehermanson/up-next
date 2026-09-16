@@ -66,14 +66,14 @@ Up Next/
 │   ├── ListItem.swift                   # Watchlist item (refs Movie or TVShow, tracks watched state)
 │   ├── MediaList.swift                  # Watchlist container
 │   ├── CustomList.swift                 # User-created collection (name, icon)
-│   ├── CustomListItem.swift             # Item in a custom list
+│   ├── CustomListItem.swift             # Item in a custom list (own `watchedAt`, independent of the library)
 │   ├── UserIdentity.swift               # User attribution for CloudKit sharing
 │   └── WatchListGroup.swift             # Root CloudKit sharing object
 │
 ├── ViewModels/
 │   ├── MediaLibraryViewModel.swift      # Main watchlist state, add/remove, refresh, reorder
 │   ├── DiscoverViewModel.swift          # Carousels (trending, airing this week / in theaters, top rated, new), browse, provider filter, error state
-│   └── CustomListViewModel.swift        # Custom list CRUD, undo-able removal, one-time duplicate-row migration
+│   └── CustomListViewModel.swift        # Custom list CRUD, per-collection watched state, undo-able removal, one-time duplicate-row migration
 │
 ├── Views/
 │   ├── Watchlist/
@@ -94,7 +94,7 @@ Up Next/
 │   │   └── DiscoverView.swift           # Browse/discover tab with carousels and filters
 │   ├── Lists/
 │   │   ├── MyListsView.swift            # Custom lists overview
-│   │   ├── CustomListDetailView.swift   # Items in a custom list (derived watched state) + detail sheet wrapper
+│   │   ├── CustomListDetailView.swift   # Unwatched/Watched sections, per-collection watched toggle + detail sheet wrapper
 │   │   ├── CreateListView.swift         # Create/edit list dialog with icon picker
 │   │   └── AddToListSheet.swift         # Add item to a custom list
 │   └── Settings/
@@ -175,15 +175,16 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 - `syncWatchedStateFromSeasons()`: Auto-marks fully-watched shows
 - `toggleSeason(_:)` cascades: marking S*n* marks 1…*n*; un-marking S*n* un-marks *n*…last
 - Shows remain in unwatched list when partially watched
-- Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — the transition lives on `ListItem.toggleWatched()` (all seasons for TV); custom-list rows offer the same gesture, adding a not-yet-in-library title straight to Watched
+- Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — the transition lives on `ListItem.toggleWatched()` (all seasons for TV). This is the *library's* watched state only; custom-list rows have their own, unrelated toggle (see "Custom Lists")
 - Watched section is sorted most-recently-watched first
 
 ### Custom Lists (user-facing name: "Collections")
 
 The code says `CustomList`/"list"; every user-facing string says "collection" — keep it that way. Never surface the word "library" to users (it's an internal term for the TV Shows/Movies tabs' data). Custom lists are thematic pools (Christmas, Halloween, kid-friendly…) kept deliberately separate from the Up Next queue. Rules:
 - **One media row per TMDB id.** `canonicalMovieRow` / `canonicalTVShowRow` (`MediaItem.swift`) look up an existing `Movie`/`TVShow` before any insert — used by `MediaLibraryViewModel.add*` and `CustomListViewModel.addItem`. A search-stub row never overwrites a fully-fetched one. `CustomListViewModel.migrateDuplicateMediaRows` repoints legacy duplicates once per install (`customListMediaRowsMigrated`).
-- **Watched state is derived, never stored on `CustomListItem`.** `CustomListDetailView` reads `MediaLibraryViewModel.libraryItem(for:mediaType:)` (via `@Environment`) for the badge, rating, season progress, and a corner "Watched Dec 2025" chip (`MediaCardView.watchedLabel`).
-- **Detail sheet** is the real `MediaDetailView`: bound to the library `ListItem` when present, otherwise to a transient item wrapping the shared row with `onMarkWatched` → `MediaLibraryViewModel.addWatched(...)` (lands in Watched, never in Up Next). There is intentionally no "Add to Up Next" from a list. `onRemove` there means remove from the list (`removeLabel`/`removeMessage`).
+- **Watched state is the collection's own and is stored on `CustomListItem.watchedAt`** (optional, CloudKit-safe; `isWatched`/`toggleWatched()` derive from it). Nothing in a collection creates, reads or modifies a library `ListItem` for watched purposes — `MediaLibraryViewModel` has no collection-facing watched API at all. `CustomListViewModel.toggleWatched(_:)` flips one entry; `markAllUnwatched(in:)` clears the whole collection.
+- **Two sections**: unwatched (by `addedAt`) first, then a "Watched" section (most-recently-watched first) with a `SectionHeader`-style title + count chip, shown only when something is watched. Leading full-swipe and the context menu offer "Mark Watched"/"Mark Unwatched"; the toolbar's ellipsis menu offers "Mark All Unwatched" (confirmation dialog) whenever anything is watched. The row's corner chip reads "Watched Sep 2026" from `watchedAt` (`MediaCardView.watchedLabel`). No rating or season-progress on collection rows — those are library concepts.
+- **Detail sheet** is the real `MediaDetailView`, but *always* bound to a transient `ListItem` wrapping the shared media row (like Discover) — it never looks up or binds a library `ListItem`. `collectionWatched:`/`collectionName:` swap the watchlist cards (seasons, watched toggle, rating) for a single `CollectionWatchedCard` scoped to the collection. `onAdd`/`onTVShowAdded`/`onMovieAdded` are nil (so Similar/Recommended show no "+") and `existingIDs` is empty. There is intentionally no "Add to Up Next" from a collection. The wrapper points at a persisted media row, so SwiftData autosave can cascade-insert it — the sheet tears it down on `.onDisappear` (deleting it if it was inserted) so a collection can never leave a stray `ListItem` behind. `onRemove` there means remove from the collection (`removeLabel`/`removeMessage`).
 - Removal is deferred 5 s with an Undo toast (`commitPendingRemoval` flushed on `scenePhase == .background`). `refreshAllItems` also refreshes rows referenced only by lists.
 
 ### Upcoming Strip

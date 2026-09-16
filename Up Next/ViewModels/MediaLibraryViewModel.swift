@@ -100,62 +100,20 @@ final class MediaLibraryViewModel {
         }
     }
 
-    /// The library's list item for a title, if it's in the watchlist at all (watched or not).
-    /// Custom lists derive their watched state from this.
-    func libraryItem(for mediaID: String, mediaType: MediaType) -> ListItem? {
-        switch mediaType {
-        case .tvShow: return tvShows.first { $0.media?.id == mediaID }
-        case .movie: return movies.first { $0.media?.id == mediaID }
-        }
-    }
-
     func addTVShow(_ tvShow: TVShow) {
-        insertTVShow(tvShow, watched: false)
-    }
-
-    func addMovie(_ movie: Movie) {
-        insertMovie(movie, watched: false)
-    }
-
-    /// Toggles a library item's watched state and persists — for callers outside the watchlist
-    /// tabs (custom lists), which don't own the list bindings `MediaListView` animates.
-    func toggleWatched(_ item: ListItem) {
-        item.toggleWatched()
-        persistChanges(for: item.tvShow != nil ? .tvShow : .movie)
-    }
-
-    /// Adds a title straight to the library's Watched section without queuing it in Up Next.
-    /// Used by custom lists, which are thematic pools rather than a queue.
-    func addWatched(tvShow: TVShow) {
-        insertTVShow(tvShow, watched: true)
-    }
-
-    /// See `addWatched(tvShow:)`.
-    func addWatched(movie: Movie) {
-        insertMovie(movie, watched: true)
-    }
-
-    private func insertTVShow(_ tvShow: TVShow, watched: Bool) {
         guard let context = modelContext, let user = currentUser else { return }
         commitPendingDeletion(ifTargeting: tvShow.id, mediaType: .tvShow)
         guard !containsItem(withID: tvShow.id, mediaType: .tvShow) else { return }
 
-        // Reuse the stored row when a custom list already holds this title — one media row per id.
+        // Reuse the stored row when a collection already holds this title — one media row per id.
         let row = canonicalTVShowRow(for: tvShow, in: context)
         let list = ensureList(for: .tvShow, using: user)
-        let watchedSeasons: [Int] = {
-            guard watched, let total = row.numberOfSeasons, total > 0 else { return [] }
-            return Array(1...total)
-        }()
         let item = ListItem(
             tvShow: row,
             list: list,
             addedBy: user,
             addedAt: Date.now,
-            isWatched: watched,
-            watchedAt: watched ? Date.now : nil,
-            order: nextOrderValue(for: .tvShow),
-            watchedSeasons: watchedSeasons
+            order: nextOrderValue(for: .tvShow)
         )
         context.insert(item)
         tvShows.append(item)
@@ -164,12 +122,12 @@ final class MediaLibraryViewModel {
         try? context.save()
     }
 
-    private func insertMovie(_ movie: Movie, watched: Bool) {
+    func addMovie(_ movie: Movie) {
         guard let context = modelContext, let user = currentUser else { return }
         commitPendingDeletion(ifTargeting: movie.id, mediaType: .movie)
         guard !containsItem(withID: movie.id, mediaType: .movie) else { return }
 
-        // Reuse the stored row when a custom list already holds this title — one media row per id.
+        // Reuse the stored row when a collection already holds this title — one media row per id.
         let row = canonicalMovieRow(for: movie, in: context)
         let list = ensureList(for: .movie, using: user)
         let item = ListItem(
@@ -177,8 +135,6 @@ final class MediaLibraryViewModel {
             list: list,
             addedBy: user,
             addedAt: Date.now,
-            isWatched: watched,
-            watchedAt: watched ? Date.now : nil,
             order: nextOrderValue(for: .movie)
         )
         context.insert(item)
@@ -477,15 +433,17 @@ final class MediaLibraryViewModel {
         guard let context = modelContext else { return false }
         var didSeed = false
         do {
+            // `list != nil` excludes any stray wrapper `ListItem` a collection's detail sheet left
+            // behind (see `CustomListDetailView.discardTransientItem`) — those must never surface here.
             let tvDescriptor = FetchDescriptor<ListItem>(
-                predicate: #Predicate { $0.tvShow != nil },
+                predicate: #Predicate { $0.tvShow != nil && $0.list != nil },
                 sortBy: [
                     SortDescriptor(\ListItem.order, order: .forward),
                     SortDescriptor(\ListItem.addedAt, order: .forward),
                 ]
             )
             let movieDescriptor = FetchDescriptor<ListItem>(
-                predicate: #Predicate { $0.movie != nil },
+                predicate: #Predicate { $0.movie != nil && $0.list != nil },
                 sortBy: [
                     SortDescriptor(\ListItem.order, order: .forward),
                     SortDescriptor(\ListItem.addedAt, order: .forward),

@@ -5,16 +5,26 @@ struct CustomListDetailView: View {
     let viewModel: CustomListViewModel
     let list: CustomList
 
-    /// Custom lists are thematic pools, kept out of the Up Next queue — but watched state, ratings
-    /// and season progress all live in the library, so rows derive them from it.
-    @Environment(MediaLibraryViewModel.self) private var library
     @Environment(ToastState.self) private var toast
 
     @State private var showingAddItems = false
     @State private var selectedItem: CustomListItem?
+    @State private var isConfirmingMarkAllUnwatched = false
 
-    private var sortedItems: [CustomListItem] {
-        (list.items ?? []).sorted { $0.addedAt < $1.addedAt }
+    /// Collections keep their own watched state (`CustomListItem.watchedAt`) — nothing here reads
+    /// or writes the Movies / TV Shows tabs.
+    private var unwatchedItems: [CustomListItem] {
+        (list.items ?? []).filter { !$0.isWatched }.sorted { $0.addedAt < $1.addedAt }
+    }
+
+    private var watchedItems: [CustomListItem] {
+        (list.items ?? []).filter(\.isWatched).sorted {
+            ($0.watchedAt ?? .distantPast) > ($1.watchedAt ?? .distantPast)
+        }
+    }
+
+    private var rowAnimation: Animation {
+        .spring(response: 0.4, dampingFraction: 0.85)
     }
 
     var body: some View {
@@ -32,8 +42,16 @@ struct CustomListDetailView: View {
                 .background(AppBackground())
             } else {
                 List {
-                    ForEach(sortedItems, id: \.persistentModelID) { item in
+                    ForEach(unwatchedItems, id: \.persistentModelID) { item in
                         row(for: item)
+                    }
+
+                    if !watchedItems.isEmpty {
+                        watchedHeader
+
+                        ForEach(watchedItems, id: \.persistentModelID) { item in
+                            row(for: item)
+                        }
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -50,6 +68,29 @@ struct CustomListDetailView: View {
                     showingAddItems = true
                 }
             }
+            if !watchedItems.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Mark All Unwatched", systemImage: "arrow.counterclockwise") {
+                            isConfirmingMarkAllUnwatched = true
+                        }
+                    } label: {
+                        Label("More", systemImage: "ellipsis")
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            markAllUnwatchedPrompt,
+            isPresented: $isConfirmingMarkAllUnwatched,
+            titleVisibility: .visible
+        ) {
+            Button("Mark All Unwatched") {
+                withAnimation(rowAnimation) {
+                    viewModel.markAllUnwatched(in: list)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $showingAddItems) {
             WatchlistSearchView(
@@ -72,12 +113,34 @@ struct CustomListDetailView: View {
         }
     }
 
+    private var markAllUnwatchedPrompt: String {
+        let count = watchedItems.count
+        return "Mark all \(count) \(count == 1 ? "title" : "titles") unwatched?"
+    }
+
     // MARK: - Rows
+
+    /// Matches the watchlist's section header: bold title plus a count chip.
+    private var watchedHeader: some View {
+        HStack(spacing: 8) {
+            Text("Watched")
+                .font(.title3)
+                .fontWeight(.bold)
+            Chip(text: "\(watchedItems.count)")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(watchedItems.count) items")
+            Spacer()
+        }
+        .padding(.vertical, 4)
+        .textCase(nil)
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
 
     @ViewBuilder
     private func row(for item: CustomListItem) -> some View {
-        let mediaType: MediaType = item.tvShow != nil ? .tvShow : .movie
-        let libraryItem = item.media.flatMap { library.libraryItem(for: $0.id, mediaType: mediaType) }
+        let isWatched = item.isWatched
 
         Button {
             selectedItem = item
@@ -88,12 +151,10 @@ struct CustomListDetailView: View {
                 imageURL: item.media?.thumbnailURL,
                 networks: item.media?.networks ?? [],
                 providerCategories: item.media?.providerCategories ?? [:],
-                isWatched: libraryItem?.isWatched ?? false,
+                isWatched: isWatched,
                 voteAverage: item.media?.voteAverage,
                 genres: item.media?.genres ?? [],
-                userRating: libraryItem?.userRating,
-                seasonProgress: seasonProgress(for: item, libraryItem: libraryItem),
-                watchedLabel: watchedLabel(for: libraryItem)
+                watchedLabel: watchedLabel(for: item)
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -111,23 +172,26 @@ struct CustomListDetailView: View {
                 Label("Remove", systemImage: "trash")
             }
         }
-        // Same gesture as the watchlist. A title that isn't in the library yet gets added
-        // straight to Watched (never to Up Next), matching the sheet's "Mark as Watched" card.
+        // Watched state here is the collection's own — the Movies / TV Shows tabs never change.
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            let action = watchedAction(for: libraryItem)
             Button {
-                toggleWatched(item, libraryItem: libraryItem)
+                toggleWatched(item)
             } label: {
-                Label(action.title, systemImage: action.icon)
+                Label(
+                    isWatched ? "Mark Unwatched" : "Mark Watched",
+                    systemImage: isWatched ? "circle" : "checkmark.circle.fill"
+                )
             }
-            .tint(action.tint)
+            .tint(isWatched ? .gray : .green)
         }
         .contextMenu {
-            let action = watchedAction(for: libraryItem)
             Button {
-                toggleWatched(item, libraryItem: libraryItem)
+                toggleWatched(item)
             } label: {
-                Label(action.title, systemImage: action.icon)
+                Label(
+                    isWatched ? "Mark Unwatched" : "Mark Watched",
+                    systemImage: isWatched ? "circle" : "checkmark.circle.fill"
+                )
             }
             Button(role: .destructive) {
                 removeWithUndo(item)
@@ -137,37 +201,11 @@ struct CustomListDetailView: View {
         }
     }
 
-    private func watchedAction(for libraryItem: ListItem?) -> (title: String, icon: String, tint: Color) {
-        guard let libraryItem, libraryItem.isWatched else {
-            return ("Mark Watched", "checkmark.circle.fill", .green)
+    /// Flips the entry between the two sections, animating the move.
+    private func toggleWatched(_ item: CustomListItem) {
+        withAnimation(rowAnimation) {
+            viewModel.toggleWatched(item)
         }
-        if libraryItem.isDropped {
-            return ("Pick Back Up", "arrow.uturn.backward.circle.fill", Color.accentColor)
-        }
-        return ("Mark Unwatched", "circle", .gray)
-    }
-
-    private func toggleWatched(_ item: CustomListItem, libraryItem: ListItem?) {
-        if let libraryItem {
-            library.toggleWatched(libraryItem)
-        } else if let tvShow = item.tvShow {
-            library.addWatched(tvShow: tvShow)
-            library.persistChanges(for: .tvShow)
-        } else if let movie = item.movie {
-            library.addWatched(movie: movie)
-            library.persistChanges(for: .movie)
-        }
-    }
-
-    /// Same rule as the watchlist's rows: only show the bar for partial progress.
-    private func seasonProgress(
-        for item: CustomListItem,
-        libraryItem: ListItem?
-    ) -> (watchedSeasons: [Int], total: Int)? {
-        guard let libraryItem, let total = item.tvShow?.numberOfSeasons, total > 0 else { return nil }
-        let watched = libraryItem.watchedSeasons
-        guard !watched.isEmpty, watched.count < total || libraryItem.isDropped else { return nil }
-        return (watchedSeasons: watched, total: total)
     }
 
     private func subtitle(for item: CustomListItem) -> String? {
@@ -181,17 +219,17 @@ struct CustomListDetailView: View {
     }
 
     /// "Watched Sep 2026", rendered in the card's corner chip so it never crowds the subtitle.
-    private func watchedLabel(for libraryItem: ListItem?) -> String? {
-        guard let libraryItem, libraryItem.isWatched, let watchedAt = libraryItem.watchedAt else { return nil }
+    private func watchedLabel(for item: CustomListItem) -> String? {
+        guard let watchedAt = item.watchedAt else { return nil }
         return "Watched \(watchedAt.formatted(.dateTime.month(.abbreviated).year()))"
     }
 
     // MARK: - Removal
 
     /// Removes an item immediately (animated) and shows a toast with an Undo action — the same
-    /// pattern as a watchlist swipe-delete. The title stays in the library either way.
+    /// pattern as a watchlist swipe-delete.
     private func removeWithUndo(_ item: CustomListItem) {
-        let removedTitle = withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+        let removedTitle = withAnimation(rowAnimation) {
             viewModel.removeItem(item, from: list)
         }
         guard let title = removedTitle else { return }
@@ -200,7 +238,7 @@ struct CustomListDetailView: View {
             icon: "trash.circle.fill",
             actionLabel: "Undo"
         ) {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            withAnimation(rowAnimation) {
                 viewModel.undoLastRemoval()
             }
         }
@@ -209,8 +247,9 @@ struct CustomListDetailView: View {
 
 // MARK: - Detail sheet
 
-/// Wraps `MediaDetailView` for a custom-list item. Reads the library itself so the binding — and
-/// the "Mark as Watched" affordance — re-resolve the moment the title lands in the library.
+/// Wraps `MediaDetailView` for a collection entry. The sheet is always bound to a *transient*
+/// `ListItem` over the shared media row (like Discover does) so it never reaches into the
+/// watchlist: the only watched state it can change is the collection entry's own.
 private struct CustomListItemDetailSheet: View {
     let item: CustomListItem
     let list: CustomList
@@ -218,11 +257,9 @@ private struct CustomListItemDetailSheet: View {
     let onRemove: () -> Void
     let dismiss: () -> Void
 
-    @Environment(MediaLibraryViewModel.self) private var library
-
-    /// Stand-in for titles that aren't in the library. It wraps the *shared* media row, so anything
-    /// the detail sheet fetches into that row survives the switch to the real library item.
-    @State private var fallbackItem: ListItem
+    /// Wraps the *shared* media row, so anything the detail sheet fetches into that row (providers,
+    /// cast, backdrop) is stored once and shows up everywhere else the title appears.
+    @State private var detailItem: ListItem
 
     init(
         item: CustomListItem,
@@ -244,78 +281,50 @@ private struct CustomListItemDetailSheet: View {
         } else {
             placeholder = ListItem()
         }
-        _fallbackItem = State(initialValue: placeholder)
-    }
-
-    private var mediaType: MediaType {
-        item.tvShow != nil ? .tvShow : .movie
-    }
-
-    private var mediaID: String {
-        item.media?.id ?? ""
-    }
-
-    /// Resolves to the library's `ListItem` whenever the title is in the library, so the sheet's
-    /// state follows it in place the moment "Mark as Watched" inserts one.
-    private var detailBinding: Binding<ListItem> {
-        Binding<ListItem>(
-            get: { library.libraryItem(for: mediaID, mediaType: mediaType) ?? fallbackItem },
-            set: { (newValue: ListItem) in
-                let type = mediaType
-                let id = mediaID
-                if type == .tvShow {
-                    if let index = library.tvShows.firstIndex(where: { $0.media?.id == id }) {
-                        library.tvShows[index] = newValue
-                        return
-                    }
-                } else {
-                    if let index = library.movies.firstIndex(where: { $0.media?.id == id }) {
-                        library.movies[index] = newValue
-                        return
-                    }
-                }
-                fallbackItem = newValue
-            }
-        )
-    }
-
-    private var existingIDs: Set<String> {
-        MediaIDKey.makeSet(.tvShow, library.existingTVShowIDs)
-            .union(MediaIDKey.makeSet(.movie, library.existingMovieIDs))
+        _detailItem = State(initialValue: placeholder)
     }
 
     var body: some View {
-        // Read through the library every render: after "Mark as Watched" inserts the real
-        // `ListItem`, this resolves to it and the season/rating cards take over in place.
-        let isInLibrary: Bool = library.libraryItem(for: mediaID, mediaType: mediaType) != nil
-        let markWatchedAction: (() -> Void)? = isInLibrary ? nil : { markWatched() }
-        let removeMessage: String =
-            "This only removes it from \u{201C}\(list.name)\u{201D}."
+        // Hoisted into typed locals — the type-checker has choked on this call site before.
+        let removeMessage: String = "This only removes it from \u{201C}\(list.name)\u{201D}."
+        let collectionName: String = list.name
+        let entry: CustomListItem = item
+        let listVM: CustomListViewModel = listViewModel
+        let watchedBinding: Binding<Bool> = Binding(
+            get: { entry.isWatched },
+            set: { (newValue: Bool) in
+                guard newValue != entry.isWatched else { return }
+                listVM.toggleWatched(entry)
+            }
+        )
 
         return MediaDetailView(
-            listItem: detailBinding,
+            listItem: $detailItem,
             dismiss: dismiss,
             onRemove: onRemove,
-            onSeasonCountChanged: { listItem, previousCount in
-                library.handleSeasonCountUpdate(for: listItem, previousSeasonCount: previousCount)
-            },
-            customListViewModel: listViewModel,
-            existingIDs: existingIDs,
-            onTVShowAdded: { library.addTVShow($0) },
-            onMovieAdded: { library.addMovie($0) },
-            onMarkWatched: markWatchedAction,
+            customListViewModel: listVM,
+            onAdd: nil,
+            existingIDs: [],
+            onTVShowAdded: nil,
+            onMovieAdded: nil,
+            collectionWatched: watchedBinding,
+            collectionName: collectionName,
             removeLabel: "Remove from collection",
             removeMessage: removeMessage
         )
+        .onDisappear { discardTransientItem() }
     }
 
-    private func markWatched() {
-        if let tvShow = item.tvShow {
-            library.addWatched(tvShow: tvShow)
-            library.persistChanges(for: .tvShow)
-        } else if let movie = item.movie {
-            library.addWatched(movie: movie)
-            library.persistChanges(for: .movie)
+    /// The wrapper points at a *persisted* media row, so SwiftData's autosave can cascade-insert it
+    /// as a real watchlist entry. Tear it down when the sheet closes — a collection must never
+    /// leave a `ListItem` behind in the Movies / TV Shows tabs.
+    private func discardTransientItem() {
+        if let context = detailItem.modelContext {
+            context.delete(detailItem)
+            try? context.save()
+            return
         }
+        detailItem.movie = nil
+        detailItem.tvShow = nil
     }
 }

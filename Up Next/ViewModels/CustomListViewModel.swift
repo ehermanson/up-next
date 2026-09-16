@@ -153,6 +153,23 @@ final class CustomListViewModel {
         list.items?.contains { $0.media?.id == mediaID } ?? false
     }
 
+    // MARK: - Watched state
+
+    /// Flips a collection entry's own watched state. Collections track this independently — the
+    /// Movies / TV Shows tabs are never created, read or modified from here.
+    func toggleWatched(_ item: CustomListItem) {
+        item.toggleWatched()
+        save()
+    }
+
+    /// Clears the watched stamp on every entry in a collection — the "start the season over" reset.
+    func markAllUnwatched(in list: CustomList) {
+        for item in list.items ?? [] {
+            item.watchedAt = nil
+        }
+        save()
+    }
+
     // MARK: - Private
 
     private func loadLists() {

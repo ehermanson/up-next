@@ -12,11 +12,14 @@ struct MediaDetailView: View {
     var existingIDs: Set<String> = []
     var onTVShowAdded: ((TVShow) -> Void)?
     var onMovieAdded: ((Movie) -> Void)?
-    /// Set for a title that isn't in the library yet but shouldn't be queued either (custom lists).
-    /// Replaces the watched/season cards with a single "Mark as Watched" card.
-    var onMarkWatched: (() -> Void)?
+    /// Set when the sheet is opened from a collection. Collections keep their own watched state, so
+    /// this replaces the watchlist cards (seasons, watched toggle, rating) with a single card that
+    /// only flips the collection entry — nothing in the Movies / TV Shows tabs changes.
+    var collectionWatched: Binding<Bool>?
+    /// Name of the collection the sheet was opened from, for the card's title.
+    var collectionName: String?
     /// Copy for the leading destructive button and its confirmation. Defaults to the watchlist's
-    /// "delete this title" wording; custom lists override it with list-scoped wording.
+    /// "delete this title" wording; collections override it with collection-scoped wording.
     var removeLabel: String?
     var removeMessage: String?
 
@@ -33,7 +36,9 @@ struct MediaDetailView: View {
     @State private var showingTrailer = false
     @State private var selectedSimilarItem: ListItem?
     @State private var addedSimilarIDs: Set<String> = []
-    @State private var collectionName: String?
+    /// TMDB's movie collection (e.g. "The Dark Knight Collection") — unrelated to the user's
+    /// Collections tab; named apart from the `collectionName` input above.
+    @State private var tmdbCollectionName: String?
     @State private var collectionParts: [TMDBCollectionPart] = []
 
     private let service = TMDBService.shared
@@ -110,10 +115,13 @@ struct MediaDetailView: View {
                             castCharacters: listItem.media?.castCharacters ?? []
                         )
 
-                        if let onMarkWatched {
+                        if let collectionWatched {
                             Divider().padding(.vertical, 4)
 
-                            MarkAsWatchedCard(tabName: listItem.tvShow != nil ? "TV Shows" : "Movies", action: onMarkWatched)
+                            CollectionWatchedCard(
+                                collectionName: collectionName,
+                                isWatched: collectionWatched
+                            )
                         } else if onAdd == nil {
                             if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
                                 Divider().padding(.vertical, 4)
@@ -143,7 +151,7 @@ struct MediaDetailView: View {
                         actionButtonRow
 
                         CollectionSection(
-                            collectionName: collectionName,
+                            collectionName: tmdbCollectionName,
                             parts: collectionParts,
                             currentMovieID: listItem.movie.map { Int($0.id) ?? 0 },
                             existingIDs: existingIDs.union(addedSimilarIDs),
@@ -336,7 +344,7 @@ struct MediaDetailView: View {
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
 
                 if let collection = detail.belongsToCollection {
-                    collectionName = collection.name
+                    tmdbCollectionName = collection.name
                     do {
                         let collectionDetail = try await service.getCollectionDetails(id: collection.id)
                         collectionParts = collectionDetail.parts.sorted {
@@ -450,39 +458,43 @@ struct MediaDetailView: View {
 
 }
 
-// MARK: - Mark as Watched
+// MARK: - Collection Watched
 
-/// Shown for a title that lives in a custom list but not in the library. Custom lists are thematic
-/// pools, so the only library action offered is logging it as watched — never queuing it.
-private struct MarkAsWatchedCard: View {
-    /// "TV Shows" / "Movies" — the tab whose Watched section the title will land in.
-    let tabName: String
-    let action: () -> Void
+/// Watched state for a title opened from a collection. Collections are seasonal / thematic pools
+/// with their own watched state, so this toggle stays entirely inside the collection.
+private struct CollectionWatchedCard: View {
+    let collectionName: String?
+    @Binding var isWatched: Bool
+
+    private var title: String {
+        guard let collectionName, !collectionName.isEmpty else { return "Watched in this collection" }
+        return "Watched in \u{201C}\(collectionName)\u{201D}"
+    }
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark.circle")
-                    .font(.title2)
+        HStack(spacing: 12) {
+            Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
+                .font(.title2)
+                .foregroundStyle(isWatched ? .green : .secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                Text("Only affects this collection \u{2014} your Movies/TV Shows tab isn't changed.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Mark as Watched")
-                        .font(.headline)
-                    Text("Marks it watched in \(tabName) \u{2014} it won't be added to Up Next.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.leading)
-                }
-
-                Spacer(minLength: 0)
+                    .multilineTextAlignment(.leading)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(.rect)
+
+            Spacer(minLength: 0)
+
+            Toggle(title, isOn: $isWatched)
+                .labelsHidden()
         }
-        .buttonStyle(.plain)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+        .sensoryFeedback(.selection, trigger: isWatched)
     }
 }
 
