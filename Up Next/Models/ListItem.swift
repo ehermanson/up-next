@@ -1,47 +1,64 @@
-// Create a SwiftData model for a basic list item in a watchlist app
-// This model references a media item and its parent list, tracks attribution for history only (not for list membership or sharing),
-// watch state, and order
+// Core Data model for a basic list item in a watchlist app
+// This model references a media item and its parent list, tracks watch state and order.
 
 import Foundation
-import SwiftData
+import CoreData
 
-@Model
-final class ListItem {
+@objc(ListItem)
+final class ListItem: NSManagedObject, Identifiable {
+    // No explicit `id` property (there's no natural stable value — a `ListItem` is a row in a
+    // list, not TMDB-identified). This falls back to the stdlib's `Identifiable where Self:
+    // AnyObject` default (`id: ObjectIdentifier`), which stays stable for the lifetime of this
+    // Swift instance — including across a save, when Core Data promotes `objectID` from a
+    // temporary to a permanent value. Using `objectID` directly here would make SwiftUI see a
+    // new identity (and re-diff / redraw) at every save.
     /// The movie referenced by this list item (if applicable)
-    var movie: Movie?
+    @NSManaged var movie: Movie?
 
     /// The TV show referenced by this list item (if applicable)
-    var tvShow: TVShow?
+    @NSManaged var tvShow: TVShow?
 
     /// The parent media list that contains this list item
-    var list: MediaList?
-
-    /// The user who added this item to the list (used for history only, not for list membership or sharing)
-    var addedBy: UserIdentity?
+    @NSManaged var list: MediaList?
 
     /// The date when this item was added to the list
-    var addedAt: Date = Date.now
+    @NSManaged var addedAtRaw: Date?
 
     /// Whether the item has been marked as watched
-    var isWatched: Bool = false
+    @NSManaged var isWatched: Bool
 
     /// The date when the item was marked as watched (nil if not watched)
-    var watchedAt: Date?
+    @NSManaged var watchedAt: Date?
 
     /// The date when a TV show was marked as "done watching" before all seasons were complete (nil if not dropped)
-    var droppedAt: Date?
+    @NSManaged var droppedAt: Date?
 
     /// The order of this item within the media list for sorting purposes
-    var order: Int = 0
+    @NSManaged var order: Int
 
     /// Which seasons the user has watched (1-based season numbers)
-    var watchedSeasons: [Int] = []
+    @NSManaged var watchedSeasonsRaw: [Int]?
 
     /// Personal rating: 1 = thumbs up, 0 = meh, -1 = thumbs down, nil = not rated
-    var userRating: Int?
+    @NSManaged var userRatingNumber: NSNumber?
 
     /// Free-text personal notes
-    var userNotes: String?
+    @NSManaged var userNotes: String?
+
+    var addedAt: Date {
+        get { addedAtRaw ?? .distantPast }
+        set { addedAtRaw = newValue }
+    }
+
+    var watchedSeasons: [Int] {
+        get { watchedSeasonsRaw ?? [] }
+        set { watchedSeasonsRaw = newValue }
+    }
+
+    var userRating: Int? {
+        get { userRatingNumber?.intValue }
+        set { userRatingNumber = newValue.map(NSNumber.init(value:)) }
+    }
 
     /// Whether the show has been dropped (done watching before all seasons complete)
     var isDropped: Bool { droppedAt != nil }
@@ -56,11 +73,10 @@ final class ListItem {
         return nil
     }
 
-    init(
+    convenience init(
         movie: Movie? = nil,
         tvShow: TVShow? = nil,
         list: MediaList? = nil,
-        addedBy: UserIdentity? = nil,
         addedAt: Date = Date.now,
         isWatched: Bool = false,
         watchedAt: Date? = nil,
@@ -68,12 +84,15 @@ final class ListItem {
         order: Int = 0,
         watchedSeasons: [Int] = [],
         userRating: Int? = nil,
-        userNotes: String? = nil
+        userNotes: String? = nil,
+        context: NSManagedObjectContext? = nil
     ) {
+        // Join the context (and store) of whatever this item points at — see `inferredContext`.
+        let related: [NSManagedObject?] = [list, tvShow, movie]
+        self.init(entity: managedEntity(named: "ListItem"), insertInto: inferredContext(context, relating: related))
         self.movie = movie
         self.tvShow = tvShow
         self.list = list
-        self.addedBy = addedBy
         self.addedAt = addedAt
         self.isWatched = isWatched
         self.watchedAt = watchedAt
@@ -82,6 +101,7 @@ final class ListItem {
         self.watchedSeasons = watchedSeasons
         self.userRating = userRating
         self.userNotes = userNotes
+        if context == nil { assignToStore(of: related, self) }
     }
 
     /// The next season number the user should watch, or nil if all watched / no season data.
@@ -184,7 +204,6 @@ final class ListItem {
     convenience init(
         movie: Movie,
         list: MediaList? = nil,
-        addedBy: UserIdentity? = nil,
         addedAt: Date = Date.now,
         isWatched: Bool = false,
         watchedAt: Date? = nil,
@@ -192,13 +211,13 @@ final class ListItem {
         order: Int = 0,
         watchedSeasons: [Int] = [],
         userRating: Int? = nil,
-        userNotes: String? = nil
+        userNotes: String? = nil,
+        context: NSManagedObjectContext? = nil
     ) {
         self.init(
             movie: movie,
             tvShow: nil,
             list: list,
-            addedBy: addedBy,
             addedAt: addedAt,
             isWatched: isWatched,
             watchedAt: watchedAt,
@@ -206,7 +225,8 @@ final class ListItem {
             order: order,
             watchedSeasons: watchedSeasons,
             userRating: userRating,
-            userNotes: userNotes
+            userNotes: userNotes,
+            context: context
         )
     }
 
@@ -214,7 +234,6 @@ final class ListItem {
     convenience init(
         tvShow: TVShow,
         list: MediaList? = nil,
-        addedBy: UserIdentity? = nil,
         addedAt: Date = Date.now,
         isWatched: Bool = false,
         watchedAt: Date? = nil,
@@ -222,13 +241,13 @@ final class ListItem {
         order: Int = 0,
         watchedSeasons: [Int] = [],
         userRating: Int? = nil,
-        userNotes: String? = nil
+        userNotes: String? = nil,
+        context: NSManagedObjectContext? = nil
     ) {
         self.init(
             movie: nil,
             tvShow: tvShow,
             list: list,
-            addedBy: addedBy,
             addedAt: addedAt,
             isWatched: isWatched,
             watchedAt: watchedAt,
@@ -236,7 +255,8 @@ final class ListItem {
             order: order,
             watchedSeasons: watchedSeasons,
             userRating: userRating,
-            userNotes: userNotes
+            userNotes: userNotes,
+            context: context
         )
     }
 }

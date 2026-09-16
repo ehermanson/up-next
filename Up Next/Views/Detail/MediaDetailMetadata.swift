@@ -128,7 +128,7 @@ struct FlowLayout: Layout {
 }
 
 struct MetadataRow: View {
-    let listItem: ListItem
+    @ObservedObject var listItem: ListItem
 
     private var voteAverage: Double? {
         listItem.tvShow?.voteAverage ?? listItem.movie?.voteAverage

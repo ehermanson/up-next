@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 func syncUnwatchedItems(
     allItems: [ListItem],

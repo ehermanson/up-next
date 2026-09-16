@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 /// Service for interacting with The Movie Database (TMDB) API
 /// All stored properties are either `let` values or actor-isolated caches,

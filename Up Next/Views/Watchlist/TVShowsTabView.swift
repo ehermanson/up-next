@@ -113,7 +113,7 @@ struct TVShowsTabView: View {
     @ViewBuilder
     private func detailView(for item: ListItem) -> some View {
         let detail = MediaDetailView(
-            listItem: binding(forItem: item),
+            listItem: item,
             dismiss: {
                 expandedItemID = nil
             },
@@ -151,21 +151,6 @@ struct TVShowsTabView: View {
                 viewModel.undoLastDeletion()
             }
         }
-    }
-
-    private func binding(forItem item: ListItem) -> Binding<ListItem> {
-        Binding(
-            get: {
-                viewModel.tvShows.first(where: { $0.media?.id == item.media?.id }) ?? item
-            },
-            set: { newValue in
-                guard
-                    let id = item.media?.id,
-                    let index = viewModel.tvShows.firstIndex(where: { $0.media?.id == id })
-                else { return }
-                viewModel.tvShows[index] = newValue
-            }
-        )
     }
 
     private func tvShowSubtitle(for item: ListItem) -> String? {

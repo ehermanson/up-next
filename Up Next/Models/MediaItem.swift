@@ -1,27 +1,77 @@
-// SwiftData models representing metadata about TV shows and movies
+// Core Data models representing metadata about TV shows and movies
 import Foundation
-import SwiftData
+import CoreData
+
+/// Entity lookup for the model convenience initializers. Managed object subclass initializers are
+/// nonisolated (they must match `NSManagedObject`'s designated initializer) and run off the main
+/// actor when `TMDBService` maps API responses into unattached objects, so this goes through the
+/// `nonisolated` compiled-model lookup rather than the live container.
+nonisolated func managedEntity(named name: String) -> NSEntityDescription {
+    PersistenceController.entity(named: name)
+}
+
+/// The context a new object should be inserted into: the caller's, else the context of the first
+/// persisted object it is being related to. Core Data raises "relationship between objects in
+/// different contexts" when a context-less object is related to a stored one, so a child (list
+/// item, collection entry, transient detail wrapper) must join its target's context up front.
+nonisolated func inferredContext(
+    _ context: NSManagedObjectContext?,
+    relating related: [NSManagedObject?]
+) -> NSManagedObjectContext? {
+    context ?? related.lazy.compactMap { $0?.managedObjectContext }.first
+}
+
+/// Puts `object` in the persistent store of the first related object that has one, so a child
+/// created through context inference lands in the same store — and CloudKit zone — as its parent.
+/// Objects with a temporary id and no store yet are skipped; `PersistenceController.insert` or
+/// Core Data's own relationship-based inference covers those at save time.
+nonisolated func assignToStore(of related: [NSManagedObject?], _ object: NSManagedObject) {
+    guard let context = object.managedObjectContext else { return }
+    for candidate in related {
+        if let store = candidate?.objectID.persistentStore {
+            context.assign(object, to: store)
+            return
+        }
+    }
+}
 
 /// Model representing a network/streaming provider
-@Model
-final class Network {
+@objc(Network)
+final class Network: NSManagedObject {
     /// Network ID from TMDB
-    var id: Int = 0
+    @NSManaged var id: Int
 
     /// Network name (e.g., "Netflix", "HBO")
-    var name: String = ""
+    @NSManaged var name: String
 
     /// Logo path from TMDB
-    var logoPath: String?
+    @NSManaged var logoPath: String?
 
     /// Origin country code
-    var originCountry: String?
+    @NSManaged var originCountry: String?
 
     // MARK: - Inverse relationships for CloudKit
-    @Relationship(inverse: \Movie.networks) var movies: [Movie]?
-    @Relationship(inverse: \TVShow.networks) var tvShows: [TVShow]?
+    @NSManaged var movieSet: NSSet?
+    @NSManaged var tvShowSet: NSSet?
 
-    init(id: Int = 0, name: String = "", logoPath: String? = nil, originCountry: String? = nil) {
+    var movies: [Movie]? {
+        get { (movieSet as? Set<Movie>).map(Array.init) }
+        set { movieSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    var tvShows: [TVShow]? {
+        get { (tvShowSet as? Set<TVShow>).map(Array.init) }
+        set { tvShowSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    convenience init(
+        id: Int = 0,
+        name: String = "",
+        logoPath: String? = nil,
+        originCountry: String? = nil,
+        context: NSManagedObjectContext? = nil
+    ) {
+        self.init(entity: managedEntity(named: "Network"), insertInto: context)
         self.id = id
         self.name = name
         self.logoPath = logoPath
@@ -51,51 +101,101 @@ extension MediaItemProtocol {
     }
 }
 
-@Model
-final class Movie: MediaItemProtocol {
+@objc(Movie)
+final class Movie: NSManagedObject, MediaItemProtocol, Identifiable {
     /// Unique ID, such as MovieDB's identifier
-    var id: String = ""
+    @NSManaged var id: String
 
     /// Title of the movie
-    var title: String = ""
+    @NSManaged var title: String
 
     /// Optional thumbnail image URL
-    var thumbnailURL: URL?
+    @NSManaged var thumbnailURL: URL?
 
     /// TMDB backdrop path (16:9 artwork) used by the detail header. Optional so the
     /// CloudKit schema change stays additive.
-    var backdropPath: String?
+    @NSManaged var backdropPath: String?
 
     /// Networks/streaming providers for this movie
-    @Relationship(deleteRule: .nullify) var networks: [Network]?
+    @NSManaged var networkSet: NSSet?
 
     /// Additional optional metadata
-    var descriptionText: String?
-    var cast: [String] = []
-    var castImagePaths: [String] = []
-    var castCharacters: [String] = []
-    var genres: [String] = []
+    @NSManaged var descriptionText: String?
+    @NSManaged var castRaw: [String]?
+    @NSManaged var castImagePathsRaw: [String]?
+    @NSManaged var castCharactersRaw: [String]?
+    @NSManaged var genresRaw: [String]?
 
     /// Provider ID → category ("stream", "ads", "rent", "buy")
-    var providerCategories: [Int: String] = [:]
+    @NSManaged var providerCategoriesRaw: [Int: String]?
 
     /// Content rating (e.g., "PG-13", "R")
-    var contentRating: String?
+    @NSManaged var contentRating: String?
 
     /// Release date in "YYYY-MM-DD" format (if known)
-    var releaseDate: String?
+    @NSManaged var releaseDate: String?
 
     /// Runtime in minutes (specific to movies)
-    var runtime: Int?
+    @NSManaged var runtimeNumber: NSNumber?
 
     /// TMDB vote average (0–10)
-    var voteAverage: Double?
+    @NSManaged var voteAverageNumber: NSNumber?
 
     // MARK: - Inverse relationships for CloudKit
-    @Relationship(inverse: \ListItem.movie) var listItems: [ListItem]?
-    @Relationship(inverse: \CustomListItem.movie) var customListItems: [CustomListItem]?
+    @NSManaged var listItemSet: NSSet?
+    @NSManaged var customListItemSet: NSSet?
 
-    init(
+    var networks: [Network]? {
+        get { (networkSet as? Set<Network>).map(Array.init) }
+        set { networkSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    var cast: [String] {
+        get { castRaw ?? [] }
+        set { castRaw = newValue }
+    }
+
+    var castImagePaths: [String] {
+        get { castImagePathsRaw ?? [] }
+        set { castImagePathsRaw = newValue }
+    }
+
+    var castCharacters: [String] {
+        get { castCharactersRaw ?? [] }
+        set { castCharactersRaw = newValue }
+    }
+
+    var genres: [String] {
+        get { genresRaw ?? [] }
+        set { genresRaw = newValue }
+    }
+
+    var providerCategories: [Int: String] {
+        get { providerCategoriesRaw ?? [:] }
+        set { providerCategoriesRaw = newValue }
+    }
+
+    var runtime: Int? {
+        get { runtimeNumber?.intValue }
+        set { runtimeNumber = newValue.map(NSNumber.init(value:)) }
+    }
+
+    var voteAverage: Double? {
+        get { voteAverageNumber?.doubleValue }
+        set { voteAverageNumber = newValue.map(NSNumber.init(value:)) }
+    }
+
+    var listItems: [ListItem]? {
+        get { (listItemSet as? Set<ListItem>).map(Array.init) }
+        set { listItemSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    var customListItems: [CustomListItem]? {
+        get { (customListItemSet as? Set<CustomListItem>).map(Array.init) }
+        set { customListItemSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    convenience init(
         id: String = "",
         title: String = "",
         thumbnailURL: URL? = nil,
@@ -110,8 +210,10 @@ final class Movie: MediaItemProtocol {
         contentRating: String? = nil,
         releaseDate: String? = nil,
         runtime: Int? = nil,
-        voteAverage: Double? = nil
+        voteAverage: Double? = nil,
+        context: NSManagedObjectContext? = nil
     ) {
+        self.init(entity: managedEntity(named: "Movie"), insertInto: context)
         self.id = id
         self.title = title
         self.thumbnailURL = thumbnailURL
@@ -130,71 +232,151 @@ final class Movie: MediaItemProtocol {
     }
 }
 
-@Model
-final class TVShow: MediaItemProtocol {
+@objc(TVShow)
+final class TVShow: NSManagedObject, MediaItemProtocol, Identifiable {
     /// Unique ID, such as MovieDB's identifier
-    var id: String = ""
+    @NSManaged var id: String
 
     /// Title of the TV show
-    var title: String = ""
+    @NSManaged var title: String
 
     /// Optional thumbnail image URL
-    var thumbnailURL: URL?
+    @NSManaged var thumbnailURL: URL?
 
     /// TMDB backdrop path (16:9 artwork) used by the detail header. Optional so the
     /// CloudKit schema change stays additive.
-    var backdropPath: String?
+    @NSManaged var backdropPath: String?
 
     /// Networks/streaming providers for this TV show
-    @Relationship(deleteRule: .nullify) var networks: [Network]?
+    @NSManaged var networkSet: NSSet?
 
     /// Additional optional metadata
-    var descriptionText: String?
-    var cast: [String] = []
-    var castImagePaths: [String] = []
-    var castCharacters: [String] = []
-    var genres: [String] = []
+    @NSManaged var descriptionText: String?
+    @NSManaged var castRaw: [String]?
+    @NSManaged var castImagePathsRaw: [String]?
+    @NSManaged var castCharactersRaw: [String]?
+    @NSManaged var genresRaw: [String]?
 
     /// Provider ID → category ("stream", "ads", "rent", "buy")
-    var providerCategories: [Int: String] = [:]
+    @NSManaged var providerCategoriesRaw: [Int: String]?
 
     /// Number of seasons (specific to TV shows)
-    var numberOfSeasons: Int?
+    @NSManaged var numberOfSeasonsNumber: NSNumber?
 
     /// Number of episodes (specific to TV shows)
-    var numberOfEpisodes: Int?
+    @NSManaged var numberOfEpisodesNumber: NSNumber?
 
     /// Episode count per season (index 0 = season 1)
-    var seasonEpisodeCounts: [Int] = []
+    @NSManaged var seasonEpisodeCountsRaw: [Int]?
 
     /// Season descriptions/overviews (index 0 = season 1)
-    var seasonDescriptions: [String] = []
+    @NSManaged var seasonDescriptionsRaw: [String]?
 
     /// Average episode runtime in minutes
-    var episodeRunTime: Int?
+    @NSManaged var episodeRunTimeNumber: NSNumber?
 
     /// Content rating (e.g., "TV-MA", "TV-PG")
-    var contentRating: String?
+    @NSManaged var contentRating: String?
 
     /// Next episode air date in "YYYY-MM-DD" format (if the show is still airing)
-    var nextEpisodeAirDate: String?
+    @NSManaged var nextEpisodeAirDate: String?
 
     /// Season / episode number and title of the next episode to air, when TMDB knows them
-    var nextEpisodeSeason: Int?
-    var nextEpisodeNumber: Int?
-    var nextEpisodeName: String?
+    @NSManaged var nextEpisodeSeasonNumber: NSNumber?
+    @NSManaged var nextEpisodeNumberNumber: NSNumber?
+    @NSManaged var nextEpisodeName: String?
 
     /// TMDB series status: "Returning Series", "Ended", "Canceled", "In Production", ...
-    var status: String?
+    @NSManaged var status: String?
 
     /// TMDB vote average (0–10)
-    var voteAverage: Double?
+    @NSManaged var voteAverageNumber: NSNumber?
 
     // MARK: - Inverse relationships for CloudKit
-    @Relationship(inverse: \ListItem.tvShow) var listItems: [ListItem]?
-    @Relationship(inverse: \CustomListItem.tvShow) var customListItems: [CustomListItem]?
+    @NSManaged var listItemSet: NSSet?
+    @NSManaged var customListItemSet: NSSet?
 
-    init(
+    var networks: [Network]? {
+        get { (networkSet as? Set<Network>).map(Array.init) }
+        set { networkSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    var cast: [String] {
+        get { castRaw ?? [] }
+        set { castRaw = newValue }
+    }
+
+    var castImagePaths: [String] {
+        get { castImagePathsRaw ?? [] }
+        set { castImagePathsRaw = newValue }
+    }
+
+    var castCharacters: [String] {
+        get { castCharactersRaw ?? [] }
+        set { castCharactersRaw = newValue }
+    }
+
+    var genres: [String] {
+        get { genresRaw ?? [] }
+        set { genresRaw = newValue }
+    }
+
+    var providerCategories: [Int: String] {
+        get { providerCategoriesRaw ?? [:] }
+        set { providerCategoriesRaw = newValue }
+    }
+
+    var numberOfSeasons: Int? {
+        get { numberOfSeasonsNumber?.intValue }
+        set { numberOfSeasonsNumber = newValue.map(NSNumber.init(value:)) }
+    }
+
+    var numberOfEpisodes: Int? {
+        get { numberOfEpisodesNumber?.intValue }
+        set { numberOfEpisodesNumber = newValue.map(NSNumber.init(value:)) }
+    }
+
+    var seasonEpisodeCounts: [Int] {
+        get { seasonEpisodeCountsRaw ?? [] }
+        set { seasonEpisodeCountsRaw = newValue }
+    }
+
+    var seasonDescriptions: [String] {
+        get { seasonDescriptionsRaw ?? [] }
+        set { seasonDescriptionsRaw = newValue }
+    }
+
+    var episodeRunTime: Int? {
+        get { episodeRunTimeNumber?.intValue }
+        set { episodeRunTimeNumber = newValue.map(NSNumber.init(value:)) }
+    }
+
+    var nextEpisodeSeason: Int? {
+        get { nextEpisodeSeasonNumber?.intValue }
+        set { nextEpisodeSeasonNumber = newValue.map(NSNumber.init(value:)) }
+    }
+
+    var nextEpisodeNumber: Int? {
+        get { nextEpisodeNumberNumber?.intValue }
+        set { nextEpisodeNumberNumber = newValue.map(NSNumber.init(value:)) }
+    }
+
+    var voteAverage: Double? {
+        get { voteAverageNumber?.doubleValue }
+        set { voteAverageNumber = newValue.map(NSNumber.init(value:)) }
+    }
+
+    var listItems: [ListItem]? {
+        get { (listItemSet as? Set<ListItem>).map(Array.init) }
+        set { listItemSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    var customListItems: [CustomListItem]? {
+        get { (customListItemSet as? Set<CustomListItem>).map(Array.init) }
+        set { customListItemSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    convenience init(
         id: String = "",
         title: String = "",
         thumbnailURL: URL? = nil,
@@ -217,8 +399,10 @@ final class TVShow: MediaItemProtocol {
         nextEpisodeNumber: Int? = nil,
         nextEpisodeName: String? = nil,
         status: String? = nil,
-        voteAverage: Double? = nil
+        voteAverage: Double? = nil,
+        context: NSManagedObjectContext? = nil
     ) {
+        self.init(entity: managedEntity(named: "TVShow"), insertInto: context)
         self.id = id
         self.title = title
         self.thumbnailURL = thumbnailURL
@@ -250,16 +434,18 @@ final class TVShow: MediaItemProtocol {
 /// The stored `Movie` row for a TMDB id, if there is one. There should only ever be a single row
 /// per id — the watchlist and every custom list share it — but older installs can hold duplicates,
 /// so the row the library refers to (the one with `listItems`) wins.
-func existingMovie(id: String, in context: ModelContext) -> Movie? {
-    let descriptor = FetchDescriptor<Movie>(predicate: #Predicate<Movie> { $0.id == id })
-    guard let matches = try? context.fetch(descriptor), !matches.isEmpty else { return nil }
+func existingMovie(id: String, in context: NSManagedObjectContext) -> Movie? {
+    let request = NSFetchRequest<Movie>(entityName: "Movie")
+    request.predicate = NSPredicate(format: "id == %@", id)
+    guard let matches = try? context.fetch(request), !matches.isEmpty else { return nil }
     return matches.first { !($0.listItems ?? []).isEmpty } ?? matches.first
 }
 
 /// The stored `TVShow` row for a TMDB id, if there is one. See `existingMovie(id:in:)`.
-func existingTVShow(id: String, in context: ModelContext) -> TVShow? {
-    let descriptor = FetchDescriptor<TVShow>(predicate: #Predicate<TVShow> { $0.id == id })
-    guard let matches = try? context.fetch(descriptor), !matches.isEmpty else { return nil }
+func existingTVShow(id: String, in context: NSManagedObjectContext) -> TVShow? {
+    let request = NSFetchRequest<TVShow>(entityName: "TVShow")
+    request.predicate = NSPredicate(format: "id == %@", id)
+    guard let matches = try? context.fetch(request), !matches.isEmpty else { return nil }
     return matches.first { !($0.listItems ?? []).isEmpty } ?? matches.first
 }
 
@@ -276,9 +462,21 @@ private func hasFullDetail(_ tvShow: TVShow) -> Bool {
 
 /// Returns the stored row for `movie`'s id — refreshed from `movie` — or `movie` itself when the
 /// title isn't stored yet. Callers attach their new list item to the result so a title never ends
-/// up with two media rows.
-func canonicalMovieRow(for movie: Movie, in context: ModelContext) -> Movie {
-    guard let existing = existingMovie(id: movie.id, in: context), existing !== movie else { return movie }
+/// up with two media rows. When `movie` isn't stored yet, it (and its networks) are inserted into
+/// `context` and assigned to the active store so the caller doesn't have to.
+@MainActor
+func canonicalMovieRow(for movie: Movie, in context: NSManagedObjectContext) -> Movie {
+    guard let existing = existingMovie(id: movie.id, in: context), existing !== movie else {
+        if movie.managedObjectContext == nil {
+            context.insert(movie)
+            for network in movie.networks ?? [] where network.managedObjectContext == nil {
+                context.insert(network)
+                context.assign(network, to: PersistenceController.shared.activeStore)
+            }
+            context.assign(movie, to: PersistenceController.shared.activeStore)
+        }
+        return movie
+    }
     if hasFullDetail(movie) || !hasFullDetail(existing) {
         existing.update(from: movie)
     }
@@ -286,8 +484,19 @@ func canonicalMovieRow(for movie: Movie, in context: ModelContext) -> Movie {
 }
 
 /// See `canonicalMovieRow(for:in:)`.
-func canonicalTVShowRow(for tvShow: TVShow, in context: ModelContext) -> TVShow {
-    guard let existing = existingTVShow(id: tvShow.id, in: context), existing !== tvShow else { return tvShow }
+@MainActor
+func canonicalTVShowRow(for tvShow: TVShow, in context: NSManagedObjectContext) -> TVShow {
+    guard let existing = existingTVShow(id: tvShow.id, in: context), existing !== tvShow else {
+        if tvShow.managedObjectContext == nil {
+            context.insert(tvShow)
+            for network in tvShow.networks ?? [] where network.managedObjectContext == nil {
+                context.insert(network)
+                context.assign(network, to: PersistenceController.shared.activeStore)
+            }
+            context.assign(tvShow, to: PersistenceController.shared.activeStore)
+        }
+        return tvShow
+    }
     if hasFullDetail(tvShow) || !hasFullDetail(existing) {
         existing.update(from: tvShow)
     }
@@ -298,12 +507,24 @@ func canonicalTVShowRow(for tvShow: TVShow, in context: ModelContext) -> TVShow 
 
 /// True when two network lists describe the same providers. `TMDBService` builds brand-new
 /// `Network` instances on every fetch, so identity comparison would always report a change.
+/// Compared by id order — the stored side comes from an unordered to-many relationship.
 private func networksAreEquivalent(_ lhs: [Network]?, _ rhs: [Network]?) -> Bool {
-    let left = lhs ?? []
-    let right = rhs ?? []
+    let left = (lhs ?? []).sorted { $0.id < $1.id }
+    let right = (rhs ?? []).sorted { $0.id < $1.id }
     guard left.count == right.count else { return false }
     return zip(left, right).allSatisfy { a, b in
         a.id == b.id && a.name == b.name && a.logoPath == b.logoPath
+    }
+}
+
+/// Inserts freshly-mapped (`managedObjectContext == nil`) networks into `context` and assigns them
+/// to the active store, so they can be related to a persisted media row. No-op for stored rows.
+@MainActor
+private func insertUnattachedNetworks(_ networks: [Network]?, into context: NSManagedObjectContext?) {
+    guard let context, let networks else { return }
+    for network in networks where network.managedObjectContext == nil {
+        context.insert(network)
+        context.assign(network, to: PersistenceController.shared.activeStore)
     }
 }
 
@@ -311,13 +532,13 @@ private func networksAreEquivalent(_ lhs: [Network]?, _ rhs: [Network]?) -> Bool
 /// this they pile up as orphans (and CloudKit records) every time metadata is refreshed.
 func deleteUnreferencedNetworks(
     _ networks: [Network]?,
-    excludingOwner ownerID: PersistentIdentifier,
-    in context: ModelContext
+    excludingOwner ownerID: NSManagedObjectID,
+    in context: NSManagedObjectContext
 ) {
     guard let networks else { return }
     for network in networks {
-        let stillReferenced = (network.movies ?? []).contains { $0.persistentModelID != ownerID }
-            || (network.tvShows ?? []).contains { $0.persistentModelID != ownerID }
+        let stillReferenced = (network.movies ?? []).contains { $0.objectID != ownerID }
+            || (network.tvShows ?? []).contains { $0.objectID != ownerID }
         guard !stillReferenced else { continue }
         context.delete(network)
     }
@@ -329,8 +550,8 @@ func deleteUnreferencedNetworks(
 private func reconciledNetworks(
     current: [Network]?,
     incoming: [Network]?,
-    ownerID: PersistentIdentifier,
-    in context: ModelContext?
+    ownerID: NSManagedObjectID,
+    in context: NSManagedObjectContext?
 ) -> [Network]?? {
     guard !networksAreEquivalent(current, incoming) else { return nil }
     if let context {
@@ -341,7 +562,7 @@ private func reconciledNetworks(
 
 // MARK: - Display ordering
 
-/// Stable display order for a media row's networks. `networks` is an unordered SwiftData
+/// Stable display order for a media row's networks. `networks` is an unordered Core Data
 /// relationship, so without this the logos reshuffle on every render. Streaming first, then
 /// ads, rent, buy; alphabetical within a category so the order never depends on fetch order.
 func displayOrderedNetworks(_ networks: [Network]?, categories: [Int: String]) -> [Network] {
@@ -370,22 +591,22 @@ func displayOrderedNetworks(_ networks: [Network]?, categories: [Int: String]) -
 func deleteMediaIfUnreferenced(
     movie: Movie?,
     tvShow: TVShow?,
-    ignoring deletedItemID: PersistentIdentifier,
-    in context: ModelContext
+    ignoring deletedItemID: NSManagedObjectID,
+    in context: NSManagedObjectContext
 ) {
     if let movie {
-        let stillReferenced = (movie.listItems ?? []).contains { $0.persistentModelID != deletedItemID }
-            || (movie.customListItems ?? []).contains { $0.persistentModelID != deletedItemID }
+        let stillReferenced = (movie.listItems ?? []).contains { $0.objectID != deletedItemID }
+            || (movie.customListItems ?? []).contains { $0.objectID != deletedItemID }
         if !stillReferenced {
-            deleteUnreferencedNetworks(movie.networks, excludingOwner: movie.persistentModelID, in: context)
+            deleteUnreferencedNetworks(movie.networks, excludingOwner: movie.objectID, in: context)
             context.delete(movie)
         }
     }
     if let tvShow {
-        let stillReferenced = (tvShow.listItems ?? []).contains { $0.persistentModelID != deletedItemID }
-            || (tvShow.customListItems ?? []).contains { $0.persistentModelID != deletedItemID }
+        let stillReferenced = (tvShow.listItems ?? []).contains { $0.objectID != deletedItemID }
+            || (tvShow.customListItems ?? []).contains { $0.objectID != deletedItemID }
         if !stillReferenced {
-            deleteUnreferencedNetworks(tvShow.networks, excludingOwner: tvShow.persistentModelID, in: context)
+            deleteUnreferencedNetworks(tvShow.networks, excludingOwner: tvShow.objectID, in: context)
             context.delete(tvShow)
         }
     }
@@ -394,6 +615,7 @@ func deleteMediaIfUnreferenced(
 extension Movie {
     /// Applies all TMDB-sourced fields from a freshly-fetched instance.
     /// Add new TMDB fields here — this is the single place to keep in sync.
+    @MainActor
     func update(from source: Movie) {
         title = source.title
         descriptionText = source.descriptionText
@@ -404,9 +626,12 @@ extension Movie {
         if let replacement = reconciledNetworks(
             current: networks,
             incoming: source.networks,
-            ownerID: persistentModelID,
-            in: modelContext
+            ownerID: objectID,
+            in: managedObjectContext
         ) {
+            // Only now do the incoming rows become real — inserting them before knowing the
+            // providers changed would leave orphan Network rows (and CloudKit records) behind.
+            insertUnattachedNetworks(replacement, into: managedObjectContext)
             networks = replacement
         }
         providerCategories = source.providerCategories
@@ -432,6 +657,7 @@ extension Movie {
 extension TVShow {
     /// Applies all TMDB-sourced fields from a freshly-fetched instance.
     /// Add new TMDB fields here — this is the single place to keep in sync.
+    @MainActor
     func update(from source: TVShow) {
         title = source.title
         descriptionText = source.descriptionText
@@ -442,9 +668,11 @@ extension TVShow {
         if let replacement = reconciledNetworks(
             current: networks,
             incoming: source.networks,
-            ownerID: persistentModelID,
-            in: modelContext
+            ownerID: objectID,
+            in: managedObjectContext
         ) {
+            // See `Movie.update(from:)` — insert only once we know the providers changed.
+            insertUnattachedNetworks(replacement, into: managedObjectContext)
             networks = replacement
         }
         providerCategories = source.providerCategories

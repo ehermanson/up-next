@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 struct MediaListView: View {
@@ -192,7 +191,7 @@ struct MediaListView: View {
                 SectionHeader(title: "Watched", count: watchedItems.count)
 
                 ForEach(displayedWatchedItems, id: \.media?.id) { item in
-                    row(for: item, in: $watchedItems)
+                    row(for: item)
                 }
                 .onDelete(perform: deleteWatched)
             }
@@ -248,8 +247,7 @@ struct MediaListView: View {
                 if !watchedItems.isEmpty {
                     section(
                         header: SectionHeader(title: "Watched", count: watchedItems.count),
-                        items: displayedWatchedItems,
-                        in: $watchedItems
+                        items: displayedWatchedItems
                     )
                 }
             }
@@ -268,15 +266,14 @@ struct MediaListView: View {
 
     private func section(
         header: SectionHeader,
-        items: [ListItem],
-        in binding: Binding<[ListItem]>? = nil
+        items: [ListItem]
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             header
 
             LazyVGrid(columns: Self.gridColumns, alignment: .leading, spacing: 12) {
                 ForEach(items, id: \.media?.id) { item in
-                    row(for: item, in: binding)
+                    row(for: item)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -284,9 +281,9 @@ struct MediaListView: View {
         .padding(.horizontal, 16)
     }
 
-    private func row(for item: ListItem, in items: Binding<[ListItem]>? = nil) -> some View {
+    private func row(for item: ListItem) -> some View {
         MediaListRow(
-            item: items.map { binding(for: item, in: $0) } ?? binding(for: item),
+            item: item,
             itemID: item.media?.id ?? "",
             expandedItemID: $expandedItemID,
             subtitle: subtitleProvider(item),
@@ -312,7 +309,7 @@ struct MediaListView: View {
                         Button {
                             onItemExpanded(entry.item.media?.id)
                         } label: {
-                            UpcomingCard(entry: entry)
+                            UpcomingCard(item: entry.item, dateLabel: entry.dateLabel, detail: entry.detail)
                         }
                         .buttonStyle(.plain)
                     }
@@ -389,24 +386,6 @@ struct MediaListView: View {
         }
     }
 
-    private func binding(for item: ListItem) -> Binding<ListItem> {
-        binding(for: item, in: $unwatchedItems)
-    }
-
-    private func binding(for item: ListItem, in items: Binding<[ListItem]>) -> Binding<ListItem> {
-        Binding(
-            get: {
-                items.wrappedValue.first(where: { $0.media?.id == item.media?.id }) ?? item
-            },
-            set: { newValue in
-                guard let id = item.media?.id,
-                      let index = items.wrappedValue.firstIndex(where: { $0.media?.id == id })
-                else { return }
-                items.wrappedValue[index] = newValue
-            }
-        )
-    }
-
     private func toggleWatched(_ item: ListItem) {
         // Wrap the whole transition — the item moving between Up Next and Watched, plus the
         // derived arrays recomputed in onWatchedToggled() — in one animation so both sections
@@ -426,21 +405,23 @@ struct MediaListView: View {
 /// Compact poster card in the "Airing Soon" / "Coming Soon" strip. Tapping it opens the same
 /// detail sheet a list row does.
 private struct UpcomingCard: View {
-    let entry: UpcomingEntry
+    @ObservedObject var item: ListItem
+    let dateLabel: String
+    let detail: String?
 
     private static let cardWidth: CGFloat = 110
 
     private var title: String {
-        entry.item.media?.title ?? ""
+        item.media?.title ?? ""
     }
 
     private var isImminent: Bool {
-        entry.dateLabel == "Today" || entry.dateLabel == "Tomorrow"
+        dateLabel == "Today" || dateLabel == "Tomorrow"
     }
 
     /// "S3E2" reads badly out loud — spell it out for VoiceOver.
     private var spokenDetail: String? {
-        guard let tvShow = entry.item.tvShow,
+        guard let tvShow = item.tvShow,
               let season = tvShow.nextEpisodeSeason,
               let episode = tvShow.nextEpisodeNumber
         else { return nil }
@@ -448,7 +429,7 @@ private struct UpcomingCard: View {
     }
 
     private var accessibilityDescription: String {
-        [title, spokenDetail, entry.dateLabel]
+        [title, spokenDetail, dateLabel]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
@@ -462,8 +443,8 @@ private struct UpcomingCard: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Chip(icon: "calendar", text: entry.dateLabel, isEmphasized: isImminent)
-            if let detail = entry.detail {
+            Chip(icon: "calendar", text: dateLabel, isEmphasized: isImminent)
+            if let detail {
                 Text(detail)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -479,7 +460,7 @@ private struct UpcomingCard: View {
 
     private var poster: some View {
         Group {
-            if let url = entry.item.media?.thumbnailURL {
+            if let url = item.media?.thumbnailURL {
                 CachedAsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
@@ -635,7 +616,7 @@ private struct SectionHeader: View {
 }
 
 struct MediaListRow: View {
-    @Binding var item: ListItem
+    @ObservedObject var item: ListItem
     let itemID: String
     @Binding var expandedItemID: String?
     let subtitle: String?
@@ -736,8 +717,7 @@ struct MediaListRow: View {
 }
 
 #Preview {
-    let user = UserIdentity(id: "stub-user", displayName: "Stub User")
-    let list = MediaList(name: "TV Shows", createdBy: user, createdAt: Date.now)
+    let list = MediaList(name: "TV Shows", createdAt: Date.now, context: nil)
     let sampleNetworks = [
         Network(
             id: 8,
@@ -767,7 +747,6 @@ struct MediaListRow: View {
                 nextEpisodeName: "The Long Way Around"
             ),
             list: list,
-            addedBy: user,
             addedAt: Date.now,
             isWatched: false,
             watchedAt: nil,
@@ -782,7 +761,6 @@ struct MediaListRow: View {
                 providerCategories: sampleProviderCategories
             ),
             list: list,
-            addedBy: user,
             addedAt: Date.now,
             isWatched: true,
             watchedAt: Date.now,
@@ -797,7 +775,6 @@ struct MediaListRow: View {
                 thumbnailURL: URL(string: "https://example.com/tvshow3.jpg")
             ),
             list: list,
-            addedBy: user,
             addedAt: Date.now,
             isWatched: false,
             watchedAt: nil,
@@ -812,7 +789,6 @@ struct MediaListRow: View {
                 providerCategories: sampleProviderCategories
             ),
             list: list,
-            addedBy: user,
             addedAt: Date.now,
             isWatched: true,
             watchedAt: Date.now,

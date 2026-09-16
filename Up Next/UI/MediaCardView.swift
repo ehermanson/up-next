@@ -1,5 +1,4 @@
 // SwiftUI view displaying a card for a media item (movie or TV show)
-import SwiftData
 import SwiftUI
 
 struct MediaCardView: View {

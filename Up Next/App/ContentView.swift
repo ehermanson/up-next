@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 struct ContentView: View {
@@ -9,7 +8,6 @@ struct ContentView: View {
         case discover
     }
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = MediaLibraryViewModel()
     @State private var customListViewModel = CustomListViewModel()
@@ -25,6 +23,7 @@ struct ContentView: View {
     #endif
 
     private let settings = ProviderSettings.shared
+    private let persistence = PersistenceController.shared
 
     /// `--tab <tvShows|movies|collections|discover>` in screenshot mode, else the normal default.
     private static var initialTab: MediaTab {
@@ -42,6 +41,69 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
+            if persistence.isJoiningSharedLibrary {
+                joiningPlaceholder
+            } else {
+                tabView
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            ProviderSettingsView()
+        }
+        .task {
+            #if DEBUG
+            // Screenshot mode: pick a populated provider set before the onboarding check below can
+            // fire, so the first-launch sheet never appears.
+            ScreenshotMode.configureProviders()
+            #endif
+            // First launch: prompt for streaming services once, and never again even if the
+            // sheet is dismissed without choosing any. Presented before the (possibly slow)
+            // library load so the user isn't staring at an empty list first.
+            if !settings.hasSelectedProviders && !settings.hasCompletedProviderOnboarding {
+                showingSettings = true
+                settings.hasCompletedProviderOnboarding = true
+            }
+            await viewModel.configure()
+            customListViewModel.configure()
+            #if DEBUG
+            if ScreenshotMode.isEnabled {
+                await ScreenshotMode.seed(library: viewModel, lists: customListViewModel)
+                if let requestedID = ScreenshotMode.requestedDetailID {
+                    screenshotDetailItem = viewModel.tvShows.first(where: { $0.media?.id == requestedID })
+                }
+            }
+            #endif
+        }
+        .onChange(of: settings.regionOverride) {
+            // Provider availability is region-specific, so every stored row's networks are now
+            // stale. A full refresh re-fetches details — and therefore providers — for all of them.
+            Task { await viewModel.refreshNow() }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // A swipe-delete is only committed after the undo window; flush it before the app can
+            // be terminated in the background, otherwise the item resurrects on relaunch.
+            if newPhase == .background {
+                viewModel.commitPendingDeletion()
+                customListViewModel.commitPendingRemoval()
+            }
+        }
+        .onChange(of: persistence.remoteChangeCount) {
+            viewModel.reloadFromStore()
+            customListViewModel.reloadFromStore()
+        }
+    }
+
+    private var joiningPlaceholder: some View {
+        EmptyStateView(
+            icon: "icloud.and.arrow.down",
+            title: "Joining shared library…",
+            subtitle: "Waiting for the shared library to arrive from iCloud."
+        )
+        .background(AppBackground())
+    }
+
+    private var tabView: some View {
         TabView(selection: $selectedTab) {
             Tab("TV Shows", systemImage: "tv", value: .tvShows) {
                 TVShowsTabView(
@@ -80,46 +142,6 @@ struct ContentView: View {
         // Tab bar on iPhone, sidebar on a wide iPad window — the Apple TV / Music shape.
         .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(.onScrollDown)
-        .sheet(isPresented: $showingSettings) {
-            ProviderSettingsView()
-        }
-        .task {
-            #if DEBUG
-            // Screenshot mode: pick a populated provider set before the onboarding check below can
-            // fire, so the first-launch sheet never appears.
-            ScreenshotMode.configureProviders()
-            #endif
-            // First launch: prompt for streaming services once, and never again even if the
-            // sheet is dismissed without choosing any. Presented before the (possibly slow)
-            // library load so the user isn't staring at an empty list first.
-            if !settings.hasSelectedProviders && !settings.hasCompletedProviderOnboarding {
-                showingSettings = true
-                settings.hasCompletedProviderOnboarding = true
-            }
-            await viewModel.configure(modelContext: modelContext)
-            customListViewModel.configure(modelContext: modelContext)
-            #if DEBUG
-            if ScreenshotMode.isEnabled {
-                await ScreenshotMode.seed(library: viewModel, lists: customListViewModel)
-                if let requestedID = ScreenshotMode.requestedDetailID {
-                    screenshotDetailItem = viewModel.tvShows.first(where: { $0.media?.id == requestedID })
-                }
-            }
-            #endif
-        }
-        .onChange(of: settings.regionOverride) {
-            // Provider availability is region-specific, so every stored row's networks are now
-            // stale. A full refresh re-fetches details — and therefore providers — for all of them.
-            Task { await viewModel.refreshNow() }
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            // A swipe-delete is only committed after the undo window; flush it before the app can
-            // be terminated in the background, otherwise the item resurrects on relaunch.
-            if newPhase == .background {
-                viewModel.commitPendingDeletion()
-                customListViewModel.commitPendingRemoval()
-            }
-        }
         .sheet(isPresented: $showingSearch) {
             WatchlistSearchView(
                 context: searchContext,
@@ -140,7 +162,7 @@ struct ContentView: View {
             onDismiss: { viewModel.persistChanges(for: .tvShow) }
         ) { item in
             MediaDetailView(
-                listItem: screenshotDetailBinding(for: item),
+                listItem: item,
                 dismiss: { screenshotDetailItem = nil },
                 onRemove: { screenshotDetailItem = nil },
                 customListViewModel: customListViewModel,
@@ -161,21 +183,6 @@ struct ContentView: View {
         default: .all
         }
     }
-
-    #if DEBUG
-    private func screenshotDetailBinding(for item: ListItem) -> Binding<ListItem> {
-        Binding(
-            get: { viewModel.tvShows.first(where: { $0.media?.id == item.media?.id }) ?? item },
-            set: { newValue in
-                guard
-                    let id = item.media?.id,
-                    let index = viewModel.tvShows.firstIndex(where: { $0.media?.id == id })
-                else { return }
-                viewModel.tvShows[index] = newValue
-            }
-        )
-    }
-    #endif
 }
 
 #Preview {

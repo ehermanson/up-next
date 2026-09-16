@@ -1,5 +1,5 @@
+import CoreData
 import Foundation
-import SwiftData
 
 @MainActor
 @Observable
@@ -22,10 +22,9 @@ final class MediaLibraryViewModel {
     private(set) var existingTVShowIDs: Set<String> = []
     private(set) var existingMovieIDs: Set<String> = []
 
-    private var modelContext: ModelContext?
+    private var persistence: PersistenceController?
     private var tvList: MediaList?
     private var movieList: MediaList?
-    private var currentUser: UserIdentity?
     private var refreshTask: Task<Void, Never>?
 
     /// A swipe-deleted item that has been removed from the visible lists but not yet committed to
@@ -61,10 +60,18 @@ final class MediaLibraryViewModel {
         UserDefaults.standard.set(Date.now, forKey: Self.lastRefreshDateKey)
     }
 
-    func configure(modelContext: ModelContext) async {
-        guard self.modelContext == nil else { return }
-        self.modelContext = modelContext
-        await ensureDefaults()
+    func configure(persistence: PersistenceController = .shared) async {
+        guard self.persistence == nil else { return }
+        self.persistence = persistence
+
+        guard persistence.group != nil else {
+            // Joining a shared library: the share hasn't landed yet, so there are no lists to
+            // read. `ContentView` shows a placeholder; `reloadFromStore()` picks this back up once
+            // `persistence.remoteChangeCount` bumps and `group` is set.
+            return
+        }
+
+        resolveLists()
         let didSeed = await loadItems()
         isLoaded = true
         if !didSeed && needsFullRefresh {
@@ -83,7 +90,7 @@ final class MediaLibraryViewModel {
     /// (not detached) so the refresh control can await it, and supersedes any launch refresh still
     /// in flight. Only stamps the run when something actually came back — same rule as `configure`.
     func refreshNow() async {
-        guard !isRefreshing, modelContext != nil else { return }
+        guard !isRefreshing, persistence != nil else { return }
         refreshTask?.cancel()
         refreshTask = nil
         isRefreshing = true
@@ -91,6 +98,24 @@ final class MediaLibraryViewModel {
         if await refreshAllItems() {
             markRefreshComplete()
         }
+    }
+
+    /// Re-fetches both lists from the active store and re-syncs derived state. Called by
+    /// `ContentView` whenever `persistence.remoteChangeCount` changes — a remote edit from another
+    /// peer, or (when `group` was nil at `configure` time) the shared library finally landing.
+    /// Any item mid-undo (`pendingDeletion`) is kept out of the visible arrays so a remote change
+    /// can never resurrect something the user just swiped away.
+    func reloadFromStore() {
+        guard let persistence, persistence.group != nil else { return }
+        resolveLists()
+
+        let (fetchedTV, fetchedMovies) = fetchListItems()
+        tvShows = fetchedTV.filter { $0 !== pendingDeletion?.item }
+        movies = fetchedMovies.filter { $0 !== pendingDeletion?.item }
+
+        syncUnwatched(for: .tvShow)
+        syncUnwatched(for: .movie)
+        isLoaded = true
     }
 
     func containsItem(withID id: String, mediaType: MediaType) -> Bool {
@@ -101,57 +126,53 @@ final class MediaLibraryViewModel {
     }
 
     func addTVShow(_ tvShow: TVShow) {
-        guard let context = modelContext, let user = currentUser else { return }
+        guard let persistence, let list = tvList else { return }
         commitPendingDeletion(ifTargeting: tvShow.id, mediaType: .tvShow)
         guard !containsItem(withID: tvShow.id, mediaType: .tvShow) else { return }
 
         // Reuse the stored row when a collection already holds this title — one media row per id.
-        let row = canonicalTVShowRow(for: tvShow, in: context)
-        let list = ensureList(for: .tvShow, using: user)
+        let row = canonicalTVShowRow(for: tvShow, in: persistence.viewContext)
         let item = ListItem(
             tvShow: row,
             list: list,
-            addedBy: user,
             addedAt: Date.now,
             order: nextOrderValue(for: .tvShow)
         )
-        context.insert(item)
+        persistence.insert(item)
         tvShows.append(item)
 
         syncUnwatched(for: .tvShow)
-        try? context.save()
+        persistence.save()
     }
 
     func addMovie(_ movie: Movie) {
-        guard let context = modelContext, let user = currentUser else { return }
+        guard let persistence, let list = movieList else { return }
         commitPendingDeletion(ifTargeting: movie.id, mediaType: .movie)
         guard !containsItem(withID: movie.id, mediaType: .movie) else { return }
 
         // Reuse the stored row when a collection already holds this title — one media row per id.
-        let row = canonicalMovieRow(for: movie, in: context)
-        let list = ensureList(for: .movie, using: user)
+        let row = canonicalMovieRow(for: movie, in: persistence.viewContext)
         let item = ListItem(
             movie: row,
             list: list,
-            addedBy: user,
             addedAt: Date.now,
             order: nextOrderValue(for: .movie)
         )
-        context.insert(item)
+        persistence.insert(item)
         movies.append(item)
 
         syncUnwatched(for: .movie)
-        try? context.save()
+        persistence.save()
     }
 
-    /// Removes an item from the visible lists immediately but defers the SwiftData delete briefly so
-    /// it can be undone via `undoLastDeletion()`. Returns the removed item's title (for the toast),
-    /// or nil if nothing was removed.
+    /// Removes an item from the visible lists immediately but defers the Core Data delete briefly
+    /// so it can be undone via `undoLastDeletion()`. Returns the removed item's title (for the
+    /// toast), or nil if nothing was removed.
     @discardableResult
     func removeItem(withID id: String, mediaType: MediaType) -> String? {
         // Any previously-pending delete is now final (superseded by this one).
         commitPendingDeletion()
-        guard modelContext != nil else { return nil }
+        guard persistence != nil else { return nil }
 
         let removed: ListItem
         switch mediaType {
@@ -201,13 +222,14 @@ final class MediaLibraryViewModel {
         pendingDeleteCommit = nil
         guard let pending = pendingDeletion else { return }
         pendingDeletion = nil
-        guard let context = modelContext else { return }
+        guard let persistence else { return }
+        let context = persistence.viewContext
         let movie = pending.item.movie
         let tvShow = pending.item.tvShow
-        let itemID = pending.item.persistentModelID
+        let itemID = pending.item.objectID
         context.delete(pending.item)
         deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: context)
-        try? context.save()
+        persistence.save()
     }
 
     /// Commits a pending delete only when it targets the same media. Re-adding an item that's
@@ -222,9 +244,9 @@ final class MediaLibraryViewModel {
     }
 
     func persistChanges(for mediaType: MediaType) {
-        guard let context = modelContext else { return }
+        guard let persistence else { return }
         syncUnwatched(for: mediaType)
-        try? context.save()
+        persistence.save()
     }
 
     func syncUnwatched(for mediaType: MediaType) {
@@ -284,7 +306,7 @@ final class MediaLibraryViewModel {
     }
 
     func updateOrderAfterUnwatchedMove(mediaType: MediaType) {
-        guard let context = modelContext else { return }
+        guard let persistence else { return }
 
         switch mediaType {
         case .tvShow:
@@ -297,7 +319,7 @@ final class MediaLibraryViewModel {
             }
         }
 
-        try? context.save()
+        persistence.save()
     }
 
     /// Re-derives watched state after a show's TMDB metadata changed. The season count itself is no
@@ -313,17 +335,46 @@ final class MediaLibraryViewModel {
 
     // MARK: - Private helpers
 
+    private func resolveLists() {
+        guard let persistence else { return }
+        tvList = persistence.list(named: "TV Shows")
+        movieList = persistence.list(named: "Movies")
+    }
+
+    /// Raw fetch of every library `ListItem` (`list != nil` excludes any stray wrapper `ListItem` a
+    /// collection's detail sheet left behind — see `CustomListDetailView.discardTransientItem`).
+    /// Shared by `loadItems()` and `reloadFromStore()`.
+    private func fetchListItems() -> (tv: [ListItem], movie: [ListItem]) {
+        guard let persistence else { return ([], []) }
+
+        let sortDescriptors = [
+            NSSortDescriptor(key: "order", ascending: true),
+            NSSortDescriptor(key: "addedAtRaw", ascending: true),
+        ]
+
+        let tvRequest = NSFetchRequest<ListItem>(entityName: "ListItem")
+        tvRequest.predicate = NSPredicate(format: "tvShow != nil AND list != nil")
+        tvRequest.sortDescriptors = sortDescriptors
+
+        let movieRequest = NSFetchRequest<ListItem>(entityName: "ListItem")
+        movieRequest.predicate = NSPredicate(format: "movie != nil AND list != nil")
+        movieRequest.sortDescriptors = sortDescriptors
+
+        return (persistence.fetch(tvRequest), persistence.fetch(movieRequest))
+    }
+
     /// Refreshes cached TMDB metadata for every item. Returns whether the refresh can be considered
     /// complete — true when at least one detail fetch succeeded (or there was nothing to fetch),
     /// false when every fetch failed, so the caller can retry rather than stamping the run.
     private func refreshAllItems() async -> Bool {
-        guard let context = modelContext else { return false }
+        guard let persistence else { return false }
+        let context = persistence.viewContext
         let service = TMDBService.shared
         let maxConcurrent = 8
 
-        // Collect value-type inputs — no @Model captures in task closures. `inLibrary` marks the
-        // rows a `ListItem` owns; the rest are media rows only custom lists refer to, which get
-        // their metadata refreshed but none of the library's watched-state bookkeeping.
+        // Collect value-type inputs — no NSManagedObject captures in task closures. `inLibrary`
+        // marks the rows a `ListItem` owns; the rest are media rows only custom lists refer to,
+        // which get their metadata refreshed but none of the library's watched-state bookkeeping.
         var tvInputs: [(id: Int, inLibrary: Bool)] = tvShows.compactMap { item in
             guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { return nil }
             return (id, true)
@@ -335,14 +386,13 @@ final class MediaLibraryViewModel {
 
         var seenTVIDs = Set(tvInputs.map(\.id))
         var seenMovieIDs = Set(movieInputs.map(\.id))
-        if let customItems = try? context.fetch(FetchDescriptor<CustomListItem>()) {
-            for item in customItems {
-                if let tvShow = item.tvShow, let id = Int(tvShow.id), seenTVIDs.insert(id).inserted {
-                    tvInputs.append((id, false))
-                }
-                if let movie = item.movie, let id = Int(movie.id), seenMovieIDs.insert(id).inserted {
-                    movieInputs.append((id, false))
-                }
+        let customItemsRequest = NSFetchRequest<CustomListItem>(entityName: "CustomListItem")
+        for item in persistence.fetch(customItemsRequest) {
+            if let tvShow = item.tvShow, let id = Int(tvShow.id), seenTVIDs.insert(id).inserted {
+                tvInputs.append((id, false))
+            }
+            if let movie = item.movie, let id = Int(movie.id), seenMovieIDs.insert(id).inserted {
+                movieInputs.append((id, false))
             }
         }
         var successfulFetches = 0
@@ -416,7 +466,7 @@ final class MediaLibraryViewModel {
 
         syncUnwatched(for: .tvShow)
         syncUnwatched(for: .movie)
-        try? context.save()
+        persistence.save()
 
         // Nothing to fetch counts as done; otherwise require at least one success.
         return tvInputs.isEmpty && movieInputs.isEmpty ? true : successfulFetches > 0
@@ -424,94 +474,23 @@ final class MediaLibraryViewModel {
 
     @discardableResult
     private func loadItems() async -> Bool {
-        guard let context = modelContext else { return false }
+        guard persistence != nil else { return false }
         var didSeed = false
-        do {
-            // `list != nil` excludes any stray wrapper `ListItem` a collection's detail sheet left
-            // behind (see `CustomListDetailView.discardTransientItem`) — those must never surface here.
-            let tvDescriptor = FetchDescriptor<ListItem>(
-                predicate: #Predicate { $0.tvShow != nil && $0.list != nil },
-                sortBy: [
-                    SortDescriptor(\ListItem.order, order: .forward),
-                    SortDescriptor(\ListItem.addedAt, order: .forward),
-                ]
-            )
-            let movieDescriptor = FetchDescriptor<ListItem>(
-                predicate: #Predicate { $0.movie != nil && $0.list != nil },
-                sortBy: [
-                    SortDescriptor(\ListItem.order, order: .forward),
-                    SortDescriptor(\ListItem.addedAt, order: .forward),
-                ]
-            )
 
-            tvShows = try context.fetch(tvDescriptor)
-            movies = try context.fetch(movieDescriptor)
+        let (fetchedTV, fetchedMovies) = fetchListItems()
+        tvShows = fetchedTV
+        movies = fetchedMovies
 
-            #if DEBUG
-            if tvShows.isEmpty && movies.isEmpty {
-                await seedStubData()
-                didSeed = true
-            }
-            #endif
+        #if DEBUG
+        if tvShows.isEmpty && movies.isEmpty {
+            await seedStubData()
+            didSeed = true
+        }
+        #endif
 
-            syncUnwatched(for: .tvShow)
-            syncUnwatched(for: .movie)
-        } catch { }
+        syncUnwatched(for: .tvShow)
+        syncUnwatched(for: .movie)
         return didSeed
-    }
-
-    private func ensureDefaults() async {
-        guard let context = modelContext else { return }
-
-        do {
-            currentUser = try fetchOrCreateUser(context: context)
-            tvList = try fetchOrCreateList(named: "TV Shows", context: context)
-            movieList = try fetchOrCreateList(named: "Movies", context: context)
-            try context.save()
-        } catch { }
-    }
-
-    private func fetchOrCreateUser(context: ModelContext) throws -> UserIdentity {
-        let descriptor = FetchDescriptor<UserIdentity>(
-            predicate: #Predicate { $0.id == "current-user" }
-        )
-        if let existing = try context.fetch(descriptor).first {
-            return existing
-        }
-
-        let user = UserIdentity(id: "current-user", displayName: "Current User")
-        context.insert(user)
-        return user
-    }
-
-    private func fetchOrCreateList(named name: String, context: ModelContext) throws -> MediaList {
-        let descriptor = FetchDescriptor<MediaList>(
-            predicate: #Predicate { $0.name == name }
-        )
-        if let existing = try context.fetch(descriptor).first {
-            return existing
-        }
-        let creator = currentUser ?? UserIdentity(id: "current-user", displayName: "Current User")
-        let list = MediaList(name: name, createdBy: creator, createdAt: Date.now)
-        context.insert(list)
-        return list
-    }
-
-    private func ensureList(for mediaType: MediaType, using user: UserIdentity) -> MediaList {
-        switch mediaType {
-        case .tvShow:
-            if let list = tvList { return list }
-            let list = MediaList(name: "TV Shows", createdBy: user, createdAt: Date.now)
-            modelContext?.insert(list)
-            tvList = list
-            return list
-        case .movie:
-            if let list = movieList { return list }
-            let list = MediaList(name: "Movies", createdBy: user, createdAt: Date.now)
-            modelContext?.insert(list)
-            movieList = list
-            return list
-        }
     }
 
     private func nextOrderValue(for mediaType: MediaType) -> Int {
@@ -524,11 +503,9 @@ final class MediaLibraryViewModel {
     }
 
     private func seedStubData() async {
-        guard let context = modelContext, let user = currentUser else { return }
-
+        guard let persistence, let tvList, let movieList else { return }
+        let context = persistence.viewContext
         let service = TMDBService.shared
-        let tvList = ensureList(for: .tvShow, using: user)
-        let movieList = ensureList(for: .movie, using: user)
 
         // TV show IDs to seed: (tmdbID, isWatched, userRating, userNotes)
         let tvSeeds: [(id: Int, watched: Bool, rating: Int?, notes: String?)] = [
@@ -559,7 +536,7 @@ final class MediaLibraryViewModel {
             (278, true, 1, "Perfect film"),  // The Shawshank Redemption
         ]
 
-        // Fetch all TMDB details concurrently (raw Codable structs, not @Model objects)
+        // Fetch all TMDB details concurrently (raw Codable structs, not managed objects)
         let tvDetails: [(Int, TMDBTVShowDetail?)] = await withTaskGroup(
             of: (Int, TMDBTVShowDetail?).self
         ) { group in
@@ -596,18 +573,20 @@ final class MediaLibraryViewModel {
             return results.sorted { $0.0 < $1.0 }
         }
 
-        // Map to @Model objects on the main actor
+        // Map to managed objects on the main actor. Detail fetches map to unattached rows, so each
+        // goes through `canonical*Row` to get inserted (with its networks) and assigned to the
+        // active store before the wrapping `ListItem` relates to it.
         var seedTVItems: [ListItem] = []
         for (index, detail) in tvDetails {
             guard let detail else { continue }
             let providers = detail.watchProviders?.results?[service.currentRegion]
-            let tvShow = await service.mapToTVShow(detail, providers: providers)
+            let mapped = await service.mapToTVShow(detail, providers: providers)
+            let row = canonicalTVShowRow(for: mapped, in: context)
             let seed = tvSeeds[index]
             let daysAgo = seed.watched ? Double(30 + index * 15) : 0
             let item = ListItem(
-                tvShow: tvShow,
+                tvShow: row,
                 list: tvList,
-                addedBy: user,
                 addedAt: Date.now.addingTimeInterval(-86400 * daysAgo),
                 isWatched: seed.watched,
                 watchedAt: seed.watched ? Date.now.addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
@@ -615,7 +594,7 @@ final class MediaLibraryViewModel {
                 userRating: seed.rating,
                 userNotes: seed.notes
             )
-            context.insert(item)
+            persistence.insert(item)
             seedTVItems.append(item)
         }
 
@@ -623,13 +602,13 @@ final class MediaLibraryViewModel {
         for (index, detail) in movieDetails {
             guard let detail else { continue }
             let providers = detail.watchProviders?.results?[service.currentRegion]
-            let movie = await service.mapToMovie(detail, providers: providers)
+            let mapped = await service.mapToMovie(detail, providers: providers)
+            let row = canonicalMovieRow(for: mapped, in: context)
             let seed = movieSeeds[index]
             let daysAgo = seed.watched ? Double(30 + index * 15) : 0
             let item = ListItem(
-                movie: movie,
+                movie: row,
                 list: movieList,
-                addedBy: user,
                 addedAt: Date.now.addingTimeInterval(-86400 * daysAgo),
                 isWatched: seed.watched,
                 watchedAt: seed.watched ? Date.now.addingTimeInterval(-86400 * (daysAgo - 5)) : nil,
@@ -637,7 +616,7 @@ final class MediaLibraryViewModel {
                 userRating: seed.rating,
                 userNotes: seed.notes
             )
-            context.insert(item)
+            persistence.insert(item)
             seedMovieItems.append(item)
         }
 
@@ -646,9 +625,11 @@ final class MediaLibraryViewModel {
         syncUnwatched(for: .tvShow)
         syncUnwatched(for: .movie)
 
-        // Seed a "Christmas Stuff" custom list
-        let christmasList = CustomList(name: "Christmas Stuff", iconName: "gift")
-        context.insert(christmasList)
+        // Seed a "Christmas Stuff" custom list. `group:` goes through the init so the list joins
+        // the group's context and store up front — setting it afterwards on a context-less object
+        // is a Core Data exception (see `inferredContext`).
+        let christmasList = CustomList(name: "Christmas Stuff", iconName: "gift", group: persistence.group)
+        persistence.insert(christmasList)
 
         let christmasMovieIDs = [10719, 12540, 771, 13675]  // Elf, Four Christmases, Home Alone, Rudolph
         let christmasDetails: [(Int, TMDBMovieDetail?)] = await withTaskGroup(
@@ -673,13 +654,14 @@ final class MediaLibraryViewModel {
         for (_, detail) in christmasDetails {
             guard let detail else { continue }
             let providers = detail.watchProviders?.results?[service.currentRegion]
-            let movie = await service.mapToMovie(detail, providers: providers)
-            let item = CustomListItem(movie: movie, customList: christmasList, addedAt: Date.now)
-            context.insert(item)
+            let mapped = await service.mapToMovie(detail, providers: providers)
+            let row = canonicalMovieRow(for: mapped, in: context)
+            let item = CustomListItem(movie: row, customList: christmasList, addedAt: Date.now)
+            persistence.insert(item)
             christmasItems.append(item)
         }
         christmasList.items = christmasItems
 
-        try? context.save()
+        persistence.save()
     }
 }

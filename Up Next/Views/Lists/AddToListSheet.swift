@@ -34,36 +34,12 @@ struct AddToListSheet: View {
                     List {
                         ForEach(viewModel.customLists, id: \.id) { list in
                             let isInList = mediaID.map { viewModel.containsItem(mediaID: $0, in: list) } ?? false
-                            Button {
+                            AddToListRow(list: list, isInList: isInList) {
                                 toggleItem(in: list, isInList: isInList)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: list.iconName)
-                                        .font(.title3)
-                                        .frame(width: 36, height: 36)
-                                        .cellSurface(tint: .accentColor)
-
-                                    Text(list.name)
-                                        .font(.body)
-                                        .fontWeight(.medium)
-
-                                    Spacer()
-
-                                    if isInList {
-                                        Image(systemName: "checkmark")
-                                            .font(.headline.weight(.semibold))
-                                            .foregroundStyle(.green)
-                                    }
-                                }
-                                .padding(.vertical, 6)
-                                .padding(.horizontal, 10)
                             }
-                            .buttonStyle(.plain)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityValue(isInList ? "In collection" : "Not in collection")
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -93,11 +69,47 @@ struct AddToListSheet: View {
 
     private func toggleItem(in list: CustomList, isInList: Bool) {
         if isInList {
-            if let mediaID, let item = list.items?.first(where: { $0.media?.id == mediaID }) {
+            if let mediaID, let item = viewModel.visibleItems(in: list).first(where: { $0.media?.id == mediaID }) {
                 viewModel.removeItem(item, from: list)
             }
         } else {
             viewModel.addItem(movie: movie, tvShow: tvShow, to: list)
         }
+    }
+}
+
+/// One row in the "Add to Collection" sheet. `@ObservedObject` so a rename picked up while the
+/// sheet is open re-renders — `NSManagedObject` doesn't republish view updates on its own.
+private struct AddToListRow: View {
+    @ObservedObject var list: CustomList
+    let isInList: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: list.iconName)
+                    .font(.title3)
+                    .frame(width: 36, height: 36)
+                    .cellSurface(tint: .accentColor)
+
+                Text(list.name)
+                    .font(.body)
+                    .fontWeight(.medium)
+
+                Spacer()
+
+                if isInList {
+                    Image(systemName: "checkmark")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.green)
+                }
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(isInList ? "In collection" : "Not in collection")
     }
 }

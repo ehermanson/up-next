@@ -1,8 +1,7 @@
-import SwiftData
 import SwiftUI
 
 struct MediaDetailView: View {
-    @Binding var listItem: ListItem
+    @ObservedObject var listItem: ListItem
     let dismiss: () -> Void
     let onRemove: () -> Void
     var onSeasonCountChanged: ((ListItem, Int?) -> Void)?
@@ -129,23 +128,23 @@ struct MediaDetailView: View {
                         } else if onAdd == nil {
                             if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
                                 Divider().padding(.vertical, 4)
-                                SeasonChecklistCard(listItem: $listItem)
+                                SeasonChecklistCard(listItem: listItem)
 
                                 Divider().padding(.vertical, 4)
-                                DoneWatchingCard(listItem: $listItem)
+                                DoneWatchingCard(listItem: listItem)
                             }
 
                             let hasSeasonChecklist = listItem.tvShow != nil && (listItem.tvShow?.numberOfSeasons ?? 0) > 1
                             if !listItem.isDropped && !hasSeasonChecklist {
                                 Divider().padding(.vertical, 4)
 
-                                WatchedToggleCard(listItem: $listItem)
+                                WatchedToggleCard(listItem: listItem)
                             }
 
                             if listItem.isWatched {
                                 Divider().padding(.vertical, 4)
 
-                                UserRatingCard(listItem: $listItem)
+                                UserRatingCard(listItem: listItem)
                                     .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                         }
@@ -224,7 +223,7 @@ struct MediaDetailView: View {
             }
             .sheet(item: $selectedSimilarItem) { item in
                 MediaDetailView(
-                    listItem: similarDetailBinding(for: item),
+                    listItem: item,
                     dismiss: { selectedSimilarItem = nil },
                     onRemove: { selectedSimilarItem = nil },
                     onAdd: canAddToLibrary ? { addSimilarFromDetail(item) } : nil,
@@ -471,13 +470,6 @@ struct MediaDetailView: View {
         } else if let movie = item.movie {
             onMovieAdded?(movie)
         }
-    }
-
-    private func similarDetailBinding(for item: ListItem) -> Binding<ListItem> {
-        Binding(
-            get: { selectedSimilarItem ?? item },
-            set: { selectedSimilarItem = $0 }
-        )
     }
 
 }
@@ -874,8 +866,7 @@ struct CastSection: View {
 // MARK: - Preview
 
 private enum MediaDetailViewPreviewData {
-    static let user = UserIdentity(id: "preview-user", displayName: "Preview User")
-    static let list = MediaList(name: "My Watchlist", createdBy: user, createdAt: Date.now)
+    static let list = MediaList(name: "My Watchlist", createdAt: Date.now, context: nil)
 
     static let netflix = Network(
         id: 8,
@@ -910,7 +901,6 @@ private enum MediaDetailViewPreviewData {
         return ListItem(
             movie: movie,
             list: list,
-            addedBy: user,
             addedAt: Date.now,
             isWatched: true,
             watchedAt: Date.now,
@@ -938,7 +928,6 @@ private enum MediaDetailViewPreviewData {
         return ListItem(
             tvShow: show,
             list: list,
-            addedBy: user,
             addedAt: Date.now,
             isWatched: true,
             watchedAt: Date.now,
@@ -950,11 +939,11 @@ private enum MediaDetailViewPreviewData {
 }
 
 private struct MediaDetailPreviewContainer: View {
-    @State var listItem: ListItem
+    let listItem: ListItem
 
     var body: some View {
         MediaDetailView(
-            listItem: $listItem,
+            listItem: listItem,
             dismiss: {},
             onRemove: {}
         )

@@ -239,7 +239,7 @@ struct WatchlistSearchView: View {
 
     private func detailSheet(for item: ListItem) -> some View {
         MediaDetailView(
-            listItem: detailBinding(for: item),
+            listItem: item,
             dismiss: { detailListItem = nil },
             onRemove: { detailListItem = nil },
             customListViewModel: isListMode ? nil : customListViewModel,
@@ -668,13 +668,6 @@ struct WatchlistSearchView: View {
                 onMovieAdded(movie)
             }
         }
-    }
-
-    private func detailBinding(for item: ListItem) -> Binding<ListItem> {
-        Binding(
-            get: { detailListItem ?? item },
-            set: { detailListItem = $0 }
-        )
     }
 
     // MARK: - Search

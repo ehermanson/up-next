@@ -35,37 +35,10 @@ struct MyListsView: View {
                 } else {
                     List {
                         ForEach(viewModel.customLists, id: \.id) { list in
-                            Button {
+                            MyListsRow(list: list) {
                                 viewModel.activeListID = list.id
                                 navigationPath.append(list.id)
-                            } label: {
-                                HStack(spacing: 14) {
-                                    Image(systemName: list.iconName)
-                                        .font(.title2)
-                                        .frame(width: 48, height: 48)
-                                        .cellSurface(tint: .accentColor)
-
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text(list.name)
-                                            .font(.body)
-                                            .fontWeight(.medium)
-                                        Text("\(list.items?.count ?? 0) item\((list.items?.count ?? 0) == 1 ? "" : "s")")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(.rect)
-                                .padding(.vertical, 10)
-                                .padding(.horizontal, 14)
                             }
-                            .buttonStyle(.plain)
                             .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
@@ -157,4 +130,43 @@ struct MyListsView: View {
         navigationPath.append(list.id)
     }
     #endif
+}
+
+/// One row in the collections overview. `@ObservedObject` so a rename or item-count change
+/// (`list.items`) on this `NSManagedObject` re-renders the row — unlike SwiftData's `@Model`,
+/// Core Data objects don't republish view updates unless something observes them.
+private struct MyListsRow: View {
+    @ObservedObject var list: CustomList
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: list.iconName)
+                    .font(.title2)
+                    .frame(width: 48, height: 48)
+                    .cellSurface(tint: .accentColor)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(list.name)
+                        .font(.body)
+                        .fontWeight(.medium)
+                    Text("\(list.items?.count ?? 0) item\((list.items?.count ?? 0) == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+        }
+        .buttonStyle(.plain)
+    }
 }

@@ -63,7 +63,7 @@ struct DiscoverView: View {
 
     private func detailSheetContent(for item: ListItem) -> some View {
         MediaDetailView(
-            listItem: detailBinding(for: item),
+            listItem: item,
             dismiss: { detailListItem = nil },
             onRemove: { detailListItem = nil },
             onAdd: {
@@ -405,13 +405,6 @@ struct DiscoverView: View {
             let movie = service.mapToMovie(result)
             detailListItem = ListItem(movie: movie)
         }
-    }
-
-    private func detailBinding(for item: ListItem) -> Binding<ListItem> {
-        Binding(
-            get: { detailListItem ?? item },
-            set: { detailListItem = $0 }
-        )
     }
 
     private func addFromDetail(_ item: ListItem) {

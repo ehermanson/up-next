@@ -17,7 +17,7 @@ private extension View {
 }
 
 struct WatchedToggleCard: View {
-    @Binding var listItem: ListItem
+    @ObservedObject var listItem: ListItem
 
     private var seasonSubtitle: String? {
         guard let tvShow = listItem.tvShow,
@@ -84,7 +84,7 @@ struct WatchedToggleCard: View {
 }
 
 struct UserRatingCard: View {
-    @Binding var listItem: ListItem
+    @ObservedObject var listItem: ListItem
 
     private func isSelected(_ value: Int) -> Bool {
         listItem.userRating == value
@@ -135,7 +135,7 @@ struct UserRatingCard: View {
 }
 
 struct SeasonChecklistCard: View {
-    @Binding var listItem: ListItem
+    @ObservedObject var listItem: ListItem
 
     private var totalSeasons: Int {
         listItem.tvShow?.numberOfSeasons ?? 0
@@ -291,7 +291,7 @@ struct SeasonChecklistCard: View {
 }
 
 struct DoneWatchingCard: View {
-    @Binding var listItem: ListItem
+    @ObservedObject var listItem: ListItem
 
     private var totalSeasons: Int {
         listItem.tvShow?.numberOfSeasons ?? 0

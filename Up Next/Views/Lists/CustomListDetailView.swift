@@ -1,9 +1,11 @@
-import SwiftData
+import CoreData
 import SwiftUI
 
 struct CustomListDetailView: View {
     let viewModel: CustomListViewModel
-    let list: CustomList
+    /// `@ObservedObject` — `NSManagedObject` doesn't republish view updates on its own the way
+    /// SwiftData's `@Model` did, so a rename (`list.name` in the nav title) needs this to redraw.
+    @ObservedObject var list: CustomList
 
     @Environment(ToastState.self) private var toast
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -13,13 +15,14 @@ struct CustomListDetailView: View {
     @State private var selectedItem: CustomListItem?
 
     /// Collections keep their own watched state (`CustomListItem.watchedAt`) — nothing here reads
-    /// or writes the Movies / TV Shows tabs.
+    /// or writes the Movies / TV Shows tabs. Reads through `viewModel.visibleItems(in:)` rather than
+    /// `list.items` directly so a swiped-away row (mid Undo window) disappears immediately.
     private var unwatchedItems: [CustomListItem] {
-        (list.items ?? []).filter { !$0.isWatched }.sorted { $0.addedAt < $1.addedAt }
+        viewModel.visibleItems(in: list).filter { !$0.isWatched }.sorted { $0.addedAt < $1.addedAt }
     }
 
     private var watchedItems: [CustomListItem] {
-        (list.items ?? []).filter(\.isWatched).sorted {
+        viewModel.visibleItems(in: list).filter(\.isWatched).sorted {
             ($0.watchedAt ?? .distantPast) > ($1.watchedAt ?? .distantPast)
         }
     }
@@ -28,7 +31,7 @@ struct CustomListDetailView: View {
 
     var body: some View {
         Group {
-            if list.items?.isEmpty ?? true {
+            if viewModel.visibleItems(in: list).isEmpty {
                 EmptyStateView(icon: list.iconName, title: "No items yet") {
                     Button {
                         showingAddItems = true
@@ -114,14 +117,14 @@ struct CustomListDetailView: View {
     /// The phone layout: one column of rows with swipe actions.
     private var listLayout: some View {
         List {
-            ForEach(unwatchedItems, id: \.persistentModelID) { item in
+            ForEach(unwatchedItems, id: \.objectID) { item in
                 row(for: item)
             }
 
             if !watchedItems.isEmpty {
                 watchedHeader
 
-                ForEach(watchedItems, id: \.persistentModelID) { item in
+                ForEach(watchedItems, id: \.objectID) { item in
                     row(for: item)
                 }
             }
@@ -138,7 +141,7 @@ struct CustomListDetailView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
                 LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
-                    ForEach(unwatchedItems, id: \.persistentModelID) { item in
+                    ForEach(unwatchedItems, id: \.objectID) { item in
                         row(for: item)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -148,7 +151,7 @@ struct CustomListDetailView: View {
                     watchedHeader
 
                     LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
-                        ForEach(watchedItems, id: \.persistentModelID) { item in
+                        ForEach(watchedItems, id: \.objectID) { item in
                             row(for: item)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -184,23 +187,52 @@ struct CustomListDetailView: View {
         .listRowSeparator(.hidden)
     }
 
-    @ViewBuilder
     private func row(for item: CustomListItem) -> some View {
-        let isWatched = item.isWatched
+        CustomListRow(
+            item: item,
+            onSelect: { selectedItem = item },
+            onToggleWatched: { toggleWatched(item) },
+            onRemove: { removeWithUndo(item) }
+        )
+    }
 
-        Button {
-            selectedItem = item
-        } label: {
+    /// Flips the entry between the two sections, animating the move.
+    private func toggleWatched(_ item: CustomListItem) {
+        withAnimation(rowAnimation) {
+            viewModel.toggleWatched(item)
+        }
+    }
+
+    // MARK: - Removal
+
+    private func removeWithUndo(_ item: CustomListItem) {
+        viewModel.removeWithUndo(item, from: list, toast: toast, animation: rowAnimation)
+    }
+}
+
+/// One row in a collection's Unwatched/Watched grid or list. `@ObservedObject` so toggling
+/// `item.watchedAt` (this collection's own watched state) redraws it — `NSManagedObject` doesn't
+/// republish view updates on its own the way SwiftData's `@Model` did.
+private struct CustomListRow: View {
+    @ObservedObject var item: CustomListItem
+    let onSelect: () -> Void
+    let onToggleWatched: () -> Void
+    let onRemove: () -> Void
+
+    private var isWatched: Bool { item.isWatched }
+
+    var body: some View {
+        Button(action: onSelect) {
             MediaCardView(
                 title: item.media?.title ?? "",
-                subtitle: subtitle(for: item),
+                subtitle: subtitle,
                 imageURL: item.media?.thumbnailURL,
                 networks: item.media?.networks ?? [],
                 providerCategories: item.media?.providerCategories ?? [:],
                 isWatched: isWatched,
                 voteAverage: item.media?.voteAverage,
                 genres: item.media?.genres ?? [],
-                watchedLabel: watchedLabel(for: item)
+                watchedLabel: watchedLabel
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -212,17 +244,13 @@ struct CustomListDetailView: View {
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                removeWithUndo(item)
-            } label: {
+            Button(role: .destructive, action: onRemove) {
                 Label("Remove", systemImage: "trash")
             }
         }
         // Watched state here is the collection's own — the Movies / TV Shows tabs never change.
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button {
-                toggleWatched(item)
-            } label: {
+            Button(action: onToggleWatched) {
                 Label(
                     isWatched ? "Mark Unwatched" : "Mark Watched",
                     systemImage: isWatched ? "circle" : "checkmark.circle.fill"
@@ -231,30 +259,19 @@ struct CustomListDetailView: View {
             .tint(isWatched ? .gray : .green)
         }
         .contextMenu {
-            Button {
-                toggleWatched(item)
-            } label: {
+            Button(action: onToggleWatched) {
                 Label(
                     isWatched ? "Mark Unwatched" : "Mark Watched",
                     systemImage: isWatched ? "circle" : "checkmark.circle.fill"
                 )
             }
-            Button(role: .destructive) {
-                removeWithUndo(item)
-            } label: {
+            Button(role: .destructive, action: onRemove) {
                 Label("Remove from Collection", systemImage: "trash")
             }
         }
     }
 
-    /// Flips the entry between the two sections, animating the move.
-    private func toggleWatched(_ item: CustomListItem) {
-        withAnimation(rowAnimation) {
-            viewModel.toggleWatched(item)
-        }
-    }
-
-    private func subtitle(for item: CustomListItem) -> String? {
+    private var subtitle: String? {
         if let tvShow = item.tvShow {
             return tvShow.seasonsEpisodesSummary
         } else if let movie = item.movie {
@@ -265,15 +282,9 @@ struct CustomListDetailView: View {
     }
 
     /// "Watched Sep 2026", rendered in the card's corner chip so it never crowds the subtitle.
-    private func watchedLabel(for item: CustomListItem) -> String? {
+    private var watchedLabel: String? {
         guard let watchedAt = item.watchedAt else { return nil }
         return "Watched \(watchedAt.formatted(.dateTime.month(.abbreviated).year()))"
-    }
-
-    // MARK: - Removal
-
-    private func removeWithUndo(_ item: CustomListItem) {
-        viewModel.removeWithUndo(item, from: list, toast: toast, animation: rowAnimation)
     }
 }
 
@@ -315,14 +326,19 @@ extension CustomListViewModel {
 /// `ListItem` over the shared media row (like Discover does) so it never reaches into the
 /// watchlist: the only watched state it can change is the collection entry's own.
 private struct CustomListItemDetailSheet: View {
-    let item: CustomListItem
-    let list: CustomList
+    /// `@ObservedObject` — `NSManagedObject` doesn't republish view updates on its own the way
+    /// SwiftData's `@Model` did, and this sheet reads `item.isWatched` / `list.items` / `list.name`.
+    @ObservedObject var item: CustomListItem
+    @ObservedObject var list: CustomList
     let listViewModel: CustomListViewModel
     let onRemove: () -> Void
     let dismiss: () -> Void
 
     /// Wraps the *shared* media row, so anything the detail sheet fetches into that row (providers,
-    /// cast, backdrop) is stored once and shows up everywhere else the title appears.
+    /// cast, backdrop) is stored once and shows up everywhere else the title appears. The init
+    /// automatically joins the persisted `tvShow`/`movie`'s context and store (see
+    /// `inferredContext`/`assignToStore` in `MediaItem.swift`) — it must, since it's related to a
+    /// stored row and Core Data forbids relating objects across contexts.
     @State private var detailItem: ListItem
 
     init(
@@ -357,7 +373,7 @@ private struct CustomListItemDetailSheet: View {
         // Inside a collection, "+" on a similar / recommended title adds to *this* collection,
         // not to Up Next, and the checkmarks reflect this collection's membership.
         let collection: CustomList = list
-        let existingIDs: Set<String> = Set((list.items ?? []).compactMap { item -> String? in
+        let existingIDs: Set<String> = Set(listVM.visibleItems(in: collection).compactMap { item -> String? in
             guard let media = item.media else { return nil }
             return MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
         })
@@ -372,7 +388,7 @@ private struct CustomListItemDetailSheet: View {
         )
 
         return MediaDetailView(
-            listItem: $detailItem,
+            listItem: detailItem,
             dismiss: dismiss,
             onRemove: onRemove,
             customListViewModel: listVM,
@@ -389,16 +405,15 @@ private struct CustomListItemDetailSheet: View {
         .onDisappear { discardTransientItem() }
     }
 
-    /// The wrapper points at a *persisted* media row, so SwiftData's autosave can cascade-insert it
-    /// as a real watchlist entry. Tear it down when the sheet closes — a collection must never
-    /// leave a `ListItem` behind in the Movies / TV Shows tabs.
+    /// The wrapper points at a *persisted* media row, so Core Data's autosave can cascade-insert it
+    /// as a real watchlist entry. Tear it down when the sheet closes — a collection must never leave
+    /// a `ListItem` behind in the Movies / TV Shows tabs. `list` stays nil on this wrapper the whole
+    /// time, so `MediaLibraryViewModel`'s `list != nil` fetch filter never picks it up in between.
     private func discardTransientItem() {
-        if let context = detailItem.modelContext {
-            context.delete(detailItem)
-            try? context.save()
-            return
-        }
+        let persistence = PersistenceController.shared
         detailItem.movie = nil
         detailItem.tvShow = nil
+        persistence.viewContext.delete(detailItem)
+        persistence.save()
     }
 }
