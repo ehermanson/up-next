@@ -21,6 +21,21 @@ enum AirDateFormat {
         return f
     }()
 
+    /// Used for dates outside the current year ("Jul 8, 2027") — a bare "Jul 8" ten months
+    /// out reads as if it were this year.
+    private static let displayWithYear: DateFormatter = {
+        let f = DateFormatter()
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.setLocalizedDateFormatFromTemplate("MMMdyyyy")
+        return f
+    }()
+
+    /// "Jun 15" within the current UTC year, otherwise "Jul 8, 2027".
+    private static func dayLabel(for date: Date, now: Date = .now) -> String {
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+        return (sameYear ? display : displayWithYear).string(from: date)
+    }
+
     private static let weekday: DateFormatter = {
         let f = DateFormatter()
         f.timeZone = TimeZone(identifier: "UTC")
@@ -45,10 +60,10 @@ enum AirDateFormat {
         calendar.startOfDay(for: date)
     }
 
-    /// "Jun 15", or nil if the string can't be parsed.
+    /// "Jun 15" (or "Jul 8, 2027" outside the current year), or nil if the string can't be parsed.
     static func shortLabel(from dateString: String) -> String? {
         guard let date = date(from: dateString) else { return nil }
-        return display.string(from: date)
+        return dayLabel(for: date)
     }
 
     /// "Today" / "Tomorrow" / the weekday name within the next six days / "Jun 15".
@@ -61,7 +76,7 @@ enum AirDateFormat {
         case 0: return "Today"
         case 1: return "Tomorrow"
         case 2...6: return weekday.string(from: target)
-        default: return display.string(from: target)
+        default: return dayLabel(for: target, now: now)
         }
     }
 

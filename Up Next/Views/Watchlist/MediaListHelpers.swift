@@ -114,18 +114,22 @@ func isGenericEpisodeName(_ name: String) -> Bool {
     return !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
 }
 
-/// Upcoming episodes (TV) or releases (movies), soonest first.
+/// Upcoming episodes (TV) or releases (movies) within the next `windowDays`, soonest first.
 ///
 /// TV includes watched items too — a returning show the user is caught up on is exactly what this
 /// strip is for — but never dropped ones. Movies only include unwatched items, and only those
 /// releasing *after* today (a movie released today is already watchable, not "coming soon").
+/// The window keeps far-off placeholder dates (TMDB will happily report a premiere ten months
+/// out) from squatting at the top of the list.
 func upcomingEntries(
     from items: [ListItem],
     mediaType: MediaType,
     now: Date = .now,
+    windowDays: Int = 30,
     limit: Int = 12
 ) -> [UpcomingEntry] {
     let today = AirDateFormat.startOfUTCDay(for: now)
+    let horizon = today.addingTimeInterval(TimeInterval(windowDays) * 24 * 60 * 60)
     var entries: [UpcomingEntry] = []
 
     for item in items {
@@ -140,7 +144,7 @@ func upcomingEntries(
                   let tvShow = item.tvShow,
                   let airDate = tvShow.nextEpisodeAirDate,
                   let parsed = AirDateFormat.date(from: airDate),
-                  parsed >= today
+                  parsed >= today, parsed <= horizon
             else { continue }
             date = parsed
             if let code = episodeCode(season: tvShow.nextEpisodeSeason, episode: tvShow.nextEpisodeNumber) {
@@ -154,7 +158,7 @@ func upcomingEntries(
                   let movie = item.movie,
                   let releaseDate = movie.releaseDate,
                   let parsed = AirDateFormat.date(from: releaseDate),
-                  parsed > today
+                  parsed > today, parsed <= horizon
             else { continue }
             date = parsed
             detail = nil
