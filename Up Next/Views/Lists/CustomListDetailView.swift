@@ -257,6 +257,10 @@ private struct CustomListItemDetailSheet: View {
     let onRemove: () -> Void
     let dismiss: () -> Void
 
+    /// Only used to let the sheet's Similar / Recommended "+" buttons add to Up Next — the
+    /// collection entry's own watched state never touches the library.
+    @Environment(MediaLibraryViewModel.self) private var library
+
     /// Wraps the *shared* media row, so anything the detail sheet fetches into that row (providers,
     /// cast, backdrop) is stored once and shows up everywhere else the title appears.
     @State private var detailItem: ListItem
@@ -290,6 +294,10 @@ private struct CustomListItemDetailSheet: View {
         let collectionName: String = list.name
         let entry: CustomListItem = item
         let listVM: CustomListViewModel = listViewModel
+        let existingIDs: Set<String> = MediaIDKey.makeSet(.tvShow, library.existingTVShowIDs)
+            .union(MediaIDKey.makeSet(.movie, library.existingMovieIDs))
+        let addTVShow: (TVShow) -> Void = { library.addTVShow($0) }
+        let addMovie: (Movie) -> Void = { library.addMovie($0) }
         let watchedBinding: Binding<Bool> = Binding(
             get: { entry.isWatched },
             set: { (newValue: Bool) in
@@ -304,9 +312,9 @@ private struct CustomListItemDetailSheet: View {
             onRemove: onRemove,
             customListViewModel: listVM,
             onAdd: nil,
-            existingIDs: [],
-            onTVShowAdded: nil,
-            onMovieAdded: nil,
+            existingIDs: existingIDs,
+            onTVShowAdded: addTVShow,
+            onMovieAdded: addMovie,
             collectionWatched: watchedBinding,
             collectionName: collectionName,
             removeLabel: "Remove from collection",

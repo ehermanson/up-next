@@ -155,7 +155,7 @@ struct MediaDetailView: View {
                             parts: collectionParts,
                             currentMovieID: listItem.movie.map { Int($0.id) ?? 0 },
                             existingIDs: existingIDs.union(addedSimilarIDs),
-                            onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addCollectionItem($0) } : nil,
+                            onAdd: canAddToLibrary ? { addCollectionItem($0) } : nil,
                             onTap: { openCollectionDetail($0) }
                         )
 
@@ -163,14 +163,14 @@ struct MediaDetailView: View {
                             title: "Similar",
                             items: similarItems,
                             existingIDs: existingIDs.union(addedSimilarIDs),
-                            onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addSimilarItem($0) } : nil,
+                            onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
                             onTap: { openSimilarDetail($0) }
                         )
                         SimilarSection(
                             title: "Recommended",
                             items: recommendedItems,
                             existingIDs: existingIDs.union(addedSimilarIDs),
-                            onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addSimilarItem($0) } : nil,
+                            onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
                             onTap: { openSimilarDetail($0) }
                         )
                     }
@@ -226,7 +226,7 @@ struct MediaDetailView: View {
                     listItem: similarDetailBinding(for: item),
                     dismiss: { selectedSimilarItem = nil },
                     onRemove: { selectedSimilarItem = nil },
-                    onAdd: { addSimilarFromDetail(item) },
+                    onAdd: canAddToLibrary ? { addSimilarFromDetail(item) } : nil,
                     existingIDs: existingIDs.union(addedSimilarIDs),
                     onTVShowAdded: onTVShowAdded,
                     onMovieAdded: onMovieAdded
@@ -283,7 +283,7 @@ struct MediaDetailView: View {
                     }
                 }
             }
-            .font(.subheadline)
+            .labelStyle(StackedLabelStyle())
             .controlSize(.large)
         }
     }
@@ -365,6 +365,12 @@ struct MediaDetailView: View {
     }
 
     // MARK: - Similar / Collection Actions
+
+    /// Whether this sheet was given a way to add titles to the watchlist. Without it, a "+"
+    /// would toast "added" and go nowhere.
+    private var canAddToLibrary: Bool {
+        onTVShowAdded != nil || onMovieAdded != nil
+    }
 
     private func addSimilarItem(_ item: SimilarMediaItem) {
         let stringID = String(item.id)
@@ -466,9 +472,10 @@ private struct CollectionWatchedCard: View {
     let collectionName: String?
     @Binding var isWatched: Bool
 
-    private var title: String {
+    /// Spoken form carries the collection name; the visible title stays short so it never wraps.
+    private var accessibilityTitle: String {
         guard let collectionName, !collectionName.isEmpty else { return "Watched in this collection" }
-        return "Watched in \u{201C}\(collectionName)\u{201D}"
+        return "Watched in \(collectionName)"
     }
 
     var body: some View {
@@ -478,23 +485,37 @@ private struct CollectionWatchedCard: View {
                 .foregroundStyle(isWatched ? .green : .secondary)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
+                Text("Watched")
                     .font(.headline)
-                Text("Only affects this collection \u{2014} your Movies/TV Shows tab isn't changed.")
+                Text("In this collection only.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
             }
 
             Spacer(minLength: 0)
 
-            Toggle(title, isOn: $isWatched)
+            Toggle(accessibilityTitle, isOn: $isWatched)
                 .labelsHidden()
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
         .sensoryFeedback(.selection, trigger: isWatched)
+    }
+}
+
+/// Icon over a one-line caption — keeps three glass buttons on one row at any label length.
+private struct StackedLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(spacing: 4) {
+            configuration.icon
+                .font(.body)
+            configuration.title
+                .font(.caption2)
+                .fontWeight(.medium)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
     }
 }
 
