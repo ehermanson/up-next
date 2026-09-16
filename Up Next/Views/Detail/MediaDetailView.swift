@@ -319,11 +319,10 @@ struct MediaDetailView: View {
                 let providers = detail.watchProviders?.results?[service.currentRegion]
                 tvShow.update(from: await service.mapToTVShow(detail, providers: providers))
 
-                if let newCount = tvShow.numberOfSeasons,
-                   previousSeasonCount != nil,
-                   newCount > (previousSeasonCount ?? 0) {
-                    onSeasonCountChanged?(listItem, previousSeasonCount)
-                }
+                // Always re-derive, not just when the season count grew: an announced season
+                // becoming watchable changes availability without changing the count, and the
+                // handler is a cheap, idempotent re-sync.
+                onSeasonCountChanged?(listItem, previousSeasonCount)
 
                 let similar = (detail.similar?.results ?? []).map {
                     SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)

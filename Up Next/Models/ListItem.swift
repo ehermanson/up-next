@@ -84,10 +84,14 @@ final class ListItem {
         self.userNotes = userNotes
     }
 
-    /// The next season number the user should watch, or nil if all watched / no season data
+    /// The next season number the user should watch, or nil if all watched / no season data.
+    /// Only counts seasons that have actually started airing — an announced season is nothing to
+    /// watch next (see `TVShow.availableSeasonCount`).
     var nextSeasonToWatch: Int? {
-        guard let tvShow = tvShow, let total = tvShow.numberOfSeasons, total > 0 else { return nil }
-        for season in 1...total {
+        guard let tvShow = tvShow else { return nil }
+        let available = tvShow.availableSeasonCount
+        guard available > 0 else { return nil }
+        for season in 1...available {
             if !watchedSeasons.contains(season) {
                 return season
             }
@@ -95,12 +99,25 @@ final class ListItem {
         return nil
     }
 
-    /// Syncs `isWatched` / `watchedAt` based on whether all seasons are in `watchedSeasons`.
+    /// Syncs `isWatched` / `watchedAt` based on whether every *available* season is in
+    /// `watchedSeasons` — a caught-up show whose next season is only announced stays watched, and
+    /// drops back into Up Next by itself once that season starts airing (a refresh re-runs this).
     /// No-op for movies or shows without `numberOfSeasons`.
     func syncWatchedStateFromSeasons() {
         guard droppedAt == nil else { return }
         guard let tvShow = tvShow, let total = tvShow.numberOfSeasons, total > 0 else { return }
-        let allWatched = (1...total).allSatisfy { watchedSeasons.contains($0) }
+        // Watched with no season marks means the whole show was marked before TMDB's season data
+        // arrived (or by an older version). That's a statement about every season, so record it
+        // rather than letting the derivation below un-watch the show on the next refresh.
+        if isWatched, watchedSeasons.isEmpty {
+            watchedSeasons = Array(1...total)
+            return
+        }
+        // With nothing aired yet there's nothing to be caught up on, so only an explicit season
+        // mark keeps such an item watched.
+        let available = tvShow.availableSeasonCount
+        let allWatched = !watchedSeasons.isEmpty
+            && (available == 0 || (1...available).allSatisfy { watchedSeasons.contains($0) })
         if allWatched {
             if !isWatched {
                 isWatched = true

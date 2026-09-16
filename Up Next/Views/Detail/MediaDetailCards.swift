@@ -177,12 +177,24 @@ struct SeasonChecklistCard: View {
         }
     }
 
+    /// Caption for a season that exists on TMDB but can't be watched yet — an announcement, with
+    /// its premiere date when TMDB has scheduled one.
+    private func announcedCaption(season: Int) -> String {
+        guard season == listItem.tvShow?.announcedSeasonNumber,
+              let premiere = listItem.tvShow?.announcedSeasonPremiere
+        else { return "Announced" }
+        return "Premieres \(AirDateFormat.shortLabel(from: premiere) ?? premiere)"
+    }
+
     private func seasonRow(season: Int) -> some View {
         let isWatched = listItem.watchedSeasons.contains(season)
         let episodeCount = season <= episodeCounts.count ? episodeCounts[season - 1] : nil
         let description = season <= seasonDescriptions.count ? seasonDescriptions[season - 1] : nil
         let isLast = season == totalSeasons
         let isExpanded = expandedSeasons.contains(season)
+        // Announced seasons stay tappable — TMDB's data can lag a real airing — but read as
+        // unavailable rather than as something the user is behind on.
+        let isAnnounced = season > (listItem.tvShow?.availableSeasonCount ?? 0) && season <= totalSeasons
 
         return VStack(alignment: .leading, spacing: 2) {
             Button {
@@ -192,9 +204,13 @@ struct SeasonChecklistCard: View {
                     Text("Season \(season)")
                         .font(.subheadline)
                         .fontWeight(.medium)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(isAnnounced ? .secondary : .primary)
 
-                    if let count = episodeCount, count > 0 {
+                    if isAnnounced {
+                        Text(announcedCaption(season: season))
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    } else if let count = episodeCount, count > 0 {
                         Text("\(count) episode\(count == 1 ? "" : "s")")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -205,7 +221,7 @@ struct SeasonChecklistCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Season \(season)")
-            .accessibilityValue(isWatched ? "Watched" : "Not watched")
+            .accessibilityValue(isWatched ? "Watched" : (isAnnounced ? "Announced" : "Not watched"))
             .accessibilityAddTraits(.isToggle)
 
             if let description, !description.isEmpty {
@@ -232,14 +248,14 @@ struct SeasonChecklistCard: View {
             Button {
                 listItem.toggleSeason(season)
             } label: {
-                timeline(isWatched: isWatched, isLast: isLast)
+                timeline(isWatched: isWatched, isLast: isLast, isAnnounced: isAnnounced)
             }
             .buttonStyle(.plain)
             .accessibilityHidden(true)
         }
     }
 
-    private func timeline(isWatched: Bool, isLast: Bool) -> some View {
+    private func timeline(isWatched: Bool, isLast: Bool, isAnnounced: Bool) -> some View {
         VStack(spacing: 0) {
             ZStack {
                 Circle()
@@ -247,8 +263,12 @@ struct SeasonChecklistCard: View {
                 Circle()
                     .strokeBorder(
                         isWatched ? AnyShapeStyle(Color.green.opacity(0.6)) : AnyShapeStyle(.fill.secondary),
-                        lineWidth: 1.5
+                        // Dashed and fainter: this season isn't out yet.
+                        style: isAnnounced
+                            ? StrokeStyle(lineWidth: 1.5, dash: [3, 3])
+                            : StrokeStyle(lineWidth: 1.5)
                     )
+                    .opacity(isAnnounced && !isWatched ? 0.6 : 1)
                 if isWatched {
                     Image(systemName: "checkmark")
                         .font(.caption2)
@@ -277,9 +297,13 @@ struct DoneWatchingCard: View {
         listItem.tvShow?.numberOfSeasons ?? 0
     }
 
+    /// Measured against the seasons that have actually aired — same basis as the item's watched
+    /// state, so a caught-up show with an announced season isn't offered "Drop Show".
     private var allSeasonsWatched: Bool {
         guard totalSeasons > 0 else { return false }
-        return (1...totalSeasons).allSatisfy { listItem.watchedSeasons.contains($0) }
+        let available = listItem.tvShow?.availableSeasonCount ?? 0
+        guard available > 0 else { return false }
+        return (1...available).allSatisfy { listItem.watchedSeasons.contains($0) }
     }
 
     /// Show card when: not all seasons watched (partial/none), OR already dropped

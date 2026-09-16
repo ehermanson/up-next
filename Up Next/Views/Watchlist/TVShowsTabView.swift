@@ -177,6 +177,16 @@ struct TVShowsTabView: View {
             return total > 0 ? "Dropped \u{2022} \(count) of \(total) seasons" : "Dropped"
         }
 
+        // Caught up, with the next season only announced: say so rather than falling through to a
+        // plain season count, which reads like there's something waiting.
+        if item.isWatched, let announced = tvShow.announcedSeasonNumber {
+            if let premiere = tvShow.announcedSeasonPremiere {
+                let label = AirDateFormat.shortLabel(from: premiere) ?? premiere
+                return "Season \(announced) premieres \(label)"
+            }
+            return "Season \(announced) announced"
+        }
+
         if !item.watchedSeasons.isEmpty,
            let total = tvShow.numberOfSeasons, total > 1,
            let next = item.nextSeasonToWatch {

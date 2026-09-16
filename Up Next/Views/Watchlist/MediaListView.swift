@@ -648,8 +648,14 @@ struct MediaListRow: View {
 
     /// Show progress bar for any TV show with partial season progress
     private var seasonProgress: (watchedSeasons: [Int], total: Int)? {
-        guard let total = item.tvShow?.numberOfSeasons, total > 0 else { return nil }
-        let watched = item.watchedSeasons
+        guard let tvShow = item.tvShow else { return nil }
+        // Measure against what's actually watchable, so a caught-up show whose next season is only
+        // announced reads as complete instead of "3 of 4".
+        let available = tvShow.availableSeasonCount
+        let total = available > 0 ? available : (tvShow.numberOfSeasons ?? 0)
+        guard total > 0 else { return nil }
+        // Marks on a not-yet-available season would otherwise read as "4 of 3".
+        let watched = item.watchedSeasons.filter { $0 <= total }
         // Only show when there's partial progress (not 0/N or N/N unless dropped)
         guard !watched.isEmpty, (watched.count < total || item.isDropped) else { return nil }
         return (watchedSeasons: watched, total: total)

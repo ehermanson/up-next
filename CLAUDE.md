@@ -192,8 +192,9 @@ The target is universal (`TARGETED_DEVICE_FAMILY = 1,2`, resizable windows on iP
 ### Watched State (TV Shows)
 
 - `watchedSeasons`: Array of watched season numbers (1-based)
-- `nextSeasonToWatch`: Computed from total seasons vs watched
-- `syncWatchedStateFromSeasons()`: Auto-marks fully-watched shows
+- **Season availability** (`TVShow.availableSeasonCount` / `announcedSeasonNumber` / `announcedSeasonPremiere`, computed — no schema): a season counts only once it has episodes (`seasonEpisodeCounts`) *and* has started airing (`next_episode_to_air` pointing at its episode 1 means it hasn't). TMDB adds a season the moment it's announced, so without this a caught-up show bounces back into Up Next with nothing to watch. Stub rows without season data treat every season as available.
+- `nextSeasonToWatch`: Computed from *available* seasons vs watched
+- `syncWatchedStateFromSeasons()`: watched ⇔ every available season is in `watchedSeasons` (and at least one is). A caught-up show with an announced season therefore stays in Watched with a "Season N announced / premieres …" subtitle and no partial progress bar; the 6-hour refresh re-runs the sync for every library row, so it returns to Up Next by itself once the season starts. `handleSeasonCountUpdate` no longer un-marks on a season-count increase — the sync decides.
 - `toggleSeason(_:)` cascades: marking S*n* marks 1…*n*; un-marking S*n* un-marks *n*…last
 - Shows remain in unwatched list when partially watched
 - Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — the transition lives on `ListItem.toggleWatched()` (all seasons for TV). This is the *library's* watched state only; custom-list rows have their own, unrelated toggle (see "Custom Lists")

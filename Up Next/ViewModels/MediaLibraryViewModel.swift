@@ -300,19 +300,13 @@ final class MediaLibraryViewModel {
         try? context.save()
     }
 
+    /// Re-derives watched state after a show's TMDB metadata changed. The season count itself is no
+    /// longer interesting: `syncWatchedStateFromSeasons` counts only seasons that have actually
+    /// started airing, so it already moves a caught-up show back to Up Next the moment a new season
+    /// becomes watchable — and un-marking on the raw count would eject the show while its new season
+    /// is still just an announcement with no episodes.
     func handleSeasonCountUpdate(for listItem: ListItem, previousSeasonCount: Int?) {
         guard listItem.droppedAt == nil else { return }
-        guard let previous = previousSeasonCount,
-              let current = listItem.tvShow?.numberOfSeasons,
-              current > previous
-        else { return }
-
-        // If all previous seasons were watched, the show was "complete" — move it back to Up Next.
-        // TMDB reports 0 seasons for announced shows, in which case nothing was watched yet.
-        if previous > 0, (1...previous).allSatisfy({ listItem.watchedSeasons.contains($0) }) {
-            listItem.isWatched = false
-            listItem.watchedAt = nil
-        }
         listItem.syncWatchedStateFromSeasons()
         persistChanges(for: .tvShow)
     }
@@ -330,9 +324,9 @@ final class MediaLibraryViewModel {
         // Collect value-type inputs — no @Model captures in task closures. `inLibrary` marks the
         // rows a `ListItem` owns; the rest are media rows only custom lists refer to, which get
         // their metadata refreshed but none of the library's watched-state bookkeeping.
-        var tvInputs: [(id: Int, prevSeasons: Int?, inLibrary: Bool)] = tvShows.compactMap { item in
+        var tvInputs: [(id: Int, inLibrary: Bool)] = tvShows.compactMap { item in
             guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { return nil }
-            return (id, tvShow.numberOfSeasons, true)
+            return (id, true)
         }
         var movieInputs: [(id: Int, inLibrary: Bool)] = movies.compactMap { item in
             guard let movie = item.movie, let id = Int(movie.id) else { return nil }
@@ -344,7 +338,7 @@ final class MediaLibraryViewModel {
         if let customItems = try? context.fetch(FetchDescriptor<CustomListItem>()) {
             for item in customItems {
                 if let tvShow = item.tvShow, let id = Int(tvShow.id), seenTVIDs.insert(id).inserted {
-                    tvInputs.append((id, nil, false))
+                    tvInputs.append((id, false))
                 }
                 if let movie = item.movie, let id = Int(movie.id), seenMovieIDs.insert(id).inserted {
                     movieInputs.append((id, false))
@@ -358,21 +352,21 @@ final class MediaLibraryViewModel {
         for batch in stride(from: 0, to: tvInputs.count, by: maxConcurrent) {
             guard !Task.isCancelled else { return false }
             let slice = tvInputs[batch..<min(batch + maxConcurrent, tvInputs.count)]
-            let results = await withTaskGroup(of: (Int, Int?, Bool, TMDBTVShowDetail?).self) { group in
+            let results = await withTaskGroup(of: (Int, Bool, TMDBTVShowDetail?).self) { group in
                 for input in slice {
                     group.addTask {
                         let detail = try? await service.getTVShowDetails(id: input.id)
-                        return (input.id, input.prevSeasons, input.inLibrary, detail)
+                        return (input.id, input.inLibrary, detail)
                     }
                 }
-                var out: [(Int, Int?, Bool, TMDBTVShowDetail?)] = []
+                var out: [(Int, Bool, TMDBTVShowDetail?)] = []
                 for await result in group { out.append(result) }
                 return out
             }
 
             // Apply updates on main actor (no isolation crossing). Match by TMDB id rather than
             // index — a delete, undo or add during the refresh shifts indices.
-            for (id, prevSeasons, inLibrary, detail) in results {
+            for (id, inLibrary, detail) in results {
                 guard let detail else { continue }
                 successfulFetches += 1
                 let providers = detail.watchProviders?.results?[service.currentRegion]
@@ -381,10 +375,10 @@ final class MediaLibraryViewModel {
                     guard let listItem = tvShows.first(where: { $0.tvShow?.id == String(id) }),
                           let tvShow = listItem.tvShow else { continue }
                     tvShow.update(from: mapped)
-                    if let newCount = tvShow.numberOfSeasons,
-                       let prev = prevSeasons, newCount > prev {
-                        handleSeasonCountUpdate(for: listItem, previousSeasonCount: prevSeasons)
-                    }
+                    // Re-derive for every refreshed show, not just ones that gained a season:
+                    // an announced season becoming watchable changes nothing about the count.
+                    // The batched `syncUnwatched` + save below picks the results up.
+                    listItem.syncWatchedStateFromSeasons()
                 } else {
                     guard let tvShow = existingTVShow(id: String(id), in: context) else { continue }
                     tvShow.update(from: mapped)

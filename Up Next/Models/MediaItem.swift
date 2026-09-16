@@ -468,6 +468,41 @@ extension TVShow {
         }
     }
 
+    /// Seasons that can actually be watched right now. TMDB lists a season the moment it's announced —
+    /// zero episodes, or episodes dated months out — and counting it would drag a caught-up show back
+    /// into Up Next with nothing to watch. A season is available when it has episodes and has started
+    /// airing; `next_episode_to_air` pointing at its episode 1 means it hasn't.
+    var availableSeasonCount: Int {
+        let total = numberOfSeasons ?? 0
+        guard total > 0 else { return 0 }
+
+        var highest = 0
+        for season in 1...total {
+            // Search-stub rows carry no per-season data — treat those seasons as available so thin
+            // data never behaves worse than it does today.
+            if seasonEpisodeCounts.count >= season, seasonEpisodeCounts[season - 1] <= 0 { continue }
+            // The next episode to air being this season's premiere means the season hasn't started;
+            // anything past the season that episode belongs to hasn't either.
+            if nextEpisodeSeason == season, nextEpisodeNumber == 1 { continue }
+            if let nextSeason = nextEpisodeSeason, season > nextSeason { continue }
+            highest = season
+        }
+        return highest
+    }
+
+    /// The first season that exists but isn't watchable yet, or nil when every season is available.
+    var announcedSeasonNumber: Int? {
+        let total = numberOfSeasons ?? 0
+        let available = availableSeasonCount
+        return available < total ? available + 1 : nil
+    }
+
+    /// The announced season's premiere date, when TMDB has scheduled one.
+    var announcedSeasonPremiere: String? {
+        guard let announced = announcedSeasonNumber, nextEpisodeSeason == announced else { return nil }
+        return nextEpisodeAirDate
+    }
+
     /// User-facing summary of seasons and episodes for display
     var seasonsEpisodesSummary: String? {
         guard let seasons = numberOfSeasons else { return nil }
