@@ -9,6 +9,11 @@ struct MyListsView: View {
     @State private var editingList: CustomList?
     @State private var navigationPath = NavigationPath()
     @State private var listToDelete: CustomList?
+    #if DEBUG
+    /// Screenshot mode (`--collection <name>`): pushed once, the first time the named collection
+    /// exists — seeding creates it after this view may already be on screen.
+    @State private var didOpenRequestedCollection = false
+    #endif
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -98,6 +103,10 @@ struct MyListsView: View {
                     }
                 }
             }
+            #if DEBUG
+            .onAppear { openRequestedCollectionIfNeeded() }
+            .onChange(of: viewModel.customLists.map(\.name)) { openRequestedCollectionIfNeeded() }
+            #endif
             .navigationDestination(for: UUID.self) { listID in
                 if let list = viewModel.customLists.first(where: { $0.id == listID }) {
                     CustomListDetailView(viewModel: viewModel, list: list)
@@ -134,4 +143,18 @@ struct MyListsView: View {
             }
         }
     }
+
+    #if DEBUG
+    /// Screenshot mode only: drill into the collection named by `--collection` so the store
+    /// screenshot shows a populated collection rather than the overview.
+    private func openRequestedCollectionIfNeeded() {
+        guard ScreenshotMode.isEnabled, !didOpenRequestedCollection,
+              let name = ScreenshotMode.requestedCollectionName,
+              let list = viewModel.customLists.first(where: { $0.name == name })
+        else { return }
+        didOpenRequestedCollection = true
+        viewModel.activeListID = list.id
+        navigationPath.append(list.id)
+    }
+    #endif
 }

@@ -14,11 +14,32 @@ struct ContentView: View {
     @State private var viewModel = MediaLibraryViewModel()
     @State private var customListViewModel = CustomListViewModel()
 
-    @State private var selectedTab: MediaTab = .tvShows
+    @State private var selectedTab: MediaTab = ContentView.initialTab
     @State private var showingSettings = false
     @State private var showingSearch = false
 
+    #if DEBUG
+    /// Set once seeding finishes when launched with `--open <tmdbID>` (screenshot mode). Presented
+    /// as its own sheet since `TVShowsTabView` owns `expandedItemID` privately.
+    @State private var screenshotDetailItem: ListItem?
+    #endif
+
     private let settings = ProviderSettings.shared
+
+    /// `--tab <tvShows|movies|collections|discover>` in screenshot mode, else the normal default.
+    private static var initialTab: MediaTab {
+        #if DEBUG
+        switch ScreenshotMode.requestedTab {
+        case "tvShows": return .tvShows
+        case "movies": return .movies
+        case "collections": return .myLists
+        case "discover": return .discover
+        default: return .tvShows
+        }
+        #else
+        return .tvShows
+        #endif
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -63,6 +84,11 @@ struct ContentView: View {
             ProviderSettingsView()
         }
         .task {
+            #if DEBUG
+            // Screenshot mode: pick a populated provider set before the onboarding check below can
+            // fire, so the first-launch sheet never appears.
+            ScreenshotMode.configureProviders()
+            #endif
             // First launch: prompt for streaming services once, and never again even if the
             // sheet is dismissed without choosing any. Presented before the (possibly slow)
             // library load so the user isn't staring at an empty list first.
@@ -72,6 +98,14 @@ struct ContentView: View {
             }
             await viewModel.configure(modelContext: modelContext)
             customListViewModel.configure(modelContext: modelContext)
+            #if DEBUG
+            if ScreenshotMode.isEnabled {
+                await ScreenshotMode.seed(library: viewModel, lists: customListViewModel)
+                if let requestedID = ScreenshotMode.requestedDetailID {
+                    screenshotDetailItem = viewModel.tvShows.first(where: { $0.media?.id == requestedID })
+                }
+            }
+            #endif
         }
         .onChange(of: settings.regionOverride) {
             // Provider availability is region-specific, so every stored row's networks are now
@@ -98,6 +132,25 @@ struct ContentView: View {
                 libraryMovies: viewModel.movies
             )
         }
+        #if DEBUG
+        // Screenshot mode only (`--open <tmdbID>`): TVShowsTabView owns `expandedItemID` privately,
+        // so this is a self-contained sheet over the tab view rather than reaching into it.
+        .sheet(
+            item: $screenshotDetailItem,
+            onDismiss: { viewModel.persistChanges(for: .tvShow) }
+        ) { item in
+            MediaDetailView(
+                listItem: screenshotDetailBinding(for: item),
+                dismiss: { screenshotDetailItem = nil },
+                onRemove: { screenshotDetailItem = nil },
+                customListViewModel: customListViewModel,
+                existingIDs: MediaIDKey.makeSet(.tvShow, viewModel.existingTVShowIDs)
+                    .union(MediaIDKey.makeSet(.movie, viewModel.existingMovieIDs)),
+                onTVShowAdded: { viewModel.addTVShow($0) },
+                onMovieAdded: { viewModel.addMovie($0) }
+            )
+        }
+        #endif
     }
 
     private var searchContext: WatchlistSearchView.SearchContext {
@@ -108,6 +161,21 @@ struct ContentView: View {
         default: .all
         }
     }
+
+    #if DEBUG
+    private func screenshotDetailBinding(for item: ListItem) -> Binding<ListItem> {
+        Binding(
+            get: { viewModel.tvShows.first(where: { $0.media?.id == item.media?.id }) ?? item },
+            set: { newValue in
+                guard
+                    let id = item.media?.id,
+                    let index = viewModel.tvShows.firstIndex(where: { $0.media?.id == id })
+                else { return }
+                viewModel.tvShows[index] = newValue
+            }
+        )
+    }
+    #endif
 }
 
 #Preview {

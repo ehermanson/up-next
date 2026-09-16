@@ -58,8 +58,9 @@ MVVM with SwiftData persistence. Three `@Observable` ViewModels own business log
 ```
 Up Next/
 ├── App/
-│   ├── Watch_ListApp.swift              # @main entry, SwiftData schema registration
-│   └── ContentView.swift                # Tab navigation (TV Shows, Movies, Collections, Discover)
+│   ├── Watch_ListApp.swift              # @main entry, SwiftData schema registration (in-memory store in screenshot mode)
+│   ├── ContentView.swift                # Tab navigation (TV Shows, Movies, Collections, Discover)
+│   └── ScreenshotMode.swift             # DEBUG-only: --screenshots seeds a curated demo library for App Store captures
 │
 ├── Models/                              # SwiftData @Model classes
 │   ├── MediaItem.swift                  # Movie, TVShow, Network models
@@ -125,6 +126,10 @@ Up Next/
 
 ci_scripts/
 └── ci_post_clone.sh                     # Xcode Cloud: generates Info.plist, sets build number
+
+AppStore/
+├── 1.7-metadata.md                      # Paste-ready App Store Connect copy (What's New, description, keywords)
+└── screenshots/{iphone-6.9,ipad-13}/    # Store screenshots captured via screenshot mode
 ```
 
 ## Key Patterns
@@ -224,6 +229,10 @@ The code says `CustomList`/"list"; every user-facing string says "collection" �
 - `update(from:)` only reassigns `networks` when providers actually changed, deleting `Network` rows nothing else references. Deleting a `ListItem`/`CustomListItem` deletes its media row when nothing else points at it (`deleteMediaIfUnreferenced`).
 - Swipe-delete is deferred 5 s for Undo; it's flushed on `scenePhase == .background`.
 - Full refresh (`refreshAllItems`) matches results by TMDB id, never array index, and only stamps `lastFullRefreshDate` when at least one fetch succeeded.
+
+## App Store Screenshots
+
+DEBUG builds accept `--screenshots` (see `ScreenshotMode.swift`): the app uses an in-memory, non-CloudKit store, preselects six providers, skips onboarding, and seeds a curated set of real TMDB titles (with season progress, ratings, and two collections) through the normal view-model APIs. `--tab tvShows|movies|collections|discover` picks the tab, `--open <tmdbID>` presents a TV show's detail sheet, `--collection <name>` drills into that collection. Capture with the simulator: build for `platform=iOS Simulator`, `simctl install`, `simctl status_bar … override --time 9:41`, `simctl launch <udid> com.erichermanson.upnext --screenshots --tab …`, wait for seeding (~100 s; the DEBUG `seedStubData` fallback runs first on an empty store and is purged), then `simctl io <udid> screenshot`. Required sizes: iPhone 17 Pro Max (1320×2868) and iPad Pro 13" (2064×2752). Nothing here compiles into Release.
 
 ## CI/CD (Xcode Cloud)
 

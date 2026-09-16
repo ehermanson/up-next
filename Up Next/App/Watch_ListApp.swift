@@ -15,6 +15,20 @@ struct Watch_ListApp: App {
             CustomList.self,
             CustomListItem.self,
         ])
+        #if DEBUG
+        // App Store screenshot capture (`--screenshots`, see ScreenshotMode): an in-memory,
+        // non-CloudKit store so seeded data never touches the real local/CloudKit store and every
+        // launch starts from a clean slate.
+        if ScreenshotMode.isEnabled {
+            let screenshotConfiguration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            do {
+                return try ModelContainer(for: schema, configurations: screenshotConfiguration)
+            } catch {
+                fatalError("Could not create in-memory ModelContainer for screenshot mode: \(error)")
+            }
+        }
+        #endif
+
         let configuration = ModelConfiguration(
             "Watch_List",
             cloudKitDatabase: .automatic
