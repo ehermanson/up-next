@@ -10,10 +10,6 @@ struct CustomListDetailView: View {
     @State private var showingAddItems = false
     @State private var selectedItem: CustomListItem?
     @State private var isConfirmingMarkAllUnwatched = false
-    @State private var surpriseCount = 0
-    /// Last id handed to `selectedItem` via "Surprise Me" — skipped on the next pick when there's
-    /// another candidate, so two taps in a row don't just reopen the same title.
-    @State private var lastSurpriseID: PersistentIdentifier?
 
     /// Collections keep their own watched state (`CustomListItem.watchedAt`) — nothing here reads
     /// or writes the Movies / TV Shows tabs.
@@ -72,21 +68,11 @@ struct CustomListDetailView: View {
                     showingAddItems = true
                 }
             }
-            if unwatchedItems.count > 1 || !watchedItems.isEmpty {
+            if !watchedItems.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        if unwatchedItems.count > 1 {
-                            Button("Surprise Me", systemImage: "dice") {
-                                surpriseMe()
-                            }
-                        }
-                        if unwatchedItems.count > 1 && !watchedItems.isEmpty {
-                            Divider()
-                        }
-                        if !watchedItems.isEmpty {
-                            Button("Mark All Unwatched", systemImage: "arrow.counterclockwise") {
-                                isConfirmingMarkAllUnwatched = true
-                            }
+                        Button("Mark All Unwatched", systemImage: "arrow.counterclockwise") {
+                            isConfirmingMarkAllUnwatched = true
                         }
                     } label: {
                         Label("More", systemImage: "ellipsis")
@@ -94,7 +80,6 @@ struct CustomListDetailView: View {
                 }
             }
         }
-        .sensoryFeedback(.impact, trigger: surpriseCount)
         .confirmationDialog(
             markAllUnwatchedPrompt,
             isPresented: $isConfirmingMarkAllUnwatched,
@@ -214,20 +199,6 @@ struct CustomListDetailView: View {
                 Label("Remove from Collection", systemImage: "trash")
             }
         }
-    }
-
-    /// Opens the detail sheet for a random unwatched item — same effect as tapping its row. Avoids
-    /// repeating the previous pick whenever another candidate exists.
-    private func surpriseMe() {
-        var candidates = unwatchedItems
-        guard !candidates.isEmpty else { return }
-        if candidates.count > 1, let lastSurpriseID {
-            candidates.removeAll { $0.persistentModelID == lastSurpriseID }
-        }
-        guard let pick = candidates.randomElement() else { return }
-        lastSurpriseID = pick.persistentModelID
-        surpriseCount += 1
-        selectedItem = pick
     }
 
     /// Flips the entry between the two sections, animating the move.

@@ -199,7 +199,7 @@ final class DiscoverViewModel {
     // MARK: - Loading
 
     func initialLoad() async {
-        await reload()
+        await runOwnedReload()
     }
 
     /// Pull-to-refresh. Drops the cached responses for the endpoints Discover owns before
@@ -210,7 +210,20 @@ final class DiscoverViewModel {
         await service.invalidateResponseCache(
             pathPrefixes: ["/discover/", "/trending/", "/movie/now_playing", "/genre/"]
         )
-        await reload()
+        await runOwnedReload()
+    }
+
+    /// Runs `reload()` on a task this view model owns and waits for it. The loaders bail on
+    /// cancellation and leave the loading flags for "the replacement" to clear — which is right
+    /// when *we* cancelled them for a newer load, but SwiftUI also cancels the caller's task
+    /// (`.task` on a tab switch, `.refreshable` when the gesture ends) with no replacement
+    /// coming, and the shimmer would never end. Awaiting an owned task's value doesn't forward
+    /// that cancellation, so the load always runs to completion and clears its own flags.
+    private func runOwnedReload() async {
+        reloadTask?.cancel()
+        let task = Task { await reload() }
+        reloadTask = task
+        await task.value
     }
 
     /// Reloads everything. Also drives pull-to-refresh; `reloadBrowse()` already resets the

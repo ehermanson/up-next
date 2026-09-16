@@ -36,10 +36,6 @@ struct MediaListView: View {
     /// Bumped on every watched toggle / reorder so `.sensoryFeedback` has a trigger to observe.
     @State private var watchedToggleCount = 0
     @State private var reorderCount = 0
-    @State private var surpriseCount = 0
-    /// Last id handed to `onItemExpanded` via the dice chip — skipped on the next pick when there's
-    /// another candidate, so two taps in a row don't just reopen the same title.
-    @State private var lastSurpriseID: String?
 
     /// Animation used for user-driven list changes (watched toggle, delete). A watched-toggle is a
     /// *move* across the Up Next / Watched sections, so both sections must diff in one explicit
@@ -74,13 +70,6 @@ struct MediaListView: View {
         return { source, destination in
             moveUnwatched(from: source, to: destination)
         }
-    }
-
-    /// `nil` hides the dice chip — nothing to choose between, or the list is being reordered.
-    /// Hoisted out of `body` like `moveHandler`; an inline ternary here tips the type-checker.
-    private var surpriseHandler: (() -> Void)? {
-        guard displayedUnwatchedItems.count > 1, !isEditingOrder else { return nil }
-        return { surpriseMe() }
     }
 
     var body: some View {
@@ -124,8 +113,7 @@ struct MediaListView: View {
                                 availableProviderCategories: availableProviderCategories,
                                 selectedProviderCategory: $selectedProviderCategory,
                                 onlyMyServices: $onlyMyServices,
-                                showsMyServicesFilter: showsMyServicesFilter,
-                                onSurprise: surpriseHandler
+                                showsMyServicesFilter: showsMyServicesFilter
                             )
 
                             ForEach(displayedUnwatchedItems, id: \.media?.id) { item in
@@ -216,7 +204,6 @@ struct MediaListView: View {
         }
         .sensoryFeedback(.selection, trigger: watchedToggleCount)
         .sensoryFeedback(.impact, trigger: reorderCount)
-        .sensoryFeedback(.impact, trigger: surpriseCount)
         .onChange(of: hasActiveFilter) {
             if hasActiveFilter { isEditingOrder = false }
         }
@@ -332,20 +319,6 @@ struct MediaListView: View {
         )
     }
 
-    /// Opens the detail sheet for a random filtered, unwatched row — same effect as tapping it.
-    /// Avoids repeating the previous pick whenever another candidate exists.
-    private func surpriseMe() {
-        var candidates = displayedUnwatchedItems
-        guard !candidates.isEmpty else { return }
-        if candidates.count > 1, let lastSurpriseID {
-            candidates.removeAll { $0.media?.id == lastSurpriseID }
-        }
-        guard let pick = candidates.randomElement() else { return }
-        lastSurpriseID = pick.media?.id
-        surpriseCount += 1
-        onItemExpanded(pick.media?.id)
-    }
-
     private func toggleWatched(_ item: ListItem) {
         // Wrap the whole transition — the item moving between Up Next and Watched, plus the
         // derived arrays recomputed in onWatchedToggled() — in one animation so both sections
@@ -446,8 +419,6 @@ private struct SectionHeader: View {
     @Binding var selectedProviderCategory: String?
     @Binding var onlyMyServices: Bool
     var showsMyServicesFilter: Bool = false
-    /// Renders the dice chip just left of Filter when non-nil.
-    var onSurprise: (() -> Void)?
 
     init(
         title: String,
@@ -458,8 +429,7 @@ private struct SectionHeader: View {
         availableProviderCategories: [String] = [],
         selectedProviderCategory: Binding<String?> = .constant(nil),
         onlyMyServices: Binding<Bool> = .constant(false),
-        showsMyServicesFilter: Bool = false,
-        onSurprise: (() -> Void)? = nil
+        showsMyServicesFilter: Bool = false
     ) {
         self.title = title
         self.count = count
@@ -470,7 +440,6 @@ private struct SectionHeader: View {
         self._selectedProviderCategory = selectedProviderCategory
         self._onlyMyServices = onlyMyServices
         self.showsMyServicesFilter = showsMyServicesFilter
-        self.onSurprise = onSurprise
     }
 
     private var hasActiveFilter: Bool {
@@ -492,15 +461,6 @@ private struct SectionHeader: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(count) items")
             Spacer()
-            if let onSurprise {
-                Button(action: onSurprise) {
-                    Chip(icon: "dice", text: "Surprise")
-                        .frame(minHeight: 44)
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Surprise me")
-            }
             if showsFilter, hasFilterOptions {
                 Menu {
                     if showsMyServicesFilter {

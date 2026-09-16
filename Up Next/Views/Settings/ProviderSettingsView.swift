@@ -73,34 +73,38 @@ struct ProviderSettingsView: View {
     // MARK: - Region
 
     private var regionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Region")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+        NavigationLink {
+            RegionPickerView(regions: regions, isLoading: isLoadingRegions, selection: regionSelection)
+        } label: {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Region")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+
+                    Text("Streaming availability and provider logos are looked up for this region.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 Spacer()
 
-                if isLoadingRegions {
-                    ProgressView()
-                } else {
-                    Picker("Region", selection: regionSelection) {
-                        Text(automaticRegionLabel).tag(nil as String?)
-                        ForEach(regionOptions) { region in
-                            Text(region.englishName).tag(region.iso31661 as String?)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .tint(Color.accentColor)
-                }
-            }
+                HStack(spacing: 4) {
+                    Text(currentRegionLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
 
-            Text("Streaming availability and provider logos are looked up for this region.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .layoutPriority(1)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(.plain)
         .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
@@ -119,19 +123,10 @@ struct ProviderSettingsView: View {
         )
     }
 
-    /// The loaded regions, or — when the fetch failed — just the currently selected one, so the
-    /// picker can always render its own value instead of blocking the sheet.
-    private var regionOptions: [TMDBWatchProviderRegion] {
-        if !regions.isEmpty { return regions }
-        guard let current = settings.regionOverride else { return [] }
-        let name = Self.regionName(current)
-        return [TMDBWatchProviderRegion(iso31661: current, englishName: name, nativeName: name)]
-    }
-
-    private var automaticRegionLabel: String {
-        let code = ProviderSettings.deviceRegion
-        let name = regions.first { $0.iso31661 == code }?.englishName ?? Self.regionName(code)
-        return "Automatic (\(name))"
+    /// Short trailing label for the row: "Automatic" or the selected region's English name.
+    private var currentRegionLabel: String {
+        guard let code = settings.regionOverride else { return "Automatic" }
+        return regions.first { $0.iso31661 == code }?.englishName ?? Self.regionName(code)
     }
 
     /// Localized country name for a region code, falling back to the raw code.
@@ -208,8 +203,8 @@ struct ProviderSettingsView: View {
         }
     }
 
-    /// A failure here is non-fatal: `regionOptions` falls back to Automatic plus whatever region
-    /// is already selected, so the picker still renders.
+    /// A failure here is non-fatal: the row still shows the current pick (via `Locale` for the
+    /// name) and `RegionPickerView` keeps Automatic selectable under a "couldn't load" state.
     private func loadRegions() async {
         isLoadingRegions = true
         regions = (try? await TMDBService.shared.fetchWatchProviderRegions()) ?? []
@@ -246,6 +241,124 @@ struct ProviderSettingsView: View {
         .padding(.top, 24)
     }
     #endif
+}
+
+// MARK: - Region Picker
+
+/// Dedicated region list pushed from `regionSection`. A menu can't hold ~100 regions
+/// legibly, so this gives the picker its own searchable screen instead.
+private struct RegionPickerView: View {
+    let regions: [TMDBWatchProviderRegion]
+    let isLoading: Bool
+    @Binding var selection: String?
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+
+    var body: some View {
+        List {
+            Section {
+                automaticRow
+            }
+
+            Section("All Regions") {
+                if regions.isEmpty && isLoading {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+                } else if regions.isEmpty {
+                    EmptyStateView(icon: "wifi.exclamationmark", title: "Couldn't load regions")
+                        .listRowBackground(Color.clear)
+                } else {
+                    ForEach(filteredRegions) { region in
+                        regionRow(region)
+                    }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(AppBackground())
+        .listStyle(.plain)
+        .navigationTitle("Region")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Search regions")
+    }
+
+    private var automaticRow: some View {
+        Button {
+            selection = nil
+            dismiss()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Automatic")
+                        .foregroundStyle(.primary)
+                    Text("Uses your device's region (\(deviceRegionName))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if selection == nil {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .contentShape(.rect)
+        .listRowBackground(Color.clear)
+    }
+
+    private func regionRow(_ region: TMDBWatchProviderRegion) -> some View {
+        Button {
+            selection = region.iso31661
+            dismiss()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(region.englishName)
+                        .foregroundStyle(.primary)
+                    if region.nativeName != region.englishName {
+                        Text(region.nativeName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                if selection == region.iso31661 {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .contentShape(.rect)
+        .listRowBackground(Color.clear)
+    }
+
+    private var deviceRegionName: String {
+        let code = ProviderSettings.deviceRegion
+        return regions.first { $0.iso31661 == code }?.englishName
+            ?? Locale.current.localizedString(forRegionCode: code) ?? code
+    }
+
+    /// Case- and diacritic-insensitive match on English name, native name, or ISO code.
+    private var filteredRegions: [TMDBWatchProviderRegion] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return regions }
+        return regions.filter { region in
+            region.englishName.localizedStandardContains(query)
+                || region.nativeName.localizedStandardContains(query)
+                || region.iso31661.localizedStandardContains(query)
+        }
+    }
 }
 
 // MARK: - Provider Grid Cell
