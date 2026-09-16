@@ -36,7 +36,6 @@ final class PersistenceController {
 
     private var remoteChangeObserver: RemoteChangeObserver?
 
-    private static let legacyStoreRemovedKey = "legacyStoreRemoved"
     /// Set between accepting a share and the shared zone's first import landing. CloudKit imports
     /// asynchronously, so right after `acceptShare` neither store holds a group — without this
     /// flag the role rule would seed a fresh private group and the device would stay an owner.
@@ -202,40 +201,18 @@ final class PersistenceController {
 
     // MARK: - Bootstrap
 
-    /// Removes legacy store files, applies the role rule, seeds a fresh `WatchListGroup` +
-    /// "TV Shows"/"Movies" `MediaList`s when neither store has one, and starts observing remote
-    /// changes. Must run before any view model configures.
+    /// Applies the role rule, seeds a fresh `WatchListGroup` + "TV Shows"/"Movies" `MediaList`s
+    /// when neither store has one, and starts observing remote changes. Must run before any view
+    /// model configures. The 1.x SwiftData store (`Watch_List*` in Application Support) is left
+    /// untouched on purpose: it's a few MB, this stack never opens it, and leaving it means putting
+    /// a 1.x build back on the device restores that data instantly and offline.
     func bootstrap() throws {
-        removeLegacyStoresIfNeeded()
         try applyRoleRule()
 
         if remoteChangeObserver == nil {
             remoteChangeObserver = RemoteChangeObserver(persistence: self)
             remoteChangeObserver?.start()
         }
-    }
-
-    private func removeLegacyStoresIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: Self.legacyStoreRemovedKey) else { return }
-
-        let supportBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let fileManager = FileManager.default
-
-        let explicitNames = ["default.store", "default.store-shm", "default.store-wal"]
-        for name in explicitNames {
-            let url = supportBase.appendingPathComponent(name)
-            if fileManager.fileExists(atPath: url.path) {
-                try? fileManager.removeItem(at: url)
-            }
-        }
-
-        if let contents = try? fileManager.contentsOfDirectory(at: supportBase, includingPropertiesForKeys: nil) {
-            for url in contents where url.lastPathComponent.hasPrefix("Watch_List") {
-                try? fileManager.removeItem(at: url)
-            }
-        }
-
-        UserDefaults.standard.set(true, forKey: Self.legacyStoreRemovedKey)
     }
 
     private func applyRoleRule() throws {

@@ -131,7 +131,7 @@ Transformables use `NSSecureUnarchiveFromDataTransformer` (arrays/dicts of Strin
     private(set) var remoteChangeCount: Int              // bumped on foreign-authored history
     private(set) var group: WatchListGroup!              // the share root (fetched or seeded); NIL while isJoiningSharedLibrary
     var isJoiningSharedLibrary: Bool                     // accepted a share, shared zone not imported yet → show a "Joining…" placeholder, don't seed
-    func bootstrap() throws                              // load stores, detect role, seed if needed, delete legacy SwiftData store files
+    func bootstrap() throws                              // detect role, seed if needed (the 1.x SwiftData store is left in place, untouched)
     func list(named: String) -> MediaList?               // "TV Shows" / "Movies" from group.lists
     func insert(_ object: NSManagedObject)               // viewContext.insert + assign(to: activeStore)
     func save()                                          // save if hasChanges; log on failure
