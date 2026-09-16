@@ -84,6 +84,23 @@ final class DiscoverViewModel {
             case .movie: .movie
             }
         }
+
+        /// Release/premiere year, parsed from TMDB's `yyyy-MM-dd` date string.
+        var year: String? {
+            let date: String?
+            switch self {
+            case .tvShow(let r): date = r.firstAirDate
+            case .movie(let r): date = r.releaseDate
+            }
+            guard let date, date.count >= 4 else { return nil }
+            return String(date.prefix(4))
+        }
+    }
+
+    /// One carousel's outcome: its items, plus a message if the fetch failed.
+    private struct CarouselResult {
+        var items: [DiscoverItem] = []
+        var errorDescription: String?
     }
 
     /// The filter state a browse request was issued under. A response whose request no longer
@@ -114,12 +131,28 @@ final class DiscoverViewModel {
     var trendingItems: [DiscoverItem] = []
     var topRatedItems: [DiscoverItem] = []
     var newReleasesItems: [DiscoverItem] = []
+    /// TV only: shows with an episode airing in the next seven days.
+    var airingThisWeekItems: [DiscoverItem] = []
+    /// Movies only: titles currently in theaters.
+    var inTheatersItems: [DiscoverItem] = []
 
     var browseItems: [DiscoverItem] = []
     var browsePage = 1
     var browseTotalPages = 1
     var isBrowseLoading = false
     var isCarouselLoading = false
+
+    /// Set when a carousel fetch failed. The view only surfaces it when every carousel is empty.
+    var carouselError: String?
+    /// Set when a browse page fetch failed. The view only surfaces it when there are no items.
+    var browseError: String?
+
+    /// True when at least one carousel has something to show.
+    var hasCarouselItems: Bool {
+        !trendingItems.isEmpty || !topRatedItems.isEmpty
+            || !newReleasesItems.isEmpty || !airingThisWeekItems.isEmpty
+            || !inTheatersItems.isEmpty
+    }
 
     var selectedGenre: TMDBGenre? {
         didSet {
@@ -161,6 +194,8 @@ final class DiscoverViewModel {
         await reload()
     }
 
+    /// Reloads everything. Also drives pull-to-refresh; `reloadBrowse()` already resets the
+    /// page counter, so browse isn't loaded twice.
     func reload() async {
         async let carousels: Void = loadCarousels()
         async let browse: Void = reloadBrowse()
@@ -172,47 +207,135 @@ final class DiscoverViewModel {
         let requestedMediaType = selectedMediaType
         let requestedProviderFilter = providerFilter
         isCarouselLoading = true
+        carouselError = nil
 
-        await withTaskGroup(of: (String, [DiscoverItem]).self) { group in
-            group.addTask { [selectedMediaType] in
-                let items = await self.fetchItems(
-                    mediaType: selectedMediaType, sortBy: "popularity.desc",
-                    voteCountGte: nil, page: 1, providerFilter: requestedProviderFilter
-                )
-                return ("trending", items)
-            }
-            group.addTask { [selectedMediaType] in
-                let items = await self.fetchItems(
-                    mediaType: selectedMediaType, sortBy: "vote_average.desc",
-                    voteCountGte: 200, page: 1, providerFilter: requestedProviderFilter
-                )
-                return ("topRated", items)
-            }
-            group.addTask { [selectedMediaType] in
-                let sortBy = selectedMediaType == .movies
-                    ? "primary_release_date.desc" : "first_air_date.desc"
-                let items = await self.fetchItems(
-                    mediaType: selectedMediaType, sortBy: sortBy,
-                    voteCountGte: 50, page: 1, providerFilter: requestedProviderFilter
-                )
-                return ("newReleases", items)
-            }
+        let today = TMDBService.apiDateString(from: .now)
+        let weekOut = TMDBService.apiDateString(from: Date.now.addingTimeInterval(7 * 24 * 60 * 60))
 
-            for await (key, items) in group {
-                // The shared request task isn't cancelled by us, so check explicitly: a
-                // superseded media type's results must not land on the current carousels.
-                guard !Task.isCancelled, requestedMediaType == selectedMediaType else { continue }
-                switch key {
-                case "trending": trendingItems = items
-                case "topRated": topRatedItems = items
-                case "newReleases": newReleasesItems = items
-                default: break
-                }
-            }
-        }
-        // A superseded load leaves the flag alone; its replacement owns it.
-        guard !Task.isCancelled, requestedMediaType == selectedMediaType else { return }
+        async let trending = fetchTrendingCarousel(
+            mediaType: requestedMediaType, providerFilter: requestedProviderFilter
+        )
+        async let topRated = fetchTopRatedCarousel(
+            mediaType: requestedMediaType, providerFilter: requestedProviderFilter
+        )
+        async let newReleases = fetchNewReleasesCarousel(
+            mediaType: requestedMediaType, providerFilter: requestedProviderFilter, today: today
+        )
+        async let airingThisWeek = fetchAiringThisWeekCarousel(
+            mediaType: requestedMediaType, providerFilter: requestedProviderFilter,
+            today: today, weekOut: weekOut
+        )
+        async let inTheaters = fetchInTheatersCarousel(mediaType: requestedMediaType)
+
+        let results = await (trending, topRated, newReleases, airingThisWeek, inTheaters)
+
+        // The shared request task isn't cancelled by us, so check explicitly: a superseded
+        // media type or provider filter's results must not land on the current carousels.
+        // A superseded load also leaves the loading flag alone; its replacement owns it.
+        guard !Task.isCancelled,
+              requestedMediaType == selectedMediaType,
+              requestedProviderFilter == providerFilter
+        else { return }
+
+        trendingItems = results.0.items
+        topRatedItems = results.1.items
+        newReleasesItems = results.2.items
+        airingThisWeekItems = results.3.items
+        inTheatersItems = results.4.items
+        carouselError = [
+            results.0.errorDescription, results.1.errorDescription, results.2.errorDescription,
+            results.3.errorDescription, results.4.errorDescription,
+        ].compactMap { $0 }.first
         isCarouselLoading = false
+    }
+
+    /// Real trending when unfiltered. `/trending` can't take `with_watch_providers`, so when the
+    /// user is filtering to their services we fall back to provider-scoped popularity — the
+    /// closest provider-aware equivalent.
+    private func fetchTrendingCarousel(
+        mediaType: DiscoverMediaType, providerFilter: String?
+    ) async -> CarouselResult {
+        do {
+            if providerFilter != nil {
+                return CarouselResult(items: try await discoverItems(
+                    mediaType: mediaType, sortBy: "popularity.desc", providerFilter: providerFilter
+                ))
+            }
+            switch mediaType {
+            case .tvShows:
+                let response = try await service.trendingTVShows(window: "week")
+                return CarouselResult(items: response.results.map { .tvShow($0) })
+            case .movies:
+                let response = try await service.trendingMovies(window: "week")
+                return CarouselResult(items: response.results.map { .movie($0) })
+            }
+        } catch {
+            return CarouselResult(errorDescription: Self.errorText(error))
+        }
+    }
+
+    private func fetchTopRatedCarousel(
+        mediaType: DiscoverMediaType, providerFilter: String?
+    ) async -> CarouselResult {
+        do {
+            return CarouselResult(items: try await discoverItems(
+                mediaType: mediaType, sortBy: "vote_average.desc",
+                voteCountGte: 200, providerFilter: providerFilter
+            ))
+        } catch {
+            return CarouselResult(errorDescription: Self.errorText(error))
+        }
+    }
+
+    /// Newest *released* titles. The `…date.lte` cutoff keeps pre-release titles that already
+    /// have a handful of festival votes out of the list.
+    private func fetchNewReleasesCarousel(
+        mediaType: DiscoverMediaType, providerFilter: String?, today: String
+    ) async -> CarouselResult {
+        do {
+            switch mediaType {
+            case .tvShows:
+                return CarouselResult(items: try await discoverItems(
+                    mediaType: .tvShows, sortBy: "first_air_date.desc",
+                    voteCountGte: 50, providerFilter: providerFilter, firstAirDateLte: today
+                ))
+            case .movies:
+                return CarouselResult(items: try await discoverItems(
+                    mediaType: .movies, sortBy: "primary_release_date.desc",
+                    voteCountGte: 50, providerFilter: providerFilter, releaseDateLte: today
+                ))
+            }
+        } catch {
+            return CarouselResult(errorDescription: Self.errorText(error))
+        }
+    }
+
+    /// TV only: shows airing an episode between today and a week out. Respects the provider
+    /// filter, since these are ordinary streaming/broadcast titles.
+    private func fetchAiringThisWeekCarousel(
+        mediaType: DiscoverMediaType, providerFilter: String?, today: String, weekOut: String
+    ) async -> CarouselResult {
+        guard mediaType == .tvShows else { return CarouselResult() }
+        do {
+            return CarouselResult(items: try await discoverItems(
+                mediaType: .tvShows, sortBy: "popularity.desc", providerFilter: providerFilter,
+                airDateGte: today, airDateLte: weekOut
+            ))
+        } catch {
+            return CarouselResult(errorDescription: Self.errorText(error))
+        }
+    }
+
+    /// Movies only: what's in theaters right now. Deliberately ignores the provider filter —
+    /// a theatrical run isn't a streaming service.
+    private func fetchInTheatersCarousel(mediaType: DiscoverMediaType) async -> CarouselResult {
+        guard mediaType == .movies else { return CarouselResult() }
+        do {
+            let response = try await service.nowPlayingMovies(page: 1)
+            return CarouselResult(items: response.results.map { .movie($0) })
+        } catch {
+            return CarouselResult(errorDescription: Self.errorText(error))
+        }
     }
 
     func reloadBrowse() async {
@@ -237,6 +360,7 @@ final class DiscoverViewModel {
         )
         latestBrowseRequest = request
         isBrowseLoading = true
+        browseError = nil
 
         let genreID = request.genreID.map(String.init)
         let sortBy = request.mediaType == .movies
@@ -275,8 +399,9 @@ final class DiscoverViewModel {
             }
             browseTotalPages = totalPages
         } catch {
-            // Silently fail; items stay as-is
+            // Items stay as-is; the view decides whether the failure is worth showing.
             guard !Task.isCancelled, latestBrowseRequest == request else { return }
+            browseError = Self.errorText(error)
         }
         // A superseded page leaves the flag alone; its replacement owns it.
         isBrowseLoading = false
@@ -296,26 +421,39 @@ final class DiscoverViewModel {
         }
     }
 
-    private func fetchItems(
-        mediaType: DiscoverMediaType, sortBy: String,
-        voteCountGte: Int?, page: Int, providerFilter: String?
-    ) async -> [DiscoverItem] {
-        do {
-            if mediaType == .tvShows {
-                let response = try await service.discoverTVShows(
-                    page: page, sortBy: sortBy, withWatchProviders: providerFilter,
-                    voteCountGte: voteCountGte
-                )
-                return response.results.map { .tvShow($0) }
-            } else {
-                let response = try await service.discoverMovies(
-                    page: page, sortBy: sortBy, withWatchProviders: providerFilter,
-                    voteCountGte: voteCountGte
-                )
-                return response.results.map { .movie($0) }
-            }
-        } catch {
-            return []
+    /// One page of `/discover` results for a carousel, with the optional date bounds TMDB
+    /// names differently per media type.
+    private func discoverItems(
+        mediaType: DiscoverMediaType,
+        sortBy: String,
+        voteCountGte: Int? = nil,
+        providerFilter: String?,
+        firstAirDateLte: String? = nil,
+        airDateGte: String? = nil,
+        airDateLte: String? = nil,
+        releaseDateLte: String? = nil
+    ) async throws -> [DiscoverItem] {
+        if mediaType == .tvShows {
+            let response = try await service.discoverTVShows(
+                page: 1, sortBy: sortBy, withWatchProviders: providerFilter,
+                voteCountGte: voteCountGte, firstAirDateLte: firstAirDateLte,
+                airDateGte: airDateGte, airDateLte: airDateLte
+            )
+            return response.results.map { .tvShow($0) }
+        } else {
+            let response = try await service.discoverMovies(
+                page: 1, sortBy: sortBy, withWatchProviders: providerFilter,
+                voteCountGte: voteCountGte, releaseDateLte: releaseDateLte
+            )
+            return response.results.map { .movie($0) }
         }
+    }
+
+    /// User-facing text for a failed fetch — `nil` for cancellations, which are a superseded
+    /// request rather than a failure worth surfacing.
+    private static func errorText(_ error: any Error) -> String? {
+        if error is CancellationError { return nil }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return nil }
+        return error.localizedDescription
     }
 }

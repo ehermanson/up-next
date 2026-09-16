@@ -59,6 +59,49 @@ final class TMDBService: @unchecked Sendable {
         return response.results
     }
 
+    // MARK: - Trending & Theatrical
+
+    /// Genuinely trending TV shows for a time window ("day" or "week").
+    ///
+    /// `/trending` does not accept `with_watch_providers`; callers that must respect the user's
+    /// "on my services" filter should fall back to `discoverTVShows(sortBy: "popularity.desc", …)`,
+    /// which is the provider-aware equivalent.
+    func trendingTVShows(window: String = "week") async throws -> TMDBTVShowSearchResponse {
+        try await performRequest(endpoint: "/trending/tv/\(window)", queryItems: [])
+    }
+
+    /// Genuinely trending movies for a time window ("day" or "week"). See `trendingTVShows`
+    /// for the provider-filter caveat.
+    func trendingMovies(window: String = "week") async throws -> TMDBMovieSearchResponse {
+        try await performRequest(endpoint: "/trending/movie/\(window)", queryItems: [])
+    }
+
+    /// Movies currently playing in theaters in the user's region.
+    /// Theatrical releases aren't on a streaming service, so this ignores the provider filter.
+    func nowPlayingMovies(page: Int = 1) async throws -> TMDBMovieSearchResponse {
+        try await performRequest(
+            endpoint: "/movie/now_playing",
+            queryItems: [
+                URLQueryItem(name: "page", value: String(page)),
+                URLQueryItem(name: "region", value: currentRegion),
+            ]
+        )
+    }
+
+    /// Formats a date the way TMDB's `*_date.gte` / `*_date.lte` discover filters expect:
+    /// `yyyy-MM-dd` in UTC, so a device near midnight never asks for tomorrow's cutoff.
+    static func apiDateString(from date: Date) -> String {
+        apiDateFormatter.string(from: date)
+    }
+
+    private static let apiDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     // MARK: - Details
 
     /// Get detailed information for a TV show
@@ -384,6 +427,10 @@ final class TMDBService: @unchecked Sendable {
             contentRating: extractTVContentRating(from: detail),
             episodeRunTime: detail.episodeRunTime?.first,
             nextEpisodeAirDate: detail.nextEpisodeToAir?.airDate,
+            nextEpisodeSeason: detail.nextEpisodeToAir?.seasonNumber,
+            nextEpisodeNumber: detail.nextEpisodeToAir?.episodeNumber,
+            nextEpisodeName: detail.nextEpisodeToAir?.name,
+            status: detail.status,
             voteAverage: detail.voteAverage
         )
     }
@@ -553,14 +600,22 @@ final class TMDBService: @unchecked Sendable {
 
     // MARK: - Discover
 
-    /// Discover TV shows with optional filters
+    /// Discover TV shows with optional filters.
+    ///
+    /// Date parameters take TMDB's `yyyy-MM-dd` format (see `apiDateString(from:)`):
+    /// - `firstAirDateLte` excludes shows that haven't premiered yet.
+    /// - `airDateGte` / `airDateLte` bound the window in which *any* episode airs, which is what
+    ///   "currently airing" means to TMDB.
     func discoverTVShows(
         page: Int = 1,
         sortBy: String = "popularity.desc",
         withGenres: String? = nil,
         withWatchProviders: String? = nil,
         watchRegion: String? = nil,
-        voteCountGte: Int? = nil
+        voteCountGte: Int? = nil,
+        firstAirDateLte: String? = nil,
+        airDateGte: String? = nil,
+        airDateLte: String? = nil
     ) async throws -> TMDBTVShowSearchResponse {
         var queryItems = [
             URLQueryItem(name: "page", value: String(page)),
@@ -577,17 +632,30 @@ final class TMDBService: @unchecked Sendable {
         if let voteCountGte {
             queryItems.append(URLQueryItem(name: "vote_count.gte", value: String(voteCountGte)))
         }
+        if let firstAirDateLte {
+            queryItems.append(URLQueryItem(name: "first_air_date.lte", value: firstAirDateLte))
+        }
+        if let airDateGte {
+            queryItems.append(URLQueryItem(name: "air_date.gte", value: airDateGte))
+        }
+        if let airDateLte {
+            queryItems.append(URLQueryItem(name: "air_date.lte", value: airDateLte))
+        }
         return try await performRequest(endpoint: "/discover/tv", queryItems: queryItems)
     }
 
-    /// Discover movies with optional filters
+    /// Discover movies with optional filters.
+    ///
+    /// `releaseDateLte` takes TMDB's `yyyy-MM-dd` format (see `apiDateString(from:)`) and excludes
+    /// titles that haven't been released yet.
     func discoverMovies(
         page: Int = 1,
         sortBy: String = "popularity.desc",
         withGenres: String? = nil,
         withWatchProviders: String? = nil,
         watchRegion: String? = nil,
-        voteCountGte: Int? = nil
+        voteCountGte: Int? = nil,
+        releaseDateLte: String? = nil
     ) async throws -> TMDBMovieSearchResponse {
         var queryItems = [
             URLQueryItem(name: "page", value: String(page)),
@@ -603,6 +671,9 @@ final class TMDBService: @unchecked Sendable {
         }
         if let voteCountGte {
             queryItems.append(URLQueryItem(name: "vote_count.gte", value: String(voteCountGte)))
+        }
+        if let releaseDateLte {
+            queryItems.append(URLQueryItem(name: "primary_release_date.lte", value: releaseDateLte))
         }
         return try await performRequest(endpoint: "/discover/movie", queryItems: queryItems)
     }

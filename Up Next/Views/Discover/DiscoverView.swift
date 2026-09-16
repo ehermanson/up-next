@@ -27,6 +27,9 @@ struct DiscoverView: View {
                 }
                 .padding(.bottom, 20)
             }
+            .refreshable {
+                await viewModel.reload()
+            }
             .background(AppBackground())
             .navigationTitle("Discover")
         }
@@ -102,19 +105,45 @@ struct DiscoverView: View {
 
     // MARK: - Carousel Sections
 
+    @ViewBuilder
     private var carouselSections: some View {
         VStack(alignment: .leading, spacing: 24) {
             if viewModel.isCarouselLoading {
                 carouselShimmer
+            } else if let error = viewModel.carouselError, !viewModel.hasCarouselItems {
+                EmptyStateView(
+                    icon: "wifi.exclamationmark",
+                    title: "Couldn't load Discover",
+                    subtitle: error
+                ) {
+                    Button("Try Again") {
+                        Task { await viewModel.reload() }
+                    }
+                    .buttonStyle(.glassProminent)
+                }
+                .padding(.vertical, 40)
             } else {
                 carouselRow("Trending", items: viewModel.trendingItems)
+                carouselRow("Airing This Week", items: viewModel.airingThisWeekItems)
+                carouselRow("In Theaters", items: viewModel.inTheatersItems)
                 carouselRow("Top Rated", items: viewModel.topRatedItems)
                 carouselRow("New Releases", items: viewModel.newReleasesItems)
             }
         }
     }
 
+    /// Renders nothing when the carousel has no items — "Airing This Week" and "In Theaters"
+    /// only apply to one media type each.
+    @ViewBuilder
     private func carouselRow(_ title: String, items: [DiscoverViewModel.DiscoverItem]) -> some View {
+        if !items.isEmpty {
+            carouselRowContent(title, items: items)
+        }
+    }
+
+    private func carouselRowContent(
+        _ title: String, items: [DiscoverViewModel.DiscoverItem]
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.title3)
@@ -271,7 +300,19 @@ struct DiscoverView: View {
 
     private var browseList: some View {
         Group {
-            if viewModel.browseItems.isEmpty && !viewModel.isBrowseLoading && providerFilterIsActive {
+            if let error = viewModel.browseError, viewModel.browseItems.isEmpty {
+                EmptyStateView(
+                    icon: "wifi.exclamationmark",
+                    title: "Couldn't load titles",
+                    subtitle: error
+                ) {
+                    Button("Try Again") {
+                        Task { await viewModel.reloadBrowse() }
+                    }
+                    .buttonStyle(.glassProminent)
+                }
+                .padding(.vertical, 40)
+            } else if viewModel.browseItems.isEmpty && !viewModel.isBrowseLoading && providerFilterIsActive {
                 EmptyStateView(
                     icon: "tv.slash",
                     title: "Nothing on your services",
@@ -311,7 +352,8 @@ struct DiscoverView: View {
             isAdded: isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType),
             onAdd: { addItem(item) },
             onTap: { openDetail(for: item) },
-            voteAverage: item.voteAverage
+            voteAverage: item.voteAverage,
+            year: item.year
         )
     }
 

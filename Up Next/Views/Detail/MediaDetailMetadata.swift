@@ -143,8 +143,20 @@ struct MetadataRow: View {
                 if let runtime = tvShow.episodeRunTime {
                     Chip(text: "\(runtime) min/ep")
                 }
-                if let airDate = tvShow.nextEpisodeAirDate, let formatted = Self.formatAirDate(airDate) {
+                if let airDate = tvShow.nextEpisodeAirDate, let formatted = Self.nextEpisodeChipText(for: tvShow) {
                     Chip(icon: "calendar", iconColor: .blue, text: formatted)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(Self.nextEpisodeAccessibilityLabel(for: tvShow, airDate: airDate))
+                }
+                // Only two statuses are worth a chip: a finished show, or one that's confirmed
+                // to return but has no scheduled episode yet (the calendar chip covers the rest).
+                if let status = tvShow.status?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !status.isEmpty {
+                    if status == "Ended" || status == "Canceled" || status == "Cancelled" {
+                        Chip(icon: "flag.checkered", text: status)
+                    } else if status == "Returning Series", tvShow.nextEpisodeAirDate == nil {
+                        Chip(icon: "clock", text: "Returning")
+                    }
                 }
             } else if let movie = listItem.movie {
                 if let year = movie.releaseYear {
@@ -166,8 +178,32 @@ struct MetadataRow: View {
 }
 
 extension MetadataRow {
-    static func formatAirDate(_ dateString: String) -> String? {
-        AirDateFormat.nextLabel(from: dateString)
+    /// "S3E2 · Jun 15" when TMDB gave us the episode pointer, otherwise "Next: Jun 15".
+    static func nextEpisodeChipText(for tvShow: TVShow) -> String? {
+        guard let airDate = tvShow.nextEpisodeAirDate,
+              let day = AirDateFormat.shortLabel(from: airDate)
+        else { return nil }
+        guard let code = episodeCode(season: tvShow.nextEpisodeSeason, episode: tvShow.nextEpisodeNumber) else {
+            return "Next: \(day)"
+        }
+        return "\(code) \u{00B7} \(day)"
+    }
+
+    /// Chips stay single-line, so the episode title (when it isn't a placeholder) is spoken
+    /// rather than shown.
+    static func nextEpisodeAccessibilityLabel(for tvShow: TVShow, airDate: String) -> String {
+        var parts = ["Next episode"]
+        if let season = tvShow.nextEpisodeSeason, let episode = tvShow.nextEpisodeNumber {
+            parts.append("Season \(season) Episode \(episode)")
+        }
+        let name = tvShow.nextEpisodeName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !name.isEmpty, !isGenericEpisodeName(name) {
+            parts.append(name)
+        }
+        if let day = AirDateFormat.shortLabel(from: airDate) {
+            parts.append(day)
+        }
+        return parts.joined(separator: ", ")
     }
 }
 

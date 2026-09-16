@@ -172,6 +172,14 @@ final class TVShow: MediaItemProtocol {
     /// Next episode air date in "YYYY-MM-DD" format (if the show is still airing)
     var nextEpisodeAirDate: String?
 
+    /// Season / episode number and title of the next episode to air, when TMDB knows them
+    var nextEpisodeSeason: Int?
+    var nextEpisodeNumber: Int?
+    var nextEpisodeName: String?
+
+    /// TMDB series status: "Returning Series", "Ended", "Canceled", "In Production", ...
+    var status: String?
+
     /// TMDB vote average (0–10)
     var voteAverage: Double?
 
@@ -198,6 +206,10 @@ final class TVShow: MediaItemProtocol {
         contentRating: String? = nil,
         episodeRunTime: Int? = nil,
         nextEpisodeAirDate: String? = nil,
+        nextEpisodeSeason: Int? = nil,
+        nextEpisodeNumber: Int? = nil,
+        nextEpisodeName: String? = nil,
+        status: String? = nil,
         voteAverage: Double? = nil
     ) {
         self.id = id
@@ -218,6 +230,10 @@ final class TVShow: MediaItemProtocol {
         self.contentRating = contentRating
         self.episodeRunTime = episodeRunTime
         self.nextEpisodeAirDate = nextEpisodeAirDate
+        self.nextEpisodeSeason = nextEpisodeSeason
+        self.nextEpisodeNumber = nextEpisodeNumber
+        self.nextEpisodeName = nextEpisodeName
+        self.status = status
         self.voteAverage = voteAverage
     }
 }
@@ -358,6 +374,10 @@ extension TVShow {
         contentRating = source.contentRating
         episodeRunTime = source.episodeRunTime
         nextEpisodeAirDate = source.nextEpisodeAirDate
+        nextEpisodeSeason = source.nextEpisodeSeason
+        nextEpisodeNumber = source.nextEpisodeNumber
+        nextEpisodeName = source.nextEpisodeName
+        status = source.status
         voteAverage = source.voteAverage
         if source.thumbnailURL != nil {
             thumbnailURL = source.thumbnailURL

@@ -103,6 +103,8 @@ struct SearchResultRowWithImage: View {
     let onAdd: () -> Void
     var onTap: (() -> Void)?
     var voteAverage: Double?
+    /// Release/premiere year, e.g. "2021".
+    var year: String?
 
     @State private var imageURL: URL?
     private let service = TMDBService.shared
@@ -115,7 +117,8 @@ struct SearchResultRowWithImage: View {
             isAdded: isAdded,
             onAdd: onAdd,
             onTap: onTap,
-            voteAverage: voteAverage
+            voteAverage: voteAverage,
+            year: year
         )
         .task {
             if let path = posterPath {
@@ -134,6 +137,8 @@ struct SearchResultRow: View {
     let onAdd: () -> Void
     var onTap: (() -> Void)?
     var voteAverage: Double?
+    /// Release/premiere year, e.g. "2021".
+    var year: String?
 
     var body: some View {
         Group {
@@ -182,9 +187,17 @@ struct SearchResultRow: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(2)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+                        .lineLimit(2)
+
+                    if let year, !year.isEmpty {
+                        Text(year)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 if let overview = overview, !overview.isEmpty {
                     Text(overview)
@@ -247,7 +260,8 @@ struct SearchResultRow: View {
         imageURL: nil,
         isAdded: false,
         onAdd: {},
-        voteAverage: 8.9
+        voteAverage: 8.9,
+        year: "2008"
     )
     .padding()
 }
@@ -259,7 +273,8 @@ struct SearchResultRow: View {
         imageURL: nil,
         isAdded: true,
         onAdd: {},
-        voteAverage: 8.7
+        voteAverage: 8.7,
+        year: "1994"
     )
     .padding()
 }

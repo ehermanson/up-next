@@ -16,6 +16,10 @@ struct MediaListView: View {
     var showsMyServicesFilter: Bool
 
     let navigationTitle: String
+    /// Heading for the upcoming strip — "Airing Soon" (TV) or "Coming Soon" (movies).
+    let upcomingTitle: String
+    /// Items with a future air/release date, shown in a horizontal strip above "Up Next".
+    var upcomingItems: [UpcomingEntry] = []
     let subtitleProvider: (ListItem) -> String?
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
@@ -25,6 +29,8 @@ struct MediaListView: View {
     var onItemDeleted: ((String) -> Void)?
     var onOrderChanged: (() -> Void)?
     var isLoaded: Bool = true
+    /// Pull-to-refresh. Awaited by the refresh control, so it must not return early.
+    var onRefresh: (() async -> Void)?
 
     @State private var isEditingOrder = false
     /// Bumped on every watched toggle / reorder so `.sensoryFeedback` has a trigger to observe.
@@ -88,6 +94,10 @@ struct MediaListView: View {
                     }
                 } else {
                     List {
+                        if !upcomingItems.isEmpty && !isEditingOrder {
+                            upcomingStrip
+                        }
+
                         if unwatchedItems.isEmpty && !isEditingOrder {
                             caughtUpRow
                         }
@@ -146,6 +156,9 @@ struct MediaListView: View {
                             .onDelete(perform: deleteWatched)
                         }
                     }
+                    .refreshable {
+                        await onRefresh?()
+                    }
                     .scrollContentBackground(.hidden)
                     .listStyle(.plain)
                     .contentMargins(.bottom, 20, for: .scrollContent)
@@ -197,6 +210,34 @@ struct MediaListView: View {
         .onChange(of: unwatchedItems.count) {
             if !canReorder { isEditingOrder = false }
         }
+    }
+
+    private var upcomingStrip: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(upcomingTitle, systemImage: "calendar.badge.clock")
+                .font(.headline)
+                .padding(.horizontal, 16)
+
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(upcomingItems) { entry in
+                        Button {
+                            onItemExpanded(entry.item.media?.id)
+                        } label: {
+                            UpcomingCard(entry: entry)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 2)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .padding(.vertical, 8)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private var caughtUpRow: some View {
@@ -301,6 +342,80 @@ struct MediaListView: View {
             onWatchedToggled()
         }
         watchedToggleCount += 1
+    }
+}
+
+/// Compact poster card in the "Airing Soon" / "Coming Soon" strip. Tapping it opens the same
+/// detail sheet a list row does.
+private struct UpcomingCard: View {
+    let entry: UpcomingEntry
+
+    private static let cardWidth: CGFloat = 110
+
+    private var title: String {
+        entry.item.media?.title ?? ""
+    }
+
+    private var isImminent: Bool {
+        entry.dateLabel == "Today" || entry.dateLabel == "Tomorrow"
+    }
+
+    /// "S3E2" reads badly out loud — spell it out for VoiceOver.
+    private var spokenDetail: String? {
+        guard let tvShow = entry.item.tvShow,
+              let season = tvShow.nextEpisodeSeason,
+              let episode = tvShow.nextEpisodeNumber
+        else { return nil }
+        return "Season \(season) Episode \(episode)"
+    }
+
+    private var accessibilityDescription: String {
+        [title, spokenDetail, entry.dateLabel]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            poster
+            Text(title)
+                .font(.caption)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Chip(icon: "calendar", text: entry.dateLabel, isEmphasized: isImminent)
+            if let detail = entry.detail {
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: Self.cardWidth, alignment: .leading)
+        .contentShape(.rect)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var poster: some View {
+        Group {
+            if let url = entry.item.media?.thumbnailURL {
+                CachedAsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Rectangle().fill(.fill.tertiary)
+                    }
+                }
+            } else {
+                Rectangle().fill(.fill.tertiary)
+            }
+        }
+        .frame(width: 64, height: 96)
+        .clipShape(.rect(cornerRadius: DesignTokens.Radius.posterSmall))
     }
 }
 
@@ -490,7 +605,11 @@ struct MediaListRow: View {
                 genres: item.media?.genres ?? [],
                 userRating: item.userRating,
                 seasonProgress: seasonProgress,
-                nextAirDate: item.tvShow?.nextEpisodeAirDate
+                nextAirDate: item.tvShow?.nextEpisodeAirDate,
+                nextEpisodeCode: episodeCode(
+                    season: item.tvShow?.nextEpisodeSeason,
+                    episode: item.tvShow?.nextEpisodeNumber
+                )
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -557,7 +676,11 @@ struct MediaListRow: View {
                 title: "Stub TV Show 1",
                 thumbnailURL: URL(string: "https://example.com/tvshow1.jpg"),
                 networks: sampleNetworks,
-                providerCategories: sampleProviderCategories
+                providerCategories: sampleProviderCategories,
+                nextEpisodeAirDate: "2099-06-15",
+                nextEpisodeSeason: 3,
+                nextEpisodeNumber: 2,
+                nextEpisodeName: "The Long Way Around"
             ),
             list: list,
             addedBy: user,
@@ -627,6 +750,8 @@ struct MediaListRow: View {
         onlyMyServices: .constant(false),
         showsMyServicesFilter: true,
         navigationTitle: "TV Shows",
+        upcomingTitle: "Airing Soon",
+        upcomingItems: upcomingEntries(from: stubItems, mediaType: .tvShow),
         subtitleProvider: { item in
             if let summary = item.tvShow?.seasonsEpisodesSummary {
                 return summary

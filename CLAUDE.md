@@ -72,7 +72,7 @@ Up Next/
 │
 ├── ViewModels/
 │   ├── MediaLibraryViewModel.swift      # Main watchlist state, add/remove, refresh, reorder
-│   ├── DiscoverViewModel.swift          # Trending/top-rated/new carousels, browse with pagination, provider filter
+│   ├── DiscoverViewModel.swift          # Carousels (trending, airing this week / in theaters, top rated, new), browse, provider filter, error state
 │   └── CustomListViewModel.swift        # CRUD for custom lists and their items
 │
 ├── Views/
@@ -149,6 +149,14 @@ CloudKit is optional — the app falls back to local-only if CloudKit is unavail
 - **Watchlist filter**: per-tab `@AppStorage` flags `tvShows.onlyMyServices` / `movies.onlyMyServices`, applied by `filterItems(...)` in `MediaListHelpers.swift` (`isOnSelectedServices` = any network with category `stream`/`ads` whose id is selected). Auto-cleared if the user deselects all providers.
 - **First launch**: `ContentView` presents `ProviderSettingsView` once when no providers are selected and `hasCompletedProviderOnboarding` is false; the flag is set on presentation so it never re-prompts. The DEBUG "Reset Providers & Onboarding" button clears it.
 
+### Discover Data Sources
+
+- **Trending**: `/trending/{tv,movie}/week` when the provider filter is off; `/discover` `popularity.desc` + providers when it's on (`/trending` can't take `with_watch_providers`).
+- **Airing This Week** (TV): `/discover/tv` with `air_date.gte/lte` = today…+7d, respects the provider filter. **In Theaters** (movies): `/movie/now_playing` with `region`, always shown.
+- **New Releases**: `first_air_date.lte` / `primary_release_date.lte` = today so unreleased titles don't leak in. Dates are built with `TMDBService.apiDateString` (UTC).
+- Errors surface as `carouselError` / `browseError` with a retry `EmptyStateView`; pull-to-refresh calls `reload()`. Responses still go through the 10-minute `RequestDeduplicator` cache.
+- Search runs `/search/tv` and `/search/movie` concurrently; when the selected segment has no results but the other does, the empty state offers "Show N movies instead". Rows show the release/premiere year.
+
 ### Media IDs
 
 TMDB movie and TV ids are separate namespaces. Any set that mixes both must use `MediaIDKey.make(mediaType, id)` (`"tv:123"` / `"movie:456"`) — see `MediaDetailSimilar.swift`.
@@ -169,6 +177,10 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 - Shows remain in unwatched list when partially watched
 - Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — `MediaListView.toggleWatched` marks all seasons
 - Watched section is sorted most-recently-watched first
+
+### Upcoming Strip
+
+`upcomingEntries(from:mediaType:)` in `MediaListHelpers.swift` builds the "Airing Soon" (TV) / "Coming Soon" (Movies) strip at the top of each watchlist tab. TV: any non-dropped show (watched or not) with `nextEpisodeAirDate` ≥ today; movies: unwatched with `releaseDate` > today. Sorted soonest-first, capped at 12, ids namespaced `upcoming:<mediaID>`. `TVShow` stores `nextEpisodeSeason/Number/Name` and `status` (from TMDB `next_episode_to_air` / `status`) — cards and the detail chip render `"S3E2 · Jun 15"`, and the detail shows an Ended/Canceled/Returning chip. Relative day labels come from `AirDateFormat.relativeLabel` (UTC day math, consistent with the parser). Pull-to-refresh calls `MediaLibraryViewModel.refreshNow()`, which bypasses the 6-hour interval and cancels any in-flight launch refresh.
 
 ### Image Caching
 

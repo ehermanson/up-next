@@ -15,11 +15,17 @@ struct MediaCardView: View {
     var userRating: Int?
     var seasonProgress: (watchedSeasons: [Int], total: Int)? = nil
     var nextAirDate: String? = nil
+    /// "S3E2" for the next episode. When present the chip reads "S3E2 · Jun 15" — the episode
+    /// pointer already implies "next", so the prefix is dropped.
+    var nextEpisodeCode: String? = nil
 
     private let settings = ProviderSettings.shared
 
     private var nextAirDateLabel: String? {
         guard let nextAirDate else { return nil }
+        if let nextEpisodeCode, let day = AirDateFormat.shortLabel(from: nextAirDate) {
+            return "\(nextEpisodeCode) \u{00B7} \(day)"
+        }
         return AirDateFormat.nextLabel(from: nextAirDate)
     }
 
@@ -220,7 +226,8 @@ private let previewNetworks = [
             voteAverage: 8.3,
             genres: ["Drama", "Sci-Fi", "Thriller"],
             seasonProgress: (watchedSeasons: [1, 2], total: 5),
-            nextAirDate: "2026-03-15"
+            nextAirDate: "2026-03-15",
+            nextEpisodeCode: "S3E2"
         )
         .padding()
     }

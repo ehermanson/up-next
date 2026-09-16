@@ -21,10 +21,54 @@ enum AirDateFormat {
         return f
     }()
 
+    private static let weekday: DateFormatter = {
+        let f = DateFormatter()
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.setLocalizedDateFormatFromTemplate("EEEE")
+        return f
+    }()
+
+    /// Same UTC calendar the formatters use, so "is this today?" agrees with what's rendered.
+    private static let calendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }()
+
+    /// Parses a TMDB "yyyy-MM-dd" string as midnight UTC, or nil if it can't be parsed.
+    static func date(from dateString: String) -> Date? {
+        input.date(from: dateString)
+    }
+
+    /// Start of `date`'s UTC day — the comparison basis for "today or later".
+    static func startOfUTCDay(for date: Date) -> Date {
+        calendar.startOfDay(for: date)
+    }
+
+    /// "Jun 15", or nil if the string can't be parsed.
+    static func shortLabel(from dateString: String) -> String? {
+        guard let date = date(from: dateString) else { return nil }
+        return display.string(from: date)
+    }
+
+    /// "Today" / "Tomorrow" / the weekday name within the next six days / "Jun 15".
+    /// Days are counted in the UTC calendar, matching how the date was parsed.
+    static func relativeLabel(for date: Date, now: Date = .now) -> String {
+        let today = startOfUTCDay(for: now)
+        let target = startOfUTCDay(for: date)
+        let days = calendar.dateComponents([.day], from: today, to: target).day ?? 0
+        switch days {
+        case 0: return "Today"
+        case 1: return "Tomorrow"
+        case 2...6: return weekday.string(from: target)
+        default: return display.string(from: target)
+        }
+    }
+
     /// Returns a "Next: Jun 15" label, or nil if the string can't be parsed.
     static func nextLabel(from dateString: String) -> String? {
-        guard let date = input.date(from: dateString) else { return nil }
-        return "Next: \(display.string(from: date))"
+        guard let short = shortLabel(from: dateString) else { return nil }
+        return "Next: \(short)"
     }
 }
 

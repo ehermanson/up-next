@@ -42,6 +42,8 @@ struct TMDBTVShowDetail: Codable {
     let numberOfEpisodes: Int?
     let episodeRunTime: [Int]?
     let nextEpisodeToAir: TMDBEpisode?
+    /// "Returning Series", "Ended", "Canceled", "In Production", ...
+    let status: String?
     let genres: [TMDBGenre]?
     let credits: TMDBCredits?
     let contentRatings: TMDBContentRatingsResponse?
@@ -54,7 +56,7 @@ struct TMDBTVShowDetail: Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, overview, posterPath, backdropPath, firstAirDate, voteAverage
-        case numberOfSeasons, numberOfEpisodes, episodeRunTime, nextEpisodeToAir
+        case numberOfSeasons, numberOfEpisodes, episodeRunTime, nextEpisodeToAir, status
         case genres, credits, contentRatings, similar, recommendations, videos
         case networks, seasons
         case watchProviders = "watch/providers"

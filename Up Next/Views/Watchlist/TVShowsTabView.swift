@@ -21,6 +21,11 @@ struct TVShowsTabView: View {
         return viewModel.tvShows.first(where: { $0.media?.id == id })
     }
 
+    /// Upcoming episodes across the whole tab — watched shows included, dropped ones excluded.
+    private var upcomingItems: [UpcomingEntry] {
+        upcomingEntries(from: viewModel.tvShows, mediaType: .tvShow)
+    }
+
     private var filteredUnwatchedItems: [ListItem] {
         filterItems(
             viewModel.unwatchedTVShows,
@@ -45,6 +50,8 @@ struct TVShowsTabView: View {
             onlyMyServices: $onlyMyServices,
             showsMyServicesFilter: settings.hasSelectedProviders,
             navigationTitle: "TV Shows",
+            upcomingTitle: "Airing Soon",
+            upcomingItems: upcomingItems,
             subtitleProvider: { item in
                 tvShowSubtitle(for: item)
             },
@@ -62,7 +69,10 @@ struct TVShowsTabView: View {
             onOrderChanged: {
                 viewModel.updateOrderAfterUnwatchedMove(mediaType: .tvShow)
             },
-            isLoaded: viewModel.isLoaded
+            isLoaded: viewModel.isLoaded,
+            onRefresh: {
+                await viewModel.refreshNow()
+            }
         )
         .sheet(
             item: Binding(

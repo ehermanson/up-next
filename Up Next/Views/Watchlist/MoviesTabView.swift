@@ -21,6 +21,11 @@ struct MoviesTabView: View {
         return viewModel.movies.first(where: { $0.media?.id == id })
     }
 
+    /// Unwatched movies that haven't been released yet.
+    private var upcomingItems: [UpcomingEntry] {
+        upcomingEntries(from: viewModel.movies, mediaType: .movie)
+    }
+
     private var filteredUnwatchedItems: [ListItem] {
         filterItems(
             viewModel.unwatchedMovies,
@@ -45,6 +50,8 @@ struct MoviesTabView: View {
             onlyMyServices: $onlyMyServices,
             showsMyServicesFilter: settings.hasSelectedProviders,
             navigationTitle: "Movies",
+            upcomingTitle: "Coming Soon",
+            upcomingItems: upcomingItems,
             subtitleProvider: { item in
                 movieSubtitle(for: item)
             },
@@ -62,7 +69,10 @@ struct MoviesTabView: View {
             onOrderChanged: {
                 viewModel.updateOrderAfterUnwatchedMove(mediaType: .movie)
             },
-            isLoaded: viewModel.isLoaded
+            isLoaded: viewModel.isLoaded,
+            onRefresh: {
+                await viewModel.refreshNow()
+            }
         )
         .sheet(
             item: Binding(

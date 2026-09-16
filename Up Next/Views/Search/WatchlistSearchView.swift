@@ -90,6 +90,38 @@ struct WatchlistSearchView: View {
         (effectiveMediaType == .tvShow ? tvShowResults.isEmpty : movieResults.isEmpty)
     }
 
+    // MARK: - Cross-type hint
+
+    private var otherMediaType: MediaType {
+        effectiveMediaType == .tvShow ? .movie : .tvShow
+    }
+
+    /// How many results the *unselected* segment has. Both types are searched on every query,
+    /// so this is always current.
+    private var crossTypeResultCount: Int {
+        effectiveMediaType == .tvShow ? movieResults.count : tvShowResults.count
+    }
+
+    /// Only offered when the picker is actually on screen — in a type-scoped context
+    /// (`.tvShows` / `.movies`) flipping the selection would have no effect.
+    private var showsCrossTypeHint: Bool {
+        showMediaTypePicker && crossTypeResultCount > 0
+    }
+
+    private var crossTypeHintTitle: String {
+        let count = crossTypeResultCount
+        if effectiveMediaType == .tvShow {
+            return "Show \(count) movie\(count == 1 ? "" : "s") instead"
+        }
+        return "Show \(count) TV show\(count == 1 ? "" : "s") instead"
+    }
+
+    /// Year component of a TMDB `yyyy-MM-dd` date string.
+    private func year(from date: String?) -> String? {
+        guard let date, date.count >= 4 else { return nil }
+        return String(date.prefix(4))
+    }
+
     private var navigationTitleText: String {
         if isListMode {
             if let list = selectedList {
@@ -237,7 +269,18 @@ struct WatchlistSearchView: View {
                 EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
             }
         } else if hasNoResults {
-            EmptyStateView(icon: "magnifyingglass.circle", title: "No Results Found", subtitle: "Try adjusting your search")
+            EmptyStateView(
+                icon: "magnifyingglass.circle",
+                title: "No Results Found",
+                subtitle: showsCrossTypeHint ? nil : "Try adjusting your search"
+            ) {
+                if showsCrossTypeHint {
+                    Button(crossTypeHintTitle) {
+                        selectedMediaType = otherMediaType
+                    }
+                    .buttonStyle(.glass)
+                }
+            }
         } else {
             searchResultsList
         }
@@ -294,7 +337,8 @@ struct WatchlistSearchView: View {
                         isAdded: isAlreadyAdded(id: result.id),
                         onAdd: { addTVShow(result) },
                         onTap: { openTVShowDetail(result) },
-                        voteAverage: result.voteAverage
+                        voteAverage: result.voteAverage,
+                        year: year(from: result.firstAirDate)
                     )
                 }
             } else {
@@ -308,7 +352,8 @@ struct WatchlistSearchView: View {
                         isAdded: isAlreadyAdded(id: result.id),
                         onAdd: { addMovie(result) },
                         onTap: { openMovieDetail(result) },
-                        voteAverage: result.voteAverage
+                        voteAverage: result.voteAverage,
+                        year: year(from: result.releaseDate)
                     )
                 }
             }
@@ -344,7 +389,8 @@ struct WatchlistSearchView: View {
                             isAdded: isAlreadyAdded(id: result.id),
                             onAdd: { addTVShow(result) },
                             onTap: { openTVShowDetail(result) },
-                            voteAverage: result.voteAverage
+                            voteAverage: result.voteAverage,
+                            year: year(from: result.firstAirDate)
                         )
                     }
                 } else {
@@ -358,7 +404,8 @@ struct WatchlistSearchView: View {
                             isAdded: isAlreadyAdded(id: result.id),
                             onAdd: { addMovie(result) },
                             onTap: { openMovieDetail(result) },
-                            voteAverage: result.voteAverage
+                            voteAverage: result.voteAverage,
+                            year: year(from: result.releaseDate)
                         )
                     }
                 }
@@ -576,27 +623,53 @@ struct WatchlistSearchView: View {
         }
     }
 
-    private func performSearch(query: String) async {
+    /// One type's search outcome. Failures are kept per-type so a movie outage can't blank the
+    /// TV results the user is actually looking at.
+    private struct SearchOutcome<Element> {
+        var results: [Element] = []
+        var error: String?
+    }
+
+    private func fetchTVShowResults(query: String) async -> SearchOutcome<TMDBTVShowSearchResult> {
         do {
-            // The shared request task isn't cancelled by us, so check explicitly after each
-            // await — a superseded keystroke's response must not overwrite the current one.
-            if effectiveMediaType == .tvShow {
-                let results = try await service.searchTVShows(query: query)
-                guard !Task.isCancelled else { return }
-                tvShowResults = results
-            } else {
-                let results = try await service.searchMovies(query: query)
-                guard !Task.isCancelled else { return }
-                movieResults = results
-            }
-        } catch is CancellationError {
-            return
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            return
+            return SearchOutcome(results: try await service.searchTVShows(query: query))
         } catch {
-            guard !Task.isCancelled else { return }
-            errorMessage = error.localizedDescription
+            return SearchOutcome(error: Self.searchErrorText(error))
         }
+    }
+
+    private func fetchMovieResults(query: String) async -> SearchOutcome<TMDBMovieSearchResult> {
+        do {
+            return SearchOutcome(results: try await service.searchMovies(query: query))
+        } catch {
+            return SearchOutcome(error: Self.searchErrorText(error))
+        }
+    }
+
+    /// `nil` for cancellations — a superseded keystroke isn't a failure worth showing.
+    private static func searchErrorText(_ error: any Error) -> String? {
+        if error is CancellationError { return nil }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return nil }
+        return error.localizedDescription
+    }
+
+    private func performSearch(query: String) async {
+        // Both types are searched every time so the cross-type hint ("Show 12 movies instead")
+        // is accurate and flipping the segment is instant — the second request is served from
+        // the response cache.
+        async let tvFetch = fetchTVShowResults(query: query)
+        async let movieFetch = fetchMovieResults(query: query)
+        let (tv, movies) = await (tvFetch, movieFetch)
+
+        // The shared request task isn't cancelled by us, so check explicitly after the awaits —
+        // a superseded keystroke's response must not overwrite the current one.
+        guard !Task.isCancelled else { return }
+
+        // A failed type keeps its previous results rather than blanking.
+        if tv.error == nil { tvShowResults = tv.results }
+        if movies.error == nil { movieResults = movies.results }
+        // Only the type on screen gets to raise the error banner.
+        errorMessage = effectiveMediaType == .tvShow ? tv.error : movies.error
         isLoading = false
     }
 

@@ -11,6 +11,8 @@ final class MediaLibraryViewModel {
     var watchedTVShows: [ListItem] = []
     var watchedMovies: [ListItem] = []
     var isLoaded = false
+    /// True while a user-initiated (pull-to-refresh) run is in flight.
+    private(set) var isRefreshing = false
 
     // Derived data — updated in syncUnwatched to avoid recomputation on every body call
     private(set) var availableTVGenres: [String] = []
@@ -74,6 +76,20 @@ final class MediaLibraryViewModel {
                     markRefreshComplete()
                 }
             }
+        }
+    }
+
+    /// Pull-to-refresh: refreshes every item now, ignoring the 6-hour launch interval. Runs inline
+    /// (not detached) so the refresh control can await it, and supersedes any launch refresh still
+    /// in flight. Only stamps the run when something actually came back — same rule as `configure`.
+    func refreshNow() async {
+        guard !isRefreshing, modelContext != nil else { return }
+        refreshTask?.cancel()
+        refreshTask = nil
+        isRefreshing = true
+        defer { isRefreshing = false }
+        if await refreshAllItems() {
+            markRefreshComplete()
         }
     }
 
@@ -322,8 +338,10 @@ final class MediaLibraryViewModel {
         }
         var successfulFetches = 0
 
-        // Fetch TV details in batches, returning Codable results
+        // Fetch TV details in batches, returning Codable results. Bail between batches if this run
+        // was superseded (pull-to-refresh cancels the launch refresh) so two runs don't interleave.
         for batch in stride(from: 0, to: tvInputs.count, by: maxConcurrent) {
+            guard !Task.isCancelled else { return false }
             let slice = tvInputs[batch..<min(batch + maxConcurrent, tvInputs.count)]
             let results = await withTaskGroup(of: (Int, Int?, TMDBTVShowDetail?).self) { group in
                 for input in slice {
@@ -355,6 +373,7 @@ final class MediaLibraryViewModel {
 
         // Fetch movie details in batches
         for batch in stride(from: 0, to: movieInputs.count, by: maxConcurrent) {
+            guard !Task.isCancelled else { return false }
             let slice = movieInputs[batch..<min(batch + maxConcurrent, movieInputs.count)]
             let results = await withTaskGroup(of: (Int, TMDBMovieDetail?).self) { group in
                 for movieID in slice {
