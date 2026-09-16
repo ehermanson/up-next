@@ -51,7 +51,6 @@ struct CustomListDetailView: View {
                 }
             }
         }
-        .toastOverlay()
         .sheet(isPresented: $showingAddItems) {
             WatchlistSearchView(
                 context: .specificList(list),
@@ -85,7 +84,7 @@ struct CustomListDetailView: View {
         } label: {
             MediaCardView(
                 title: item.media?.title ?? "",
-                subtitle: subtitle(for: item, libraryItem: libraryItem),
+                subtitle: subtitle(for: item),
                 imageURL: item.media?.thumbnailURL,
                 networks: item.media?.networks ?? [],
                 providerCategories: item.media?.providerCategories ?? [:],
@@ -93,7 +92,8 @@ struct CustomListDetailView: View {
                 voteAverage: item.media?.voteAverage,
                 genres: item.media?.genres ?? [],
                 userRating: libraryItem?.userRating,
-                seasonProgress: seasonProgress(for: item, libraryItem: libraryItem)
+                seasonProgress: seasonProgress(for: item, libraryItem: libraryItem),
+                watchedLabel: watchedLabel(for: libraryItem)
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -131,23 +131,20 @@ struct CustomListDetailView: View {
         return (watchedSeasons: watched, total: total)
     }
 
-    private func subtitle(for item: CustomListItem, libraryItem: ListItem?) -> String? {
-        let base: String? = {
-            if let tvShow = item.tvShow {
-                return tvShow.seasonsEpisodesSummary
-            } else if let movie = item.movie {
-                let parts = [movie.releaseYear, movie.runtime.map { "\($0) min" }].compactMap { $0 }
-                return parts.isEmpty ? nil : parts.joined(separator: " \u{00b7} ")
-            }
-            return nil
-        }()
-
-        guard let libraryItem, libraryItem.isWatched, let watchedAt = libraryItem.watchedAt else {
-            return base
+    private func subtitle(for item: CustomListItem) -> String? {
+        if let tvShow = item.tvShow {
+            return tvShow.seasonsEpisodesSummary
+        } else if let movie = item.movie {
+            let parts = [movie.releaseYear, movie.runtime.map { "\($0) min" }].compactMap { $0 }
+            return parts.isEmpty ? nil : parts.joined(separator: " \u{00b7} ")
         }
-        let stamp = "Watched \(watchedAt.formatted(.dateTime.month(.abbreviated).year()))"
-        guard let base else { return stamp }
-        return "\(base) \u{00b7} \(stamp)"
+        return nil
+    }
+
+    /// "Watched Sep 2026", rendered in the card's corner chip so it never crowds the subtitle.
+    private func watchedLabel(for libraryItem: ListItem?) -> String? {
+        guard let libraryItem, libraryItem.isWatched, let watchedAt = libraryItem.watchedAt else { return nil }
+        return "Watched \(watchedAt.formatted(.dateTime.month(.abbreviated).year()))"
     }
 
     // MARK: - Removal

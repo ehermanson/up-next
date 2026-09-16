@@ -182,7 +182,7 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 
 Custom lists are thematic pools (Christmas, Halloween, kid-friendly…) kept deliberately separate from the Up Next queue. Rules:
 - **One media row per TMDB id.** `canonicalMovieRow` / `canonicalTVShowRow` (`MediaItem.swift`) look up an existing `Movie`/`TVShow` before any insert — used by `MediaLibraryViewModel.add*` and `CustomListViewModel.addItem`. A search-stub row never overwrites a fully-fetched one. `CustomListViewModel.migrateDuplicateMediaRows` repoints legacy duplicates once per install (`customListMediaRowsMigrated`).
-- **Watched state is derived, never stored on `CustomListItem`.** `CustomListDetailView` reads `MediaLibraryViewModel.libraryItem(for:mediaType:)` (via `@Environment`) for the badge, rating, season progress, and "Watched Dec 2025".
+- **Watched state is derived, never stored on `CustomListItem`.** `CustomListDetailView` reads `MediaLibraryViewModel.libraryItem(for:mediaType:)` (via `@Environment`) for the badge, rating, season progress, and a corner "Watched Dec 2025" chip (`MediaCardView.watchedLabel`).
 - **Detail sheet** is the real `MediaDetailView`: bound to the library `ListItem` when present, otherwise to a transient item wrapping the shared row with `onMarkWatched` → `MediaLibraryViewModel.addWatched(...)` (lands in Watched, never in Up Next). There is intentionally no "Add to Up Next" from a list. `onRemove` there means remove from the list (`removeLabel`/`removeMessage`).
 - Removal is deferred 5 s with an Undo toast (`commitPendingRemoval` flushed on `scenePhase == .background`). `refreshAllItems` also refreshes rows referenced only by lists.
 

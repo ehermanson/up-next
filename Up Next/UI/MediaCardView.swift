@@ -18,6 +18,9 @@ struct MediaCardView: View {
     /// "S3E2" for the next episode. When present the chip reads "S3E2 · Jun 15" — the episode
     /// pointer already implies "next", so the prefix is dropped.
     var nextEpisodeCode: String? = nil
+    /// "Watched Sep 2026" — shown in the corner chip slot (custom lists use this). An air-date
+    /// chip takes precedence when both apply.
+    var watchedLabel: String? = nil
 
     private let settings = ProviderSettings.shared
 
@@ -130,6 +133,9 @@ struct MediaCardView: View {
         .overlay(alignment: .bottomTrailing) {
             if let label = nextAirDateLabel, !isCompact {
                 Chip(icon: "calendar", text: label)
+                    .padding(6)
+            } else if let watchedLabel, !isCompact {
+                Chip(icon: "checkmark", text: watchedLabel)
                     .padding(6)
             }
         }
