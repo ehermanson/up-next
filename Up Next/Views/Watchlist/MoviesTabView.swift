@@ -81,7 +81,7 @@ struct MoviesTabView: View {
 
     /// iPhone (and narrow iPad windows): the list fills the tab, the detail arrives as a sheet.
     private var compactLayout: some View {
-        listView
+        listView(pinnedSelection: false)
             .sheet(
                 item: Binding(
                     get: { selectedItem },
@@ -100,10 +100,17 @@ struct MoviesTabView: View {
     /// Regular width: list in the sidebar, detail pinned alongside it.
     private var splitLayout: some View {
         NavigationSplitView {
-            listView
+            listView(pinnedSelection: true)
+                // The column already has the list's own title bar; SwiftUI's automatic toggle
+                // would sit at its trailing edge next to Add/Edit.
+                .toolbar(removing: .sidebarToggle)
+                // Fills the column edge to edge, bar area included — the list's own
+                // `.background(AppBackground())` stops below the navigation bar.
+                .containerBackground(for: .navigation) { AppBackground() }
                 .navigationSplitViewColumnWidth(min: 360, ideal: 440, max: 560)
         } detail: {
             detailColumn
+                .containerBackground(for: .navigation) { AppBackground() }
         }
         .navigationSplitViewStyle(.balanced)
     }
@@ -120,13 +127,17 @@ struct MoviesTabView: View {
         }
     }
 
-    private var listView: some View {
+    /// `pinnedSelection` is true only in `splitLayout`: the list is the sidebar, so the selected
+    /// row stays selected on a re-tap and is outlined to match the detail column.
+    private func listView(pinnedSelection: Bool) -> some View {
         MediaListView(
             allItems: $viewModel.movies,
             unwatchedItems: $viewModel.unwatchedMovies,
             filteredUnwatchedItems: filteredUnwatchedItems,
             watchedItems: $viewModel.watchedMovies,
             expandedItemID: $expandedItemID,
+            selectionIsSticky: pinnedSelection,
+            highlightsSelection: pinnedSelection,
             availableGenres: viewModel.availableMovieGenres,
             selectedGenre: $selectedGenre,
             availableProviderCategories: viewModel.availableMovieProviderCategories,

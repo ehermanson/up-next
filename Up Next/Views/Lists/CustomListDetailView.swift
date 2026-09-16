@@ -6,9 +6,13 @@ struct CustomListDetailView: View {
     let list: CustomList
     /// Owned by `MyListsView` so a regular-width window can pin the selection in its detail column.
     @Binding var selectedItem: CustomListItem?
+    /// True when `MyListsView`'s split layout pins the selection in its own detail column — this
+    /// view must not also present it as a sheet. `MyListsView` is the only one that knows the size
+    /// class (this view sits inside the split view's sidebar column, which always reports
+    /// `.compact` to its own contents, so reading `horizontalSizeClass` here would be wrong).
+    var pinsSelection: Bool = false
 
     @Environment(ToastState.self) private var toast
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showingAddItems = false
     @State private var isConfirmingMarkAllUnwatched = false
@@ -27,9 +31,9 @@ struct CustomListDetailView: View {
 
     private var rowAnimation: Animation { CustomListViewModel.rowAnimation }
 
-    /// Regular width pins the entry in the split view's detail column, so the sheet stays closed.
+    /// When the selection is pinned in the split view's detail column, the sheet stays closed.
     private var sheetItem: Binding<CustomListItem?> {
-        horizontalSizeClass == .regular ? .constant(nil) : $selectedItem
+        pinsSelection ? .constant(nil) : $selectedItem
     }
 
     var body: some View {
@@ -146,6 +150,9 @@ struct CustomListDetailView: View {
     @ViewBuilder
     private func row(for item: CustomListItem) -> some View {
         let isWatched = item.isWatched
+        // Collection rows never toggle off on re-tap (see `selectedItem = item` below), so the
+        // pinned detail column and this highlight always agree on which row is showing.
+        let isSelected = pinsSelection && selectedItem?.persistentModelID == item.persistentModelID
 
         Button {
             selectedItem = item
@@ -161,6 +168,12 @@ struct CustomListDetailView: View {
                 genres: item.media?.genres ?? [],
                 watchedLabel: watchedLabel(for: item)
             )
+            .overlay {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.card)
+                        .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1.5)
+                }
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }

@@ -11,16 +11,23 @@ struct DetailProviderRow: View {
         !providerCategories.isEmpty
     }
 
+    /// `networks` in a stable display order. `networks` comes from an unordered SwiftData
+    /// relationship, so the per-category sections below filter this instead of `networks`
+    /// directly — otherwise the logos would reshuffle on every render.
+    private var sortedNetworks: [Network] {
+        displayOrderedNetworks(networks, categories: providerCategories)
+    }
+
     private var streamNetworks: [Network] {
-        networks.filter { providerCategories[$0.id] == "stream" }
+        sortedNetworks.filter { providerCategories[$0.id] == "stream" }
     }
 
     private var adsNetworks: [Network] {
-        networks.filter { providerCategories[$0.id] == "ads" }
+        sortedNetworks.filter { providerCategories[$0.id] == "ads" }
     }
 
     private var rentOrBuyNetworks: [Network] {
-        networks.filter { providerCategories[$0.id] == "rent" || providerCategories[$0.id] == "buy" }
+        sortedNetworks.filter { providerCategories[$0.id] == "rent" || providerCategories[$0.id] == "buy" }
     }
 
     var body: some View {
@@ -31,7 +38,7 @@ struct DetailProviderRow: View {
                     providerSection("Free with Ads", networks: adsNetworks)
                     providerSection("Rent or Buy", networks: rentOrBuyNetworks)
                 } else {
-                    providerLogoRow(networks: networks)
+                    providerLogoRow(networks: sortedNetworks)
                 }
             }
         }

@@ -189,28 +189,33 @@ struct MediaDetailView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+            // Pinned in a detail column there's nothing left for the bar to hold — Done is
+            // meaningless and Add/Remove move into `actionButtonRow`. Dropping the bar entirely
+            // lets the column line up with the sidebar's large title instead of floating a lone
+            // glass button over the backdrop.
+            .toolbar(presentedInColumn ? .hidden : .visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if let onAdd {
-                        Button {
-                            onAdd()
-                            if let title = listItem.media?.title {
-                                toast.show(addedMessage(for: title))
-                            }
-                            dismiss()
-                        } label: {
-                            Label(addTargetName.map { "Add to \($0)" } ?? "Add to Watchlist", systemImage: "plus")
-                        }
-                    } else {
-                        Button(role: .destructive) {
-                            isConfirmingRemoval = true
-                        } label: {
-                            Label(removeLabel ?? "Remove", systemImage: "trash")
-                        }
-                        .accessibilityLabel(removeLabel ?? "Remove from watchlist")
-                    }
-                }
                 if !presentedInColumn {
+                    ToolbarItem(placement: .topBarLeading) {
+                        if let onAdd {
+                            Button {
+                                onAdd()
+                                if let title = listItem.media?.title {
+                                    toast.show(addedMessage(for: title))
+                                }
+                                dismiss()
+                            } label: {
+                                Label(addTargetName.map { "Add to \($0)" } ?? "Add to Watchlist", systemImage: "plus")
+                            }
+                        } else {
+                            Button(role: .destructive) {
+                                isConfirmingRemoval = true
+                            } label: {
+                                Label(removeLabel ?? "Remove", systemImage: "trash")
+                            }
+                            .accessibilityLabel(removeLabel ?? "Remove from watchlist")
+                        }
+                    }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
                     }
@@ -288,6 +293,34 @@ struct MediaDetailView: View {
                     .sheet(isPresented: $showingTMDBPage) {
                         SafariView(url: tmdbURL)
                             .ignoresSafeArea()
+                    }
+                }
+
+                // In a detail column there's no navigation bar to hang Add/Remove off, so the
+                // primary action joins the floating row instead.
+                if presentedInColumn {
+                    if let onAdd {
+                        Button {
+                            onAdd()
+                            if let title = listItem.media?.title {
+                                toast.show(addedMessage(for: title))
+                            }
+                            dismiss()
+                        } label: {
+                            Label(addTargetName.map { "Add to \($0)" } ?? "Add to Watchlist", systemImage: "plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                    } else {
+                        Button(role: .destructive) {
+                            isConfirmingRemoval = true
+                        } label: {
+                            Label(removeLabel ?? "Remove", systemImage: "trash")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                        .tint(.red)
+                        .accessibilityLabel(removeLabel ?? "Remove from watchlist")
                     }
                 }
             }

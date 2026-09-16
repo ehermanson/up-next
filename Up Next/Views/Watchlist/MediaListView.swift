@@ -7,6 +7,12 @@ struct MediaListView: View {
     var filteredUnwatchedItems: [ListItem]
     @Binding var watchedItems: [ListItem]
     @Binding var expandedItemID: String?
+    /// Set when the selection is pinned in a split view's detail column: re-tapping the selected
+    /// row keeps it there instead of collapsing it. A sidebar column reports a *compact* size
+    /// class to its contents, so this can't be inferred from the environment.
+    var selectionIsSticky: Bool = false
+    /// Outlines the selected row so the sidebar shows which title the detail column is pinned to.
+    var highlightsSelection: Bool = false
     var availableGenres: [String]
     @Binding var selectedGenre: String?
     var availableProviderCategories: [String]
@@ -117,19 +123,7 @@ struct MediaListView: View {
                             )
 
                             ForEach(displayedUnwatchedItems, id: \.media?.id) { item in
-                                MediaListRow(
-                                    item: binding(for: item),
-                                    itemID: item.media?.id ?? "",
-                                    expandedItemID: $expandedItemID,
-                                    subtitle: subtitleProvider(item),
-                                    onItemExpanded: onItemExpanded,
-                                    onWatchedToggled: {
-                                        toggleWatched(item)
-                                    },
-                                    onDeleteRequested: {
-                                        if let id = item.media?.id { onItemDeleted?(id) }
-                                    }
-                                )
+                                row(for: item)
                             }
                             .onMove(perform: moveHandler)
                             .onDelete(perform: deleteUnwatched)
@@ -139,19 +133,7 @@ struct MediaListView: View {
                             SectionHeader(title: "Watched", count: watchedItems.count)
 
                             ForEach(displayedWatchedItems, id: \.media?.id) { item in
-                                MediaListRow(
-                                    item: binding(for: item, in: $watchedItems),
-                                    itemID: item.media?.id ?? "",
-                                    expandedItemID: $expandedItemID,
-                                    subtitle: subtitleProvider(item),
-                                    onItemExpanded: onItemExpanded,
-                                    onWatchedToggled: {
-                                        toggleWatched(item)
-                                    },
-                                    onDeleteRequested: {
-                                        if let id = item.media?.id { onItemDeleted?(id) }
-                                    }
-                                )
+                                row(for: item, in: $watchedItems)
                             }
                             .onDelete(perform: deleteWatched)
                         }
@@ -210,6 +192,24 @@ struct MediaListView: View {
         .onChange(of: unwatchedItems.count) {
             if !canReorder { isEditingOrder = false }
         }
+    }
+
+    private func row(for item: ListItem, in items: Binding<[ListItem]>? = nil) -> some View {
+        MediaListRow(
+            item: items.map { binding(for: item, in: $0) } ?? binding(for: item),
+            itemID: item.media?.id ?? "",
+            expandedItemID: $expandedItemID,
+            subtitle: subtitleProvider(item),
+            onItemExpanded: onItemExpanded,
+            onWatchedToggled: {
+                toggleWatched(item)
+            },
+            onDeleteRequested: {
+                if let id = item.media?.id { onItemDeleted?(id) }
+            },
+            selectionIsSticky: selectionIsSticky,
+            highlightsSelection: highlightsSelection
+        )
     }
 
     private var upcomingStrip: some View {
@@ -554,9 +554,17 @@ struct MediaListRow: View {
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
     let onDeleteRequested: () -> Void
+    /// See `MediaListView.selectionIsSticky` — a re-tap re-sends the id instead of clearing it.
+    var selectionIsSticky: Bool = false
+    /// See `MediaListView.highlightsSelection`.
+    var highlightsSelection: Bool = false
 
     /// Rows are buttons; while reordering, a tap must not open the detail sheet.
     @Environment(\.editMode) private var editMode
+
+    private var isSelected: Bool {
+        expandedItemID == itemID
+    }
 
     /// Show progress bar for any TV show with partial season progress
     private var seasonProgress: (watchedSeasons: [Int], total: Int)? {
@@ -582,7 +590,9 @@ struct MediaListRow: View {
     var body: some View {
         Button {
             guard editMode?.wrappedValue.isEditing != true else { return }
-            onItemExpanded(expandedItemID == itemID ? nil : itemID)
+            // A sticky selection stays pinned in the detail column — only a *different* row
+            // changes it. Everywhere else a second tap collapses the open sheet.
+            onItemExpanded(!selectionIsSticky && isSelected ? nil : itemID)
         } label: {
             MediaCardView(
                 title: item.media?.title ?? "",
@@ -601,6 +611,14 @@ struct MediaListRow: View {
                     episode: item.tvShow?.nextEpisodeNumber
                 )
             )
+            .overlay {
+                if highlightsSelection && isSelected {
+                    // Content layer, so an outline rather than glass. Matches the card's own
+                    // corner radius (`MediaCardView` in non-compact mode).
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.card)
+                        .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1.5)
+                }
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }

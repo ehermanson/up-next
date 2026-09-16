@@ -21,14 +21,21 @@ struct MyListsView: View {
                 // The collections → collection push stays inside the sidebar; the detail column
                 // shows whichever title is selected.
                 NavigationSplitView {
-                    collectionsColumn
+                    collectionsColumn(pinsSelection: true)
+                        // The column already has the list's own title bar; SwiftUI's automatic
+                        // toggle would sit at its trailing edge next to New Collection.
+                        .toolbar(removing: .sidebarToggle)
+                        // Fills the column edge to edge, bar area included — the list's own
+                        // `.background(AppBackground())` stops below the navigation bar.
+                        .containerBackground(for: .navigation) { AppBackground() }
                         .navigationSplitViewColumnWidth(min: 360, ideal: 440, max: 560)
                 } detail: {
                     itemDetailColumn
+                        .containerBackground(for: .navigation) { AppBackground() }
                 }
                 .navigationSplitViewStyle(.balanced)
             } else {
-                collectionsColumn
+                collectionsColumn(pinsSelection: false)
             }
         }
         // A pinned selection must not reappear as a sheet after the window is resized.
@@ -37,7 +44,9 @@ struct MyListsView: View {
         }
     }
 
-    private var collectionsColumn: some View {
+    /// `pinsSelection` is true only in the regular-width split layout: the detail column pins the
+    /// selection, so `CustomListDetailView` must not also present it as a sheet.
+    private func collectionsColumn(pinsSelection: Bool) -> some View {
         NavigationStack(path: $navigationPath) {
             Group {
                 if viewModel.customLists.isEmpty {
@@ -126,7 +135,8 @@ struct MyListsView: View {
                     CustomListDetailView(
                         viewModel: viewModel,
                         list: list,
-                        selectedItem: $selectedItem
+                        selectedItem: $selectedItem,
+                        pinsSelection: pinsSelection
                     )
                     .onDisappear {
                         if navigationPath.isEmpty {

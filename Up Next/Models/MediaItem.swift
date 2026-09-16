@@ -44,6 +44,13 @@ protocol MediaItemProtocol {
     var voteAverage: Double? { get }
 }
 
+extension MediaItemProtocol {
+    /// See `displayOrderedNetworks(_:categories:)` — the deterministic display order for `networks`.
+    var orderedNetworks: [Network] {
+        displayOrderedNetworks(networks, categories: providerCategories)
+    }
+}
+
 @Model
 final class Movie: MediaItemProtocol {
     /// Unique ID, such as MovieDB's identifier
@@ -330,6 +337,31 @@ private func reconciledNetworks(
         deleteUnreferencedNetworks(current, excludingOwner: ownerID, in: context)
     }
     return .some(incoming)
+}
+
+// MARK: - Display ordering
+
+/// Stable display order for a media row's networks. `networks` is an unordered SwiftData
+/// relationship, so without this the logos reshuffle on every render. Streaming first, then
+/// ads, rent, buy; alphabetical within a category so the order never depends on fetch order.
+func displayOrderedNetworks(_ networks: [Network]?, categories: [Int: String]) -> [Network] {
+    func rank(_ network: Network) -> Int {
+        switch categories[network.id] {
+        case "stream": return 0
+        case "ads": return 1
+        case "rent": return 2
+        case "buy": return 3
+        default: return 4
+        }
+    }
+    return (networks ?? []).sorted { a, b in
+        let rankA = rank(a)
+        let rankB = rank(b)
+        if rankA != rankB { return rankA < rankB }
+        let nameOrder = a.name.localizedCaseInsensitiveCompare(b.name)
+        if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
+        return a.id < b.id
+    }
 }
 
 /// Deletes a `Movie`/`TVShow` row — plus any networks only it referred to — once nothing points at

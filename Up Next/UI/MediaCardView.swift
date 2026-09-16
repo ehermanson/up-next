@@ -32,9 +32,16 @@ struct MediaCardView: View {
         return AirDateFormat.nextLabel(from: nextAirDate)
     }
 
+    /// `networks` in a stable display order. `networks` itself comes from an unordered SwiftData
+    /// relationship, so every other derived property here reads from this instead of `networks`
+    /// directly — otherwise the logos would reshuffle on every render.
+    private var orderedNetworks: [Network] {
+        displayOrderedNetworks(networks, categories: providerCategories)
+    }
+
     /// Streaming networks that match user's selected providers
     private var selectedStreamingNetworks: [Network] {
-        networks.filter { network in
+        orderedNetworks.filter { network in
             let category = providerCategories[network.id]
             let isStreaming = category == "stream" || category == "ads"
             return isStreaming && settings.isSelected(network.id)
@@ -43,14 +50,14 @@ struct MediaCardView: View {
 
     /// Count of additional networks (rent/buy + non-selected streaming)
     private var additionalNetworkCount: Int {
-        networks.count - selectedStreamingNetworks.count
+        orderedNetworks.count - selectedStreamingNetworks.count
     }
 
     /// Networks to display as logos (just selected streaming services)
     private var visibleNetworks: [Network] {
         // If no providers selected, show all networks normally
         if !settings.hasSelectedProviders {
-            return networks
+            return orderedNetworks
         }
         return selectedStreamingNetworks
     }
