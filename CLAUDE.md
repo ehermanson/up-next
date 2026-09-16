@@ -175,7 +175,7 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 - `syncWatchedStateFromSeasons()`: Auto-marks fully-watched shows
 - `toggleSeason(_:)` cascades: marking S*n* marks 1…*n*; un-marking S*n* un-marks *n*…last
 - Shows remain in unwatched list when partially watched
-- Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — `MediaListView.toggleWatched` marks all seasons
+- Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — the transition lives on `ListItem.toggleWatched()` (all seasons for TV); custom-list rows offer the same gesture, adding a not-yet-in-library title straight to Watched
 - Watched section is sorted most-recently-watched first
 
 ### Custom Lists

@@ -135,6 +135,20 @@ final class ListItem {
         syncWatchedStateFromSeasons()
     }
 
+    /// Flips watched state the way the list's swipe action does: a dropped show resumes instead of
+    /// un-watching, and TV shows mark/unmark every season so `nextSeasonToWatch` stays coherent.
+    func toggleWatched() {
+        if isDropped && isWatched {
+            resumeShow()
+            return
+        }
+        isWatched.toggle()
+        watchedAt = isWatched ? Date.now : nil
+        if let tvShow, let total = tvShow.numberOfSeasons, total > 0 {
+            watchedSeasons = isWatched ? Array(1...total) : []
+        }
+    }
+
     /// Marks the show as "done watching" — appears in Watched regardless of season completion.
     func dropShow() {
         let now = Date.now

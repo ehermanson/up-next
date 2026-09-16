@@ -324,17 +324,7 @@ struct MediaListView: View {
         // derived arrays recomputed in onWatchedToggled() — in one animation so both sections
         // diff coherently instead of animating partially out of sync.
         withAnimation(Self.listChangeAnimation) {
-            if item.isDropped && item.isWatched {
-                // A dropped show toggled from watched → unwatched: resume instead of un-watching.
-                item.resumeShow()
-            } else {
-                item.isWatched.toggle()
-                item.watchedAt = item.isWatched ? Date.now : nil
-
-                if let tvShow = item.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
-                    item.watchedSeasons = item.isWatched ? Array(1...total) : []
-                }
-            }
+            item.toggleWatched()
 
             if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
                 allItems[index] = item

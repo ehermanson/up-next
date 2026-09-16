@@ -117,6 +117,13 @@ final class MediaLibraryViewModel {
         insertMovie(movie, watched: false)
     }
 
+    /// Toggles a library item's watched state and persists — for callers outside the watchlist
+    /// tabs (custom lists), which don't own the list bindings `MediaListView` animates.
+    func toggleWatched(_ item: ListItem) {
+        item.toggleWatched()
+        persistChanges(for: item.tvShow != nil ? .tvShow : .movie)
+    }
+
     /// Adds a title straight to the library's Watched section without queuing it in Up Next.
     /// Used by custom lists, which are thematic pools rather than a queue.
     func addWatched(tvShow: TVShow) {

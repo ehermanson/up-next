@@ -111,12 +111,51 @@ struct CustomListDetailView: View {
                 Label("Remove", systemImage: "trash")
             }
         }
+        // Same gesture as the watchlist. A title that isn't in the library yet gets added
+        // straight to Watched (never to Up Next), matching the sheet's "Mark as Watched" card.
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            let action = watchedAction(for: libraryItem)
+            Button {
+                toggleWatched(item, libraryItem: libraryItem)
+            } label: {
+                Label(action.title, systemImage: action.icon)
+            }
+            .tint(action.tint)
+        }
         .contextMenu {
+            let action = watchedAction(for: libraryItem)
+            Button {
+                toggleWatched(item, libraryItem: libraryItem)
+            } label: {
+                Label(action.title, systemImage: action.icon)
+            }
             Button(role: .destructive) {
                 removeWithUndo(item)
             } label: {
                 Label("Remove from List", systemImage: "trash")
             }
+        }
+    }
+
+    private func watchedAction(for libraryItem: ListItem?) -> (title: String, icon: String, tint: Color) {
+        guard let libraryItem, libraryItem.isWatched else {
+            return ("Mark Watched", "checkmark.circle.fill", .green)
+        }
+        if libraryItem.isDropped {
+            return ("Pick Back Up", "arrow.uturn.backward.circle.fill", Color.accentColor)
+        }
+        return ("Mark Unwatched", "circle", .gray)
+    }
+
+    private func toggleWatched(_ item: CustomListItem, libraryItem: ListItem?) {
+        if let libraryItem {
+            library.toggleWatched(libraryItem)
+        } else if let tvShow = item.tvShow {
+            library.addWatched(tvShow: tvShow)
+            library.persistChanges(for: .tvShow)
+        } else if let movie = item.movie {
+            library.addWatched(movie: movie)
+            library.persistChanges(for: .movie)
         }
     }
 
