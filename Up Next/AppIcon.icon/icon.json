@@ -1,0 +1,43 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.16078,0.02745,0.32157,1.00000"
+  },
+  "groups" : [
+    {
+      "name" : "Play",
+      "layers" : [
+        {
+          "name" : "Core",
+          "image-name" : "Core.png",
+          "glass" : true,
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [ 0, 0 ]
+          }
+        },
+        {
+          "name" : "Ring",
+          "image-name" : "Ring.png",
+          "glass" : true,
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [ 0, 0 ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      },
+      "specular" : true,
+      "lighting" : "individual"
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [ "iOS" ]
+  }
+}

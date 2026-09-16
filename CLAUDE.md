@@ -116,7 +116,8 @@ Up Next/
 │   ├── TMDBAttributionView.swift        # TMDB attribution footer
 │   └── SFSymbolPickerGrid.swift         # SF Symbol picker for custom list icons
 │
-├── Assets.xcassets                      # App icons, colors, images
+├── AppIcon.icon/                        # Icon Composer (Liquid Glass) app icon: icon.json + Assets/{Ring,Core}.png layers; wins over the appiconset on iOS 26
+├── Assets.xcassets                      # AccentColor, images, legacy flat AppIcon.appiconset (fallback / App Store)
 ├── Info.plist.template                  # Template with TMDB_API_KEY placeholder
 ├── Up Next.entitlements                 # CloudKit + APS entitlements
 ├── PrivacyInfo.xcprivacy                # Privacy manifest (no tracking)
