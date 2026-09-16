@@ -56,6 +56,8 @@ struct ContentView: View {
                 .toastOverlay(bottomPadding: 12)
             }
         }
+        // Tab bar on iPhone, sidebar on a wide iPad window — the Apple TV / Music shape.
+        .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(.onScrollDown)
         .sheet(isPresented: $showingSettings) {
             ProviderSettingsView()

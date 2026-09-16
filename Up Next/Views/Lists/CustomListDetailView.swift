@@ -4,18 +4,13 @@ import SwiftUI
 struct CustomListDetailView: View {
     let viewModel: CustomListViewModel
     let list: CustomList
-    /// Owned by `MyListsView` so a regular-width window can pin the selection in its detail column.
-    @Binding var selectedItem: CustomListItem?
-    /// True when `MyListsView`'s split layout pins the selection in its own detail column — this
-    /// view must not also present it as a sheet. `MyListsView` is the only one that knows the size
-    /// class (this view sits inside the split view's sidebar column, which always reports
-    /// `.compact` to its own contents, so reading `horizontalSizeClass` here would be wrong).
-    var pinsSelection: Bool = false
 
     @Environment(ToastState.self) private var toast
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showingAddItems = false
     @State private var isConfirmingMarkAllUnwatched = false
+    @State private var selectedItem: CustomListItem?
 
     /// Collections keep their own watched state (`CustomListItem.watchedAt`) — nothing here reads
     /// or writes the Movies / TV Shows tabs.
@@ -31,11 +26,6 @@ struct CustomListDetailView: View {
 
     private var rowAnimation: Animation { CustomListViewModel.rowAnimation }
 
-    /// When the selection is pinned in the split view's detail column, the sheet stays closed.
-    private var sheetItem: Binding<CustomListItem?> {
-        pinsSelection ? .constant(nil) : $selectedItem
-    }
-
     var body: some View {
         Group {
             if list.items?.isEmpty ?? true {
@@ -49,24 +39,10 @@ struct CustomListDetailView: View {
                     .controlSize(.large)
                 }
                 .background(AppBackground())
+            } else if horizontalSizeClass == .regular {
+                gridLayout
             } else {
-                List {
-                    ForEach(unwatchedItems, id: \.persistentModelID) { item in
-                        row(for: item)
-                    }
-
-                    if !watchedItems.isEmpty {
-                        watchedHeader
-
-                        ForEach(watchedItems, id: \.persistentModelID) { item in
-                            row(for: item)
-                        }
-                    }
-                }
-                .scrollContentBackground(.hidden)
-                .listStyle(.plain)
-                .padding(.horizontal, 12)
-                .background(AppBackground())
+                listLayout
             }
         }
         .navigationTitle(list.name)
@@ -111,20 +87,81 @@ struct CustomListDetailView: View {
                 customListViewModel: viewModel
             )
         }
-        .sheet(item: sheetItem) { item in
-            CustomListItemDetailSheet(
+        .sheet(item: $selectedItem) { item in
+            let sheet = CustomListItemDetailSheet(
                 item: item,
                 list: list,
                 listViewModel: viewModel,
                 onRemove: { removeWithUndo(item) },
                 dismiss: { selectedItem = nil }
             )
+            // A roomy page sheet on iPad; compact keeps the standard full-height sheet.
+            if horizontalSizeClass == .regular {
+                sheet.presentationSizing(.page)
+            } else {
+                sheet
+            }
         }
     }
 
     private var markAllUnwatchedPrompt: String {
         let count = watchedItems.count
         return "Mark all \(count) \(count == 1 ? "title" : "titles") unwatched?"
+    }
+
+    // MARK: - Layouts
+
+    /// The phone layout: one column of rows with swipe actions.
+    private var listLayout: some View {
+        List {
+            ForEach(unwatchedItems, id: \.persistentModelID) { item in
+                row(for: item)
+            }
+
+            if !watchedItems.isEmpty {
+                watchedHeader
+
+                ForEach(watchedItems, id: \.persistentModelID) { item in
+                    row(for: item)
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .listStyle(.plain)
+        .padding(.horizontal, 12)
+        .background(AppBackground())
+    }
+
+    /// Regular width spreads the same rows across a grid. There are no swipe actions outside a
+    /// `List`, so the row's context menu is the mark-watched / remove affordance here.
+    private var gridLayout: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
+                    ForEach(unwatchedItems, id: \.persistentModelID) { item in
+                        row(for: item)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+
+                if !watchedItems.isEmpty {
+                    watchedHeader
+
+                    LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
+                        ForEach(watchedItems, id: \.persistentModelID) { item in
+                            row(for: item)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .background(AppBackground())
+    }
+
+    private var gridColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 12)]
     }
 
     // MARK: - Rows
@@ -150,9 +187,6 @@ struct CustomListDetailView: View {
     @ViewBuilder
     private func row(for item: CustomListItem) -> some View {
         let isWatched = item.isWatched
-        // Collection rows never toggle off on re-tap (see `selectedItem = item` below), so the
-        // pinned detail column and this highlight always agree on which row is showing.
-        let isSelected = pinsSelection && selectedItem?.persistentModelID == item.persistentModelID
 
         Button {
             selectedItem = item
@@ -168,12 +202,6 @@ struct CustomListDetailView: View {
                 genres: item.media?.genres ?? [],
                 watchedLabel: watchedLabel(for: item)
             )
-            .overlay {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: DesignTokens.Radius.card)
-                        .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1.5)
-                }
-            }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -252,7 +280,7 @@ struct CustomListDetailView: View {
 // MARK: - Removal helper
 
 extension CustomListViewModel {
-    /// Row move / removal animation, shared by the collection list and the pinned detail column.
+    /// Row move / removal animation, shared by every collection surface.
     static let rowAnimation: Animation = .spring(response: 0.4, dampingFraction: 0.85)
 
     /// Removes an item immediately (animated) and shows a toast with an Undo action — the same
@@ -286,16 +314,12 @@ extension CustomListViewModel {
 /// Wraps `MediaDetailView` for a collection entry. The sheet is always bound to a *transient*
 /// `ListItem` over the shared media row (like Discover does) so it never reaches into the
 /// watchlist: the only watched state it can change is the collection entry's own.
-///
-/// Also used un-sheeted as the pinned detail column on regular width (`presentedInColumn`).
-struct CustomListItemDetailSheet: View {
+private struct CustomListItemDetailSheet: View {
     let item: CustomListItem
     let list: CustomList
     let listViewModel: CustomListViewModel
     let onRemove: () -> Void
     let dismiss: () -> Void
-    /// Regular width shows this in a split view column, where "Done" has nothing to dismiss.
-    var presentedInColumn: Bool = false
 
     /// Wraps the *shared* media row, so anything the detail sheet fetches into that row (providers,
     /// cast, backdrop) is stored once and shows up everywhere else the title appears.
@@ -306,15 +330,13 @@ struct CustomListItemDetailSheet: View {
         list: CustomList,
         listViewModel: CustomListViewModel,
         onRemove: @escaping () -> Void,
-        dismiss: @escaping () -> Void,
-        presentedInColumn: Bool = false
+        dismiss: @escaping () -> Void
     ) {
         self.item = item
         self.list = list
         self.listViewModel = listViewModel
         self.onRemove = onRemove
         self.dismiss = dismiss
-        self.presentedInColumn = presentedInColumn
         let placeholder: ListItem
         if let tvShow = item.tvShow {
             placeholder = ListItem(tvShow: tvShow)
@@ -335,7 +357,6 @@ struct CustomListItemDetailSheet: View {
         // Inside a collection, "+" on a similar / recommended title adds to *this* collection,
         // not to Up Next, and the checkmarks reflect this collection's membership.
         let collection: CustomList = list
-        let inColumn: Bool = presentedInColumn
         let existingIDs: Set<String> = Set((list.items ?? []).compactMap { item -> String? in
             guard let media = item.media else { return nil }
             return MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
@@ -363,8 +384,7 @@ struct CustomListItemDetailSheet: View {
             collectionWatched: watchedBinding,
             collectionName: collectionName,
             removeLabel: "Remove from collection",
-            removeMessage: removeMessage,
-            presentedInColumn: inColumn
+            removeMessage: removeMessage
         )
         .onDisappear { discardTransientItem() }
     }

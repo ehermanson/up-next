@@ -38,28 +38,19 @@ struct TVShowsTabView: View {
     }
 
     var body: some View {
-        Group {
-            if horizontalSizeClass == .regular {
-                splitLayout
-            } else {
-                compactLayout
-            }
-        }
-        .onChange(of: expandedItemID) { previousID, _ in
-            // The split layout has no sheet dismissal to hang persistence off, so a selection
-            // losing focus is the save point. `persistChanges` is idempotent.
-            if horizontalSizeClass == .regular, previousID != nil {
+        listView
+        .sheet(
+            item: Binding(
+                get: { selectedItem },
+                set: { _ in expandedItemID = nil }
+            ),
+            // Swipe-to-dismiss never runs the detail view's `dismiss` closure, so persist here
+            // instead — that covers every way the sheet can go away. `persistChanges` is idempotent.
+            onDismiss: {
                 viewModel.persistChanges(for: .tvShow)
             }
-        }
-        .onChange(of: horizontalSizeClass) {
-            // A pinned selection would reappear as a surprise sheet (or vice versa) when the
-            // window is resized on iPad — save its edits, then drop it.
-            viewModel.persistChanges(for: .tvShow)
-            expandedItemID = nil
-        }
-        .onDisappear {
-            viewModel.persistChanges(for: .tvShow)
+        ) { item in
+            detailView(for: item)
         }
         .onChange(of: viewModel.availableTVGenres) {
             if let genre = selectedGenre, !viewModel.availableTVGenres.contains(genre) {
@@ -77,67 +68,13 @@ struct TVShowsTabView: View {
         }
     }
 
-    // MARK: - Layouts
-
-    /// iPhone (and narrow iPad windows): the list fills the tab, the detail arrives as a sheet.
-    private var compactLayout: some View {
-        listView(pinnedSelection: false)
-            .sheet(
-                item: Binding(
-                    get: { selectedItem },
-                    set: { _ in expandedItemID = nil }
-                ),
-                // Swipe-to-dismiss never runs the detail view's `dismiss` closure, so persist here
-                // instead — that covers every way the sheet can go away. `persistChanges` is idempotent.
-                onDismiss: {
-                    viewModel.persistChanges(for: .tvShow)
-                }
-            ) { item in
-                detailView(for: item, inColumn: false)
-            }
-    }
-
-    /// Regular width: list in the sidebar, detail pinned alongside it.
-    private var splitLayout: some View {
-        NavigationSplitView {
-            listView(pinnedSelection: true)
-                // The column already has the list's own title bar; SwiftUI's automatic toggle
-                // would sit at its trailing edge next to Add/Edit.
-                .toolbar(removing: .sidebarToggle)
-                // Fills the column edge to edge, bar area included — the list's own
-                // `.background(AppBackground())` stops below the navigation bar.
-                .containerBackground(for: .navigation) { AppBackground() }
-                .navigationSplitViewColumnWidth(min: 360, ideal: 440, max: 560)
-        } detail: {
-            detailColumn
-                .containerBackground(for: .navigation) { AppBackground() }
-        }
-        .navigationSplitViewStyle(.balanced)
-    }
-
-    @ViewBuilder
-    private var detailColumn: some View {
-        if let item = selectedItem {
-            // Keyed on the media id so switching rows rebuilds the detail's `@State`.
-            detailView(for: item, inColumn: true)
-                .id(item.media?.id)
-        } else {
-            EmptyStateView(icon: "tv", title: "Select a title")
-                .background(AppBackground())
-        }
-    }
-
-    /// `pinnedSelection` is true only in `splitLayout`: the list is the sidebar, so the selected
-    /// row stays selected on a re-tap and is outlined to match the detail column.
-    private func listView(pinnedSelection: Bool) -> some View {
+    private var listView: some View {
         MediaListView(
             allItems: $viewModel.tvShows,
             unwatchedItems: $viewModel.unwatchedTVShows,
             filteredUnwatchedItems: filteredUnwatchedItems,
             watchedItems: $viewModel.watchedTVShows,
             expandedItemID: $expandedItemID,
-            selectionIsSticky: pinnedSelection,
-            highlightsSelection: pinnedSelection,
             availableGenres: viewModel.availableTVGenres,
             selectedGenre: $selectedGenre,
             availableProviderCategories: viewModel.availableTVProviderCategories,
@@ -171,8 +108,11 @@ struct TVShowsTabView: View {
         )
     }
 
-    private func detailView(for item: ListItem, inColumn: Bool) -> some View {
-        MediaDetailView(
+    /// The detail sheet. On a wide iPad window it presents as a large page sheet rather than the
+    /// default form sheet, which is too narrow for the backdrop header and the cast row.
+    @ViewBuilder
+    private func detailView(for item: ListItem) -> some View {
+        let detail = MediaDetailView(
             listItem: binding(forItem: item),
             dismiss: {
                 expandedItemID = nil
@@ -190,9 +130,14 @@ struct TVShowsTabView: View {
             existingIDs: MediaIDKey.makeSet(.tvShow, viewModel.existingTVShowIDs)
                 .union(MediaIDKey.makeSet(.movie, viewModel.existingMovieIDs)),
             onTVShowAdded: { viewModel.addTVShow($0) },
-            onMovieAdded: { viewModel.addMovie($0) },
-            presentedInColumn: inColumn
+            onMovieAdded: { viewModel.addMovie($0) }
         )
+
+        if horizontalSizeClass == .regular {
+            detail.presentationSizing(.page)
+        } else {
+            detail
+        }
     }
 
     /// Removes an item immediately (animated) and shows a toast with an Undo action.

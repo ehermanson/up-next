@@ -7,12 +7,6 @@ struct MediaListView: View {
     var filteredUnwatchedItems: [ListItem]
     @Binding var watchedItems: [ListItem]
     @Binding var expandedItemID: String?
-    /// Set when the selection is pinned in a split view's detail column: re-tapping the selected
-    /// row keeps it there instead of collapsing it. A sidebar column reports a *compact* size
-    /// class to its contents, so this can't be inferred from the environment.
-    var selectionIsSticky: Bool = false
-    /// Outlines the selected row so the sidebar shows which title the detail column is pinned to.
-    var highlightsSelection: Bool = false
     var availableGenres: [String]
     @Binding var selectedGenre: String?
     var availableProviderCategories: [String]
@@ -37,6 +31,8 @@ struct MediaListView: View {
     var isLoaded: Bool = true
     /// Pull-to-refresh. Awaited by the refresh control, so it must not return early.
     var onRefresh: (() async -> Void)?
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var isEditingOrder = false
     /// Bumped on every watched toggle / reorder so `.sensoryFeedback` has a trigger to observe.
@@ -78,6 +74,12 @@ struct MediaListView: View {
         }
     }
 
+    /// Wide iPad windows get a full-width adaptive grid. Reordering stays on the `List` even
+    /// there — drag handles and `.onMove` are `List` features.
+    private var usesGridLayout: Bool {
+        horizontalSizeClass == .regular && !isEditingOrder
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -98,54 +100,10 @@ struct MediaListView: View {
                             .buttonStyle(.glassProminent)
                         }
                     }
+                } else if usesGridLayout {
+                    gridLayout
                 } else {
-                    List {
-                        if !upcomingItems.isEmpty && !isEditingOrder {
-                            upcomingStrip
-                        }
-
-                        if unwatchedItems.isEmpty && !isEditingOrder {
-                            caughtUpRow
-                        }
-
-                        if !unwatchedItems.isEmpty {
-                            SectionHeader(
-                                title: "Up Next",
-                                count: filteredUnwatchedItems.count,
-                                // The filter menu is hidden while reordering — edit mode shows Up Next only.
-                                showsFilter: !isEditingOrder,
-                                availableGenres: availableGenres,
-                                selectedGenre: $selectedGenre,
-                                availableProviderCategories: availableProviderCategories,
-                                selectedProviderCategory: $selectedProviderCategory,
-                                onlyMyServices: $onlyMyServices,
-                                showsMyServicesFilter: showsMyServicesFilter
-                            )
-
-                            ForEach(displayedUnwatchedItems, id: \.media?.id) { item in
-                                row(for: item)
-                            }
-                            .onMove(perform: moveHandler)
-                            .onDelete(perform: deleteUnwatched)
-                        }
-
-                        if !watchedItems.isEmpty && !isEditingOrder {
-                            SectionHeader(title: "Watched", count: watchedItems.count)
-
-                            ForEach(displayedWatchedItems, id: \.media?.id) { item in
-                                row(for: item, in: $watchedItems)
-                            }
-                            .onDelete(perform: deleteWatched)
-                        }
-                    }
-                    .refreshable {
-                        await onRefresh?()
-                    }
-                    .scrollContentBackground(.hidden)
-                    .listStyle(.plain)
-                    .contentMargins(.bottom, 20, for: .scrollContent)
-                    .padding(.horizontal, 12)
-                    .environment(\.editMode, .constant(isEditingOrder ? .active : .inactive))
+                    listLayout
                 }
             }
             .background(AppBackground())
@@ -194,6 +152,138 @@ struct MediaListView: View {
         }
     }
 
+    // MARK: - Layouts
+
+    /// iPhone, narrow iPad windows, and reorder mode everywhere: one column of rows in a `List`,
+    /// which is what provides the swipe actions and the drag handles.
+    @ViewBuilder
+    private var listLayout: some View {
+        let list = List {
+            if !upcomingItems.isEmpty && !isEditingOrder {
+                upcomingStrip
+            }
+
+            if unwatchedItems.isEmpty && !isEditingOrder {
+                caughtUpRow
+            }
+
+            if !unwatchedItems.isEmpty {
+                SectionHeader(
+                    title: "Up Next",
+                    count: filteredUnwatchedItems.count,
+                    // The filter menu is hidden while reordering — edit mode shows Up Next only.
+                    showsFilter: !isEditingOrder,
+                    availableGenres: availableGenres,
+                    selectedGenre: $selectedGenre,
+                    availableProviderCategories: availableProviderCategories,
+                    selectedProviderCategory: $selectedProviderCategory,
+                    onlyMyServices: $onlyMyServices,
+                    showsMyServicesFilter: showsMyServicesFilter
+                )
+
+                ForEach(displayedUnwatchedItems, id: \.media?.id) { item in
+                    row(for: item)
+                }
+                .onMove(perform: moveHandler)
+                .onDelete(perform: deleteUnwatched)
+            }
+
+            if !watchedItems.isEmpty && !isEditingOrder {
+                SectionHeader(title: "Watched", count: watchedItems.count)
+
+                ForEach(displayedWatchedItems, id: \.media?.id) { item in
+                    row(for: item, in: $watchedItems)
+                }
+                .onDelete(perform: deleteWatched)
+            }
+        }
+        .refreshable {
+            await onRefresh?()
+        }
+        .scrollContentBackground(.hidden)
+        .listStyle(.plain)
+        .contentMargins(.bottom, 20, for: .scrollContent)
+        .padding(.horizontal, 12)
+        .environment(\.editMode, .constant(isEditingOrder ? .active : .inactive))
+
+        if horizontalSizeClass == .regular {
+            // Only reached while reordering. A drag list spanning a 1200pt window is a long throw
+            // for every move, so keep it to a phone-width column in the middle.
+            list
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
+        } else {
+            list
+        }
+    }
+
+    /// Wide iPad windows: full-width content with the rows in an adaptive grid, the shape TV and
+    /// Music use. There's no `List`, so the rows lose their swipe actions — their context menu
+    /// carries Mark Watched / Delete instead.
+    private var gridLayout: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                if !upcomingItems.isEmpty {
+                    upcomingStrip
+                }
+
+                if unwatchedItems.isEmpty {
+                    caughtUpRow
+                } else {
+                    section(
+                        header: SectionHeader(
+                            title: "Up Next",
+                            count: filteredUnwatchedItems.count,
+                            availableGenres: availableGenres,
+                            selectedGenre: $selectedGenre,
+                            availableProviderCategories: availableProviderCategories,
+                            selectedProviderCategory: $selectedProviderCategory,
+                            onlyMyServices: $onlyMyServices,
+                            showsMyServicesFilter: showsMyServicesFilter
+                        ),
+                        items: displayedUnwatchedItems
+                    )
+                }
+
+                if !watchedItems.isEmpty {
+                    section(
+                        header: SectionHeader(title: "Watched", count: watchedItems.count),
+                        items: displayedWatchedItems,
+                        in: $watchedItems
+                    )
+                }
+            }
+        }
+        .refreshable {
+            await onRefresh?()
+        }
+        .contentMargins(.bottom, 20, for: .scrollContent)
+    }
+
+    /// Cells are wide rather than poster-shaped, so the grid adapts by column count instead of
+    /// stretching a fixed number of them.
+    private static let gridColumns = [
+        GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 12)
+    ]
+
+    private func section(
+        header: SectionHeader,
+        items: [ListItem],
+        in binding: Binding<[ListItem]>? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+
+            LazyVGrid(columns: Self.gridColumns, alignment: .leading, spacing: 12) {
+                ForEach(items, id: \.media?.id) { item in
+                    row(for: item, in: binding)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
     private func row(for item: ListItem, in items: Binding<[ListItem]>? = nil) -> some View {
         MediaListRow(
             item: items.map { binding(for: item, in: $0) } ?? binding(for: item),
@@ -206,9 +296,7 @@ struct MediaListView: View {
             },
             onDeleteRequested: {
                 if let id = item.media?.id { onItemDeleted?(id) }
-            },
-            selectionIsSticky: selectionIsSticky,
-            highlightsSelection: highlightsSelection
+            }
         )
     }
 
@@ -554,17 +642,9 @@ struct MediaListRow: View {
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
     let onDeleteRequested: () -> Void
-    /// See `MediaListView.selectionIsSticky` — a re-tap re-sends the id instead of clearing it.
-    var selectionIsSticky: Bool = false
-    /// See `MediaListView.highlightsSelection`.
-    var highlightsSelection: Bool = false
 
     /// Rows are buttons; while reordering, a tap must not open the detail sheet.
     @Environment(\.editMode) private var editMode
-
-    private var isSelected: Bool {
-        expandedItemID == itemID
-    }
 
     /// Show progress bar for any TV show with partial season progress
     private var seasonProgress: (watchedSeasons: [Int], total: Int)? {
@@ -590,9 +670,7 @@ struct MediaListRow: View {
     var body: some View {
         Button {
             guard editMode?.wrappedValue.isEditing != true else { return }
-            // A sticky selection stays pinned in the detail column — only a *different* row
-            // changes it. Everywhere else a second tap collapses the open sheet.
-            onItemExpanded(!selectionIsSticky && isSelected ? nil : itemID)
+            onItemExpanded(expandedItemID == itemID ? nil : itemID)
         } label: {
             MediaCardView(
                 title: item.media?.title ?? "",
@@ -611,14 +689,6 @@ struct MediaListRow: View {
                     episode: item.tvShow?.nextEpisodeNumber
                 )
             )
-            .overlay {
-                if highlightsSelection && isSelected {
-                    // Content layer, so an outline rather than glass. Matches the card's own
-                    // corner radius (`MediaCardView` in non-compact mode).
-                    RoundedRectangle(cornerRadius: DesignTokens.Radius.card)
-                        .strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1.5)
-                }
-            }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
