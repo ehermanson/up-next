@@ -179,6 +179,14 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 - Use `Color.accentColor` for tints (asset `AccentColor`), `DesignTokens.Radius.*` for corner radii, and `DesignTokens.Colors.backgroundBase` when blending into `AppBackground`.
 - Reorder in the watchlist is native `List` + `.onMove` driven by `editMode`.
 
+### iPad / Size Classes
+
+The target is universal (`TARGETED_DEVICE_FAMILY = 1,2`, resizable windows on iPadOS 26, "Designed for iPad" on Mac). Layouts branch on `@Environment(\.horizontalSizeClass)`; **compact must stay identical to the phone**, so iPad slide-over / narrow Split View just get the phone layout.
+- **TV Shows / Movies / Collections** on regular width: `NavigationSplitView(.balanced)` — the existing list (with its own `NavigationStack`) in the sidebar (`navigationSplitViewColumnWidth(min: 360, ideal: 440, max: 560)`), the selected title pinned in the detail column via `MediaDetailView(presentedInColumn: true)` (hides "Done"; `dismiss` still fires after add/remove so the presenter clears its selection). Content keyed by `.id(...)` so switching rows resets sheet state. Placeholder `EmptyStateView("Select a title")`. Selection is cleared on a size-class change so it can't pop up as a surprise sheet.
+- Watchlist tabs persist edits on selection change and tab disappear in regular mode (the sheet's `onDismiss` did that on compact). Collections lift `selectedItem` to `MyListsView`; `CustomListDetailView` takes it as a binding and forces its sheet binding to `nil` on regular width. `CustomListItemDetailSheet` is reused as the column content; removal goes through `CustomListViewModel.removeWithUndo(_:from:toast:animation:)` (an extension in `CustomListDetailView.swift`) so the row and the column share one undo path.
+- **Detail sheet**: content column capped at 760pt and centered; the backdrop hero is height-capped on regular width. Discover's sheet uses `.presentationSizing(.page)` on regular width.
+- **Discover** on regular width: media-type picker capped at 480pt, provider row at 640pt, posters 170×255 (`posterCardSize`), Browse All as a `LazyVGrid(.adaptive(minimum: 340, maximum: 520))` of the same row cards.
+
 ### Watched State (TV Shows)
 
 - `watchedSeasons`: Array of watched season numbers (1-based)

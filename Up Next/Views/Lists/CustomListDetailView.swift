@@ -4,11 +4,13 @@ import SwiftUI
 struct CustomListDetailView: View {
     let viewModel: CustomListViewModel
     let list: CustomList
+    /// Owned by `MyListsView` so a regular-width window can pin the selection in its detail column.
+    @Binding var selectedItem: CustomListItem?
 
     @Environment(ToastState.self) private var toast
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showingAddItems = false
-    @State private var selectedItem: CustomListItem?
     @State private var isConfirmingMarkAllUnwatched = false
 
     /// Collections keep their own watched state (`CustomListItem.watchedAt`) — nothing here reads
@@ -23,8 +25,11 @@ struct CustomListDetailView: View {
         }
     }
 
-    private var rowAnimation: Animation {
-        .spring(response: 0.4, dampingFraction: 0.85)
+    private var rowAnimation: Animation { CustomListViewModel.rowAnimation }
+
+    /// Regular width pins the entry in the split view's detail column, so the sheet stays closed.
+    private var sheetItem: Binding<CustomListItem?> {
+        horizontalSizeClass == .regular ? .constant(nil) : $selectedItem
     }
 
     var body: some View {
@@ -102,7 +107,7 @@ struct CustomListDetailView: View {
                 customListViewModel: viewModel
             )
         }
-        .sheet(item: $selectedItem) { item in
+        .sheet(item: sheetItem) { item in
             CustomListItemDetailSheet(
                 item: item,
                 list: list,
@@ -226,22 +231,40 @@ struct CustomListDetailView: View {
 
     // MARK: - Removal
 
-    /// Removes an item immediately (animated) and shows a toast with an Undo action — the same
-    /// pattern as a watchlist swipe-delete.
     private func removeWithUndo(_ item: CustomListItem) {
-        let removedTitle = withAnimation(rowAnimation) {
-            viewModel.removeItem(item, from: list)
+        viewModel.removeWithUndo(item, from: list, toast: toast, animation: rowAnimation)
+    }
+}
+
+// MARK: - Removal helper
+
+extension CustomListViewModel {
+    /// Row move / removal animation, shared by the collection list and the pinned detail column.
+    static let rowAnimation: Animation = .spring(response: 0.4, dampingFraction: 0.85)
+
+    /// Removes an item immediately (animated) and shows a toast with an Undo action — the same
+    /// pattern as a watchlist swipe-delete. Returns the removed title, if anything was removed.
+    @discardableResult
+    func removeWithUndo(
+        _ item: CustomListItem,
+        from list: CustomList,
+        toast: ToastState,
+        animation: Animation
+    ) -> String? {
+        let removedTitle = withAnimation(animation) {
+            removeItem(item, from: list)
         }
-        guard let title = removedTitle else { return }
+        guard let title = removedTitle else { return nil }
         toast.show(
             "Removed \u{201C}\(title)\u{201D} from \u{201C}\(list.name)\u{201D}",
             icon: "trash.circle.fill",
             actionLabel: "Undo"
-        ) {
-            withAnimation(rowAnimation) {
-                viewModel.undoLastRemoval()
+        ) { [weak self] in
+            withAnimation(animation) {
+                self?.undoLastRemoval()
             }
         }
+        return title
     }
 }
 
@@ -250,12 +273,16 @@ struct CustomListDetailView: View {
 /// Wraps `MediaDetailView` for a collection entry. The sheet is always bound to a *transient*
 /// `ListItem` over the shared media row (like Discover does) so it never reaches into the
 /// watchlist: the only watched state it can change is the collection entry's own.
-private struct CustomListItemDetailSheet: View {
+///
+/// Also used un-sheeted as the pinned detail column on regular width (`presentedInColumn`).
+struct CustomListItemDetailSheet: View {
     let item: CustomListItem
     let list: CustomList
     let listViewModel: CustomListViewModel
     let onRemove: () -> Void
     let dismiss: () -> Void
+    /// Regular width shows this in a split view column, where "Done" has nothing to dismiss.
+    var presentedInColumn: Bool = false
 
     /// Wraps the *shared* media row, so anything the detail sheet fetches into that row (providers,
     /// cast, backdrop) is stored once and shows up everywhere else the title appears.
@@ -266,13 +293,15 @@ private struct CustomListItemDetailSheet: View {
         list: CustomList,
         listViewModel: CustomListViewModel,
         onRemove: @escaping () -> Void,
-        dismiss: @escaping () -> Void
+        dismiss: @escaping () -> Void,
+        presentedInColumn: Bool = false
     ) {
         self.item = item
         self.list = list
         self.listViewModel = listViewModel
         self.onRemove = onRemove
         self.dismiss = dismiss
+        self.presentedInColumn = presentedInColumn
         let placeholder: ListItem
         if let tvShow = item.tvShow {
             placeholder = ListItem(tvShow: tvShow)
@@ -293,6 +322,7 @@ private struct CustomListItemDetailSheet: View {
         // Inside a collection, "+" on a similar / recommended title adds to *this* collection,
         // not to Up Next, and the checkmarks reflect this collection's membership.
         let collection: CustomList = list
+        let inColumn: Bool = presentedInColumn
         let existingIDs: Set<String> = Set((list.items ?? []).compactMap { item -> String? in
             guard let media = item.media else { return nil }
             return MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
@@ -320,7 +350,8 @@ private struct CustomListItemDetailSheet: View {
             collectionWatched: watchedBinding,
             collectionName: collectionName,
             removeLabel: "Remove from collection",
-            removeMessage: removeMessage
+            removeMessage: removeMessage,
+            presentedInColumn: inColumn
         )
         .onDisappear { discardTransientItem() }
     }

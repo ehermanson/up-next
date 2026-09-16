@@ -7,6 +7,7 @@ struct TVShowsTabView: View {
     var onSettingsTapped: () -> Void
 
     @Environment(ToastState.self) private var toast
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var expandedItemID: String? = nil
     @State private var selectedGenre: String? = nil
@@ -37,6 +38,89 @@ struct TVShowsTabView: View {
     }
 
     var body: some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                splitLayout
+            } else {
+                compactLayout
+            }
+        }
+        .onChange(of: expandedItemID) { previousID, _ in
+            // The split layout has no sheet dismissal to hang persistence off, so a selection
+            // losing focus is the save point. `persistChanges` is idempotent.
+            if horizontalSizeClass == .regular, previousID != nil {
+                viewModel.persistChanges(for: .tvShow)
+            }
+        }
+        .onChange(of: horizontalSizeClass) {
+            // A pinned selection would reappear as a surprise sheet (or vice versa) when the
+            // window is resized on iPad — save its edits, then drop it.
+            viewModel.persistChanges(for: .tvShow)
+            expandedItemID = nil
+        }
+        .onDisappear {
+            viewModel.persistChanges(for: .tvShow)
+        }
+        .onChange(of: viewModel.availableTVGenres) {
+            if let genre = selectedGenre, !viewModel.availableTVGenres.contains(genre) {
+                selectedGenre = nil
+            }
+        }
+        .onChange(of: settings.hasSelectedProviders) {
+            // Without any selected services the filter would hide everything — turn it off.
+            if !settings.hasSelectedProviders { onlyMyServices = false }
+        }
+        .onChange(of: viewModel.availableTVProviderCategories) {
+            if let cat = selectedProviderCategory, !viewModel.availableTVProviderCategories.contains(cat) {
+                selectedProviderCategory = nil
+            }
+        }
+    }
+
+    // MARK: - Layouts
+
+    /// iPhone (and narrow iPad windows): the list fills the tab, the detail arrives as a sheet.
+    private var compactLayout: some View {
+        listView
+            .sheet(
+                item: Binding(
+                    get: { selectedItem },
+                    set: { _ in expandedItemID = nil }
+                ),
+                // Swipe-to-dismiss never runs the detail view's `dismiss` closure, so persist here
+                // instead — that covers every way the sheet can go away. `persistChanges` is idempotent.
+                onDismiss: {
+                    viewModel.persistChanges(for: .tvShow)
+                }
+            ) { item in
+                detailView(for: item, inColumn: false)
+            }
+    }
+
+    /// Regular width: list in the sidebar, detail pinned alongside it.
+    private var splitLayout: some View {
+        NavigationSplitView {
+            listView
+                .navigationSplitViewColumnWidth(min: 360, ideal: 440, max: 560)
+        } detail: {
+            detailColumn
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    @ViewBuilder
+    private var detailColumn: some View {
+        if let item = selectedItem {
+            // Keyed on the media id so switching rows rebuilds the detail's `@State`.
+            detailView(for: item, inColumn: true)
+                .id(item.media?.id)
+        } else {
+            EmptyStateView(icon: "tv", title: "Select a title")
+                .background(AppBackground())
+        }
+    }
+
+    private var listView: some View {
         MediaListView(
             allItems: $viewModel.tvShows,
             unwatchedItems: $viewModel.unwatchedTVShows,
@@ -74,52 +158,30 @@ struct TVShowsTabView: View {
                 await viewModel.refreshNow()
             }
         )
-        .sheet(
-            item: Binding(
-                get: { selectedItem },
-                set: { _ in expandedItemID = nil }
-            ),
-            // Swipe-to-dismiss never runs the detail view's `dismiss` closure, so persist here
-            // instead — that covers every way the sheet can go away. `persistChanges` is idempotent.
-            onDismiss: {
-                viewModel.persistChanges(for: .tvShow)
-            }
-        ) { item in
-            MediaDetailView(
-                listItem: binding(forItem: item),
-                dismiss: {
+    }
+
+    private func detailView(for item: ListItem, inColumn: Bool) -> some View {
+        MediaDetailView(
+            listItem: binding(forItem: item),
+            dismiss: {
+                expandedItemID = nil
+            },
+            onRemove: {
+                if let id = item.media?.id {
                     expandedItemID = nil
-                },
-                onRemove: {
-                    if let id = item.media?.id {
-                        expandedItemID = nil
-                        deleteWithUndo(id: id)
-                    }
-                },
-                onSeasonCountChanged: { listItem, previousCount in
-                    viewModel.handleSeasonCountUpdate(for: listItem, previousSeasonCount: previousCount)
-                },
-                customListViewModel: customListViewModel,
-                existingIDs: MediaIDKey.makeSet(.tvShow, viewModel.existingTVShowIDs)
-                    .union(MediaIDKey.makeSet(.movie, viewModel.existingMovieIDs)),
-                onTVShowAdded: { viewModel.addTVShow($0) },
-                onMovieAdded: { viewModel.addMovie($0) }
-            )
-        }
-        .onChange(of: viewModel.availableTVGenres) {
-            if let genre = selectedGenre, !viewModel.availableTVGenres.contains(genre) {
-                selectedGenre = nil
-            }
-        }
-        .onChange(of: settings.hasSelectedProviders) {
-            // Without any selected services the filter would hide everything — turn it off.
-            if !settings.hasSelectedProviders { onlyMyServices = false }
-        }
-        .onChange(of: viewModel.availableTVProviderCategories) {
-            if let cat = selectedProviderCategory, !viewModel.availableTVProviderCategories.contains(cat) {
-                selectedProviderCategory = nil
-            }
-        }
+                    deleteWithUndo(id: id)
+                }
+            },
+            onSeasonCountChanged: { listItem, previousCount in
+                viewModel.handleSeasonCountUpdate(for: listItem, previousSeasonCount: previousCount)
+            },
+            customListViewModel: customListViewModel,
+            existingIDs: MediaIDKey.makeSet(.tvShow, viewModel.existingTVShowIDs)
+                .union(MediaIDKey.makeSet(.movie, viewModel.existingMovieIDs)),
+            onTVShowAdded: { viewModel.addTVShow($0) },
+            onMovieAdded: { viewModel.addMovie($0) },
+            presentedInColumn: inColumn
+        )
     }
 
     /// Removes an item immediately (animated) and shows a toast with an Undo action.

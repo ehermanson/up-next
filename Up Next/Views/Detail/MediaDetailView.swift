@@ -25,6 +25,10 @@ struct MediaDetailView: View {
     /// "delete this title" wording; collections override it with collection-scoped wording.
     var removeLabel: String?
     var removeMessage: String?
+    /// True when the view is pinned in a `NavigationSplitView` detail column (regular width)
+    /// rather than presented as a sheet. There's nothing to dismiss, so "Done" is hidden;
+    /// `dismiss` still runs after add/remove so the presenter can clear its selection.
+    var presentedInColumn: Bool = false
 
     @Environment(ToastState.self) private var toast
 
@@ -174,6 +178,10 @@ struct MediaDetailView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
                     .padding(.bottom, 24)
+                    // Keeps the text column readable when the view is wider than a phone — an
+                    // iPad form sheet or a pinned split-view detail column. Never reached on iPhone.
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .frame(maxWidth: .infinity)
                 }
             }
             .ignoresSafeArea(.container, edges: .top)
@@ -202,8 +210,10 @@ struct MediaDetailView: View {
                         .accessibilityLabel(removeLabel ?? "Remove from watchlist")
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                if !presentedInColumn {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
             .task {
@@ -544,23 +554,43 @@ struct HeaderImageView: View {
     let title: String
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private let backdropHeight: CGFloat = 260
+    /// Width of the view itself — only consulted at regular width, to scale the backdrop.
+    @State private var availableWidth: CGFloat = 0
+
+    private let compactBackdropHeight: CGFloat = 260
+    /// Ceiling for the backdrop at regular width. Letting 16:9 run free in a 1000pt-wide detail
+    /// column would hand back a 560pt hero and push everything else below the fold.
+    private let maxBackdropHeight: CGFloat = 420
     private let posterWidth: CGFloat = 100
     private let posterHeight: CGFloat = 150
     /// How far the floating poster hangs below the backdrop.
     private let posterOverhang: CGFloat = 60
     private let posterHeaderHeight: CGFloat = 420
 
+    /// Fixed on iPhone; on wider layouts the artwork grows toward 16:9 but stops at the cap.
+    private var backdropHeight: CGFloat {
+        guard horizontalSizeClass == .regular, availableWidth > 0 else { return compactBackdropHeight }
+        return min(availableWidth * 9 / 16, maxBackdropHeight)
+    }
+
     private var backdropURL: URL? {
         TMDBService.shared.imageURL(path: backdropPath, size: .w780)
     }
 
     var body: some View {
-        if let backdropURL {
-            backdropHeader(url: backdropURL)
-        } else {
-            posterHeader
+        Group {
+            if let backdropURL {
+                backdropHeader(url: backdropURL)
+            } else {
+                posterHeader
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            availableWidth = width
         }
     }
 

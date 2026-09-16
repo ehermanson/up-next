@@ -7,6 +7,7 @@ struct DiscoverView: View {
     let onMovieAdded: (Movie) -> Void
 
     @Environment(ToastState.self) private var toast
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var viewModel = DiscoverViewModel()
     /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
@@ -51,20 +52,29 @@ struct DiscoverView: View {
             ProviderSettingsView()
         }
         .sheet(item: $detailListItem) { item in
-            MediaDetailView(
-                listItem: detailBinding(for: item),
-                dismiss: { detailListItem = nil },
-                onRemove: { detailListItem = nil },
-                onAdd: {
-                    addFromDetail(item)
-                },
-                existingIDs: MediaIDKey.makeSet(.tvShow, existingTVShowIDs)
-                    .union(MediaIDKey.makeSet(.movie, existingMovieIDs))
-                    .union(addedIDs),
-                onTVShowAdded: { onTVShowAdded($0) },
-                onMovieAdded: { onMovieAdded($0) }
-            )
+            if horizontalSizeClass == .regular {
+                detailSheetContent(for: item)
+                    .presentationSizing(.page)
+            } else {
+                detailSheetContent(for: item)
+            }
         }
+    }
+
+    private func detailSheetContent(for item: ListItem) -> some View {
+        MediaDetailView(
+            listItem: detailBinding(for: item),
+            dismiss: { detailListItem = nil },
+            onRemove: { detailListItem = nil },
+            onAdd: {
+                addFromDetail(item)
+            },
+            existingIDs: MediaIDKey.makeSet(.tvShow, existingTVShowIDs)
+                .union(MediaIDKey.makeSet(.movie, existingMovieIDs))
+                .union(addedIDs),
+            onTVShowAdded: { onTVShowAdded($0) },
+            onMovieAdded: { onMovieAdded($0) }
+        )
     }
 
     // MARK: - Media Type Picker
@@ -77,6 +87,7 @@ struct DiscoverView: View {
         }
         .pickerStyle(.segmented)
         .padding(.horizontal, 16)
+        .frame(maxWidth: horizontalSizeClass == .regular ? 480 : .infinity)
     }
 
     // MARK: - Provider Filter Row
@@ -101,6 +112,7 @@ struct DiscoverView: View {
         .padding(12)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
         .padding(.horizontal, 16)
+        .frame(maxWidth: horizontalSizeClass == .regular ? 640 : .infinity)
     }
 
     /// True when Discover results are currently narrowed to the user's selected services.
@@ -167,6 +179,11 @@ struct DiscoverView: View {
         }
     }
 
+    /// Carousel poster size — larger on regular width (iPad) to use the extra space, same 2:3 ratio.
+    private var posterCardSize: CGSize {
+        horizontalSizeClass == .regular ? CGSize(width: 170, height: 255) : CGSize(width: 140, height: 210)
+    }
+
     private func carouselCard(_ item: DiscoverViewModel.DiscoverItem) -> some View {
         let added = isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType)
 
@@ -179,7 +196,7 @@ struct DiscoverView: View {
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: 140, height: 210)
+                                .frame(width: posterCardSize.width, height: posterCardSize.height)
                                 .clipped()
                         case .failure:
                             posterPlaceholder
@@ -189,7 +206,7 @@ struct DiscoverView: View {
                             posterPlaceholder
                         }
                     }
-                    .frame(width: 140, height: 210)
+                    .frame(width: posterCardSize.width, height: posterCardSize.height)
                     .clipShape(.rect(cornerRadius: DesignTokens.Radius.posterCard))
                 }
                 .buttonStyle(.plain)
@@ -211,7 +228,7 @@ struct DiscoverView: View {
                     .font(.caption)
                     .fontWeight(.medium)
                     .lineLimit(1)
-                    .frame(width: 140, alignment: .leading)
+                    .frame(width: posterCardSize.width, alignment: .leading)
             }
             .buttonStyle(.plain)
 
@@ -224,7 +241,7 @@ struct DiscoverView: View {
     private var posterPlaceholder: some View {
         Rectangle()
             .fill(.fill.tertiary)
-            .frame(width: 140, height: 210)
+            .frame(width: posterCardSize.width, height: posterCardSize.height)
     }
 
     private var carouselShimmer: some View {
@@ -241,7 +258,7 @@ struct DiscoverView: View {
                             ForEach(0..<5, id: \.self) { _ in
                                 RoundedRectangle(cornerRadius: DesignTokens.Radius.posterCard)
                                     .fill(.fill.tertiary)
-                                    .frame(width: 140, height: 210)
+                                    .frame(width: posterCardSize.width, height: posterCardSize.height)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -325,9 +342,24 @@ struct DiscoverView: View {
                 )
                 .padding(.vertical, 40)
             } else {
-                LazyVStack(spacing: 8) {
-                    ForEach(viewModel.browseItems) { item in
-                        browseRow(item)
+                VStack(spacing: 8) {
+                    if horizontalSizeClass == .regular {
+                        // Regular width: let rows form 2-3 columns instead of one long list.
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 12)],
+                            spacing: 12
+                        ) {
+                            ForEach(viewModel.browseItems) { item in
+                                browseRow(item)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    } else {
+                        LazyVStack(spacing: 8) {
+                            ForEach(viewModel.browseItems) { item in
+                                browseRow(item)
+                            }
+                        }
                     }
 
                     if viewModel.isBrowseLoading {

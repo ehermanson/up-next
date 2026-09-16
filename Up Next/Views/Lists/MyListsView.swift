@@ -1,13 +1,43 @@
+import SwiftData
 import SwiftUI
 
 struct MyListsView: View {
     let viewModel: CustomListViewModel
+
+    @Environment(ToastState.self) private var toast
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     @State private var showingCreateList = false
     @State private var editingList: CustomList?
     @State private var navigationPath = NavigationPath()
     @State private var listToDelete: CustomList?
+    /// Owned here so regular width can pin it in the detail column; compact hands it back to
+    /// `CustomListDetailView`, which presents it as a sheet.
+    @State private var selectedItem: CustomListItem?
 
     var body: some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                // The collections → collection push stays inside the sidebar; the detail column
+                // shows whichever title is selected.
+                NavigationSplitView {
+                    collectionsColumn
+                        .navigationSplitViewColumnWidth(min: 360, ideal: 440, max: 560)
+                } detail: {
+                    itemDetailColumn
+                }
+                .navigationSplitViewStyle(.balanced)
+            } else {
+                collectionsColumn
+            }
+        }
+        // A pinned selection must not reappear as a sheet after the window is resized.
+        .onChange(of: horizontalSizeClass) { _, _ in
+            selectedItem = nil
+        }
+    }
+
+    private var collectionsColumn: some View {
         NavigationStack(path: $navigationPath) {
             Group {
                 if viewModel.customLists.isEmpty {
@@ -93,12 +123,17 @@ struct MyListsView: View {
             }
             .navigationDestination(for: UUID.self) { listID in
                 if let list = viewModel.customLists.first(where: { $0.id == listID }) {
-                    CustomListDetailView(viewModel: viewModel, list: list)
-                        .onDisappear {
-                            if navigationPath.isEmpty {
-                                viewModel.activeListID = nil
-                            }
+                    CustomListDetailView(
+                        viewModel: viewModel,
+                        list: list,
+                        selectedItem: $selectedItem
+                    )
+                    .onDisappear {
+                        if navigationPath.isEmpty {
+                            viewModel.activeListID = nil
+                            selectedItem = nil
                         }
+                    }
                 }
             }
             .sheet(isPresented: $showingCreateList) {
@@ -125,6 +160,37 @@ struct MyListsView: View {
             } message: { list in
                 Text("Are you sure you want to delete \"\(list.name)\"? This action cannot be undone.")
             }
+        }
+    }
+
+    // MARK: - Detail column
+
+    /// The pinned counterpart of `CustomListDetailView`'s sheet. `item.customList` is the SwiftData
+    /// inverse of `CustomList.items`, so the column always knows which collection it's scoped to.
+    @ViewBuilder
+    private var itemDetailColumn: some View {
+        if let item = selectedItem, let list = item.customList {
+            CustomListItemDetailSheet(
+                item: item,
+                list: list,
+                listViewModel: viewModel,
+                onRemove: {
+                    viewModel.removeWithUndo(
+                        item,
+                        from: list,
+                        toast: toast,
+                        animation: CustomListViewModel.rowAnimation
+                    )
+                    selectedItem = nil
+                },
+                dismiss: { selectedItem = nil },
+                presentedInColumn: true
+            )
+            // Switching rows must rebuild the sheet so its transient `ListItem` is rebound.
+            .id(item.persistentModelID)
+        } else {
+            EmptyStateView(icon: "tray.full", title: "Select a title")
+                .background(AppBackground())
         }
     }
 }
