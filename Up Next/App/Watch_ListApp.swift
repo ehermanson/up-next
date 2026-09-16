@@ -53,6 +53,8 @@ struct Watch_ListApp: App {
         WindowGroup {
             ContentView()
                 .environment(toastState)
+                .preferredColorScheme(.dark)
+                .fontDesign(.rounded)
         }
         .modelContainer(sharedModelContainer)
     }

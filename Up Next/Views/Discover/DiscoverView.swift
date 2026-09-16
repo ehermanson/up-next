@@ -26,8 +26,6 @@ struct DiscoverView: View {
             }
             .background(AppBackground())
             .navigationTitle("Discover")
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
         }
         .task {
             await viewModel.initialLoad()
@@ -46,7 +44,6 @@ struct DiscoverView: View {
                 onTVShowAdded: { onTVShowAdded($0) },
                 onMovieAdded: { onMovieAdded($0) }
             )
-            .toastOverlay()
         }
     }
 
@@ -81,7 +78,6 @@ struct DiscoverView: View {
             Text(title)
                 .font(.title3)
                 .fontWeight(.bold)
-                .fontDesign(.rounded)
                 .padding(.horizontal, 16)
 
             ScrollView(.horizontal) {
@@ -119,7 +115,7 @@ struct DiscoverView: View {
                         }
                     }
                     .frame(width: 140, height: 210)
-                    .clipShape(.rect(cornerRadius: 12))
+                    .clipShape(.rect(cornerRadius: DesignTokens.Radius.posterCard))
                 }
                 .buttonStyle(.plain)
 
@@ -139,7 +135,6 @@ struct DiscoverView: View {
                 Text(item.title)
                     .font(.caption)
                     .fontWeight(.medium)
-                    .fontDesign(.rounded)
                     .lineLimit(1)
                     .frame(width: 140, alignment: .leading)
             }
@@ -153,7 +148,7 @@ struct DiscoverView: View {
 
     private var posterPlaceholder: some View {
         Rectangle()
-            .fill(Color.gray.opacity(0.3))
+            .fill(.fill.tertiary)
             .frame(width: 140, height: 210)
     }
 
@@ -161,16 +156,16 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: 24) {
             ForEach(0..<3, id: \.self) { _ in
                 VStack(alignment: .leading, spacing: 10) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.white.opacity(0.1))
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.control)
+                        .fill(.fill.quaternary)
                         .frame(width: 120, height: 20)
                         .padding(.horizontal, 16)
 
                     ScrollView(.horizontal) {
                         HStack(spacing: 12) {
                             ForEach(0..<5, id: \.self) { _ in
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.white.opacity(0.08))
+                                RoundedRectangle(cornerRadius: DesignTokens.Radius.posterCard)
+                                    .fill(.fill.tertiary)
                                     .frame(width: 140, height: 210)
                             }
                         }
@@ -197,7 +192,6 @@ struct DiscoverView: View {
             Text("Browse All")
                 .font(.title3)
                 .fontWeight(.bold)
-                .fontDesign(.rounded)
                 .padding(.horizontal, 16)
 
             ScrollView(.horizontal) {
@@ -212,39 +206,18 @@ struct DiscoverView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "line.3.horizontal.decrease")
-                                .font(.caption)
-                            Text(viewModel.selectedGenre?.name ?? "All Genres")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .glassEffect(
-                            viewModel.selectedGenre != nil
-                                ? .regular.tint(.indigo.opacity(0.4))
-                                : .regular,
-                            in: .capsule
+                        Chip(
+                            icon: "line.3.horizontal.decrease",
+                            text: viewModel.selectedGenre?.name ?? "All Genres",
+                            isEmphasized: viewModel.selectedGenre != nil
                         )
                     }
-                    .buttonStyle(.plain)
 
                     ForEach(DiscoverViewModel.SortOption.allCases, id: \.self) { option in
                         Button {
                             viewModel.selectedSort = option
                         } label: {
-                            Text(option.rawValue)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .glassEffect(
-                                    viewModel.selectedSort == option
-                                        ? .regular.tint(.indigo.opacity(0.4))
-                                        : .regular,
-                                    in: .capsule
-                                )
+                            Chip(text: option.rawValue, isEmphasized: viewModel.selectedSort == option)
                         }
                         .buttonStyle(.plain)
                     }
@@ -256,8 +229,6 @@ struct DiscoverView: View {
     }
 
     private var browseList: some View {
-        // No GlassEffectContainer: it morph-coordinates glass children across hierarchy changes,
-        // which makes lazily-recycled rows re-form/scale-in on scroll. Each row keeps its own glass.
         LazyVStack(spacing: 8) {
             ForEach(viewModel.browseItems) { item in
                 browseRow(item)
@@ -265,7 +236,6 @@ struct DiscoverView: View {
 
             if viewModel.isBrowseLoading {
                 ProgressView()
-                    .tint(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
             } else if viewModel.browsePage < viewModel.browseTotalPages {

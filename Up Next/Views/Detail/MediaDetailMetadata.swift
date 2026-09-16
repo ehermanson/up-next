@@ -54,20 +54,23 @@ struct DetailProviderRow: View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(networks, id: \.id) { network in
-                    providerLogo(for: network)
-                        .onTapGesture {
-                            tooltipNetworkID = tooltipNetworkID == network.id ? nil : network.id
-                        }
-                        .popover(isPresented: Binding(
-                            get: { tooltipNetworkID == network.id },
-                            set: { if !$0 { tooltipNetworkID = nil } }
-                        )) {
-                            Text(network.name)
-                                .font(.subheadline)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .presentationCompactAdaptation(.popover)
-                        }
+                    Button {
+                        tooltipNetworkID = tooltipNetworkID == network.id ? nil : network.id
+                    } label: {
+                        providerLogo(for: network)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(network.name)
+                    .popover(isPresented: Binding(
+                        get: { tooltipNetworkID == network.id },
+                        set: { if !$0 { tooltipNetworkID = nil } }
+                    )) {
+                        Text(network.name)
+                            .font(.subheadline)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .presentationCompactAdaptation(.popover)
+                    }
                 }
             }
             .padding(.vertical, 2)
@@ -131,28 +134,32 @@ struct MetadataRow: View {
     var body: some View {
         FlowLayout(spacing: 8) {
             if let rating = contentRating, !rating.isEmpty {
-                ContentRatingPill(text: rating)
+                Chip(text: rating, isEmphasized: true)
             }
             if let tvShow = listItem.tvShow {
                 if let summary = tvShow.seasonsEpisodesSummary {
-                    MetadataPill(text: summary)
+                    Chip(text: summary)
                 }
                 if let runtime = tvShow.episodeRunTime {
-                    MetadataPill(text: "\(runtime) min/ep")
+                    Chip(text: "\(runtime) min/ep")
                 }
                 if let airDate = tvShow.nextEpisodeAirDate, let formatted = Self.formatAirDate(airDate) {
-                    NextAirDatePill(text: formatted)
+                    Chip(icon: "calendar", iconColor: .blue, text: formatted)
                 }
             } else if let movie = listItem.movie {
                 if let year = movie.releaseYear {
-                    MetadataPill(text: year)
+                    Chip(text: year)
                 }
                 if let runtime = movie.runtime {
-                    MetadataPill(text: "\(runtime) min")
+                    Chip(text: "\(runtime) min")
                 }
             }
             if let vote = voteAverage, vote > 0 {
-                RatingPill(vote: vote)
+                Chip(
+                    icon: "star.fill",
+                    iconColor: .yellow,
+                    text: vote.formatted(.number.precision(.fractionLength(1)))
+                )
             }
         }
     }
@@ -164,68 +171,3 @@ extension MetadataRow {
     }
 }
 
-struct NextAirDatePill: View {
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "calendar")
-                .font(.caption)
-                .foregroundStyle(.blue)
-            Text(text)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .glassEffect(.regular, in: .capsule)
-    }
-}
-
-struct ContentRatingPill: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .fontWeight(.bold)
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .glassEffect(.regular.tint(.white.opacity(0.1)), in: .rect(cornerRadius: 6))
-    }
-}
-
-struct MetadataPill: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .fontWeight(.medium)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .glassEffect(.regular, in: .capsule)
-    }
-}
-
-struct RatingPill: View {
-    let vote: Double
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "star.fill")
-                .font(.caption)
-                .foregroundStyle(.yellow)
-            Text(String(format: "%.1f", vote))
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .glassEffect(.regular, in: .capsule)
-    }
-}

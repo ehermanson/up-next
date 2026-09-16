@@ -4,10 +4,10 @@ struct TMDBAttributionView: View {
     var body: some View {
         VStack(spacing: 8) {
             tmdbLogo
-                .frame(height: 14)
+                .frame(height: 20)
             Text("This product uses the TMDB API but is not endorsed or certified by TMDB.")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -30,10 +30,13 @@ struct TMDBAttributionView: View {
                             endPoint: .trailing
                         )
                     )
-                    .frame(width: 32, height: 16)
+                    .frame(width: 44, height: 20)
                     .overlay {
                         Text("TMDB")
-                            .font(.system(size: 7, weight: .heavy))
+                            .font(.caption2.weight(.heavy))
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
+                            .padding(.horizontal, 3)
                             .foregroundStyle(.black)
                     }
                 Text("Powered by The Movie Database")

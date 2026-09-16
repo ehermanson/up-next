@@ -79,15 +79,12 @@ struct SFSymbolPickerGrid: View {
                     Image(systemName: symbol)
                         .font(.title3)
                         .frame(width: 44, height: 44)
-                        .glassEffect(
-                            .regular.tint(
-                                selectedSymbol == symbol ? .indigo.opacity(0.4) : .clear
-                            ).interactive(),
-                            in: .rect(cornerRadius: 12)
-                        )
-                        .foregroundStyle(selectedSymbol == symbol ? .white : .secondary)
+                        .cellSurface(tint: selectedSymbol == symbol ? .accentColor : nil)
+                        .foregroundStyle(selectedSymbol == symbol ? Color.accentColor : .secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(symbol)
+                .accessibilityAddTraits(selectedSymbol == symbol ? .isSelected : [])
             }
         }
     }

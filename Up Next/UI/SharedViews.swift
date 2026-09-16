@@ -49,6 +49,9 @@ struct EmptyStateView<Actions: View>: View {
     let subtitle: String?
     let actions: Actions
 
+    /// Icon well scales with the user's text size so the symbol never overflows it.
+    @ScaledMetric(relativeTo: .largeTitle) private var iconWellSize: CGFloat = 80
+
     init(icon: String, title: String, subtitle: String? = nil, @ViewBuilder actions: () -> Actions) {
         self.icon = icon
         self.title = title
@@ -59,13 +62,13 @@ struct EmptyStateView<Actions: View>: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
-                .frame(width: 80, height: 80)
-                .glassEffect(.regular, in: .circle)
+                .frame(width: iconWellSize, height: iconWellSize)
+                .background(.fill.tertiary, in: .circle)
+                .accessibilityHidden(true)
             Text(title)
                 .font(.title3)
-                .fontDesign(.rounded)
                 .foregroundStyle(.secondary)
             if let subtitle {
                 Text(subtitle)
@@ -188,6 +191,8 @@ final class ToastState {
 private struct ToastIcon: View {
     let name: String
     let color: Color
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var drawn = false
 
     var body: some View {
@@ -195,8 +200,11 @@ private struct ToastIcon: View {
             .font(.body)
             .fontWeight(.semibold)
             .foregroundStyle(color)
-            .symbolEffect(.bounce, value: drawn)
-            .onAppear { drawn = true }
+            .symbolEffect(.bounce, value: reduceMotion ? false : drawn)
+            .onAppear {
+                guard !reduceMotion else { return }
+                drawn = true
+            }
     }
 }
 
@@ -215,14 +223,12 @@ struct ToastOverlayModifier: ViewModifier {
                         Text(item.message)
                             .font(.callout)
                             .fontWeight(.semibold)
-                            .fontDesign(.rounded)
                         if let actionLabel = item.actionLabel {
                             Button(actionLabel) {
                                 toast.performAction()
                             }
                             .font(.callout.weight(.bold))
-                            .fontDesign(.rounded)
-                            .foregroundStyle(.indigo)
+                            .foregroundStyle(Color.accentColor)
                             .buttonStyle(.plain)
                             .padding(.leading, 4)
                         }
@@ -264,7 +270,7 @@ extension View {
         subtitle: "Add shows from the Discover tab to start tracking what you watch."
     ) {
         Button("Browse Shows") {}
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
     }
 }
 

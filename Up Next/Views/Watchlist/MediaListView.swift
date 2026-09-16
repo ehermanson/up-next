@@ -24,6 +24,9 @@ struct MediaListView: View {
     var isLoaded: Bool = true
 
     @State private var isEditingOrder = false
+    /// Bumped on every watched toggle / reorder so `.sensoryFeedback` has a trigger to observe.
+    @State private var watchedToggleCount = 0
+    @State private var reorderCount = 0
 
     /// Animation used for user-driven list changes (watched toggle, delete). A watched-toggle is a
     /// *move* across the Up Next / Watched sections, so both sections must diff in one explicit
@@ -52,6 +55,14 @@ struct MediaListView: View {
         watchedItems.filter { $0.media?.id != nil }
     }
 
+    /// `nil` disables the drag handles entirely (filtered list, or a single item).
+    private var moveHandler: ((IndexSet, Int) -> Void)? {
+        guard canReorder else { return nil }
+        return { source, destination in
+            moveUnwatched(from: source, to: destination)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -59,78 +70,31 @@ struct MediaListView: View {
                     ShimmerLoadingView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if isEmpty {
-                    VStack(spacing: 20) {
-                        Image(systemName: "popcorn")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 96, height: 96)
-                            .glassEffect(.regular, in: .circle)
-                        VStack(spacing: 8) {
-                            Text("Your watchlist is empty")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .fontDesign(.rounded)
-                            Text("Search for movies and shows to start building your list")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .fontDesign(.rounded)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 32)
-                        }
+                    EmptyStateView(
+                        icon: "popcorn",
+                        title: "Your watchlist is empty",
+                        subtitle: "Search for movies and shows to start building your list"
+                    ) {
                         if let onSearchTapped {
                             Button(action: onSearchTapped) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "plus")
-                                    Text("Add Your First Title")
-                                }
-                                .font(.body)
-                                .fontWeight(.semibold)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 12)
-                                .glassEffect(.regular.tint(.indigo.opacity(0.3)).interactive(), in: .capsule)
+                                Label("Add Your First Title", systemImage: "plus")
+                                    .fontWeight(.semibold)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.glassProminent)
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if isEditingOrder {
-                    editModeContent
                 } else {
-                    // No GlassEffectContainer here: it morph-coordinates its glass children across
-                    // hierarchy changes, but a lazy List recycles rows on scroll and shifts them on
-                    // delete — which made cards re-form/scale-in until the list was rebuilt. Each card
-                    // keeps its own .glassEffect; they just aren't container-coordinated.
                     List {
-                        if unwatchedItems.isEmpty {
-                            VStack(spacing: 12) {
-                                Text("You're all caught up!")
-                                    .font(.headline)
-                                    .fontDesign(.rounded)
-                                if let onSearchTapped {
-                                    Button(action: onSearchTapped) {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "plus")
-                                            Text("Add More")
-                                        }
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 10)
-                                        .glassEffect(.regular.tint(.indigo.opacity(0.3)).interactive(), in: .capsule)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 32)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
+                        if unwatchedItems.isEmpty && !isEditingOrder {
+                            caughtUpRow
                         }
 
                         if !unwatchedItems.isEmpty {
                             SectionHeader(
                                 title: "Up Next",
                                 count: filteredUnwatchedItems.count,
+                                // The filter menu is hidden while reordering — edit mode shows Up Next only.
+                                showsFilter: !isEditingOrder,
                                 availableGenres: availableGenres,
                                 selectedGenre: $selectedGenre,
                                 availableProviderCategories: availableProviderCategories,
@@ -152,9 +116,11 @@ struct MediaListView: View {
                                     }
                                 )
                             }
+                            .onMove(perform: moveHandler)
+                            .onDelete(perform: deleteUnwatched)
                         }
 
-                        if !watchedItems.isEmpty {
+                        if !watchedItems.isEmpty && !isEditingOrder {
                             SectionHeader(title: "Watched", count: watchedItems.count)
 
                             ForEach(displayedWatchedItems, id: \.media?.id) { item in
@@ -172,18 +138,19 @@ struct MediaListView: View {
                                     }
                                 )
                             }
+                            .onDelete(perform: deleteWatched)
                         }
                     }
                     .scrollContentBackground(.hidden)
                     .listStyle(.plain)
                     .contentMargins(.bottom, 20, for: .scrollContent)
                     .padding(.horizontal, 12)
+                    .environment(\.editMode, .constant(isEditingOrder ? .active : .inactive))
                 }
             }
             .background(AppBackground())
             .navigationTitle(navigationTitle)
-            .navigationBarTitleDisplayMode(isEditingOrder ? .inline : .large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 if let onSettingsTapped {
                     ToolbarItem(placement: .topBarLeading) {
@@ -216,9 +183,9 @@ struct MediaListView: View {
                     }
                 }
             }
-            .toolbarBackground(isEditingOrder ? .visible : .automatic, for: .navigationBar)
         }
-        .preferredColorScheme(.dark)
+        .sensoryFeedback(.selection, trigger: watchedToggleCount)
+        .sensoryFeedback(.impact, trigger: reorderCount)
         .onChange(of: hasActiveFilter) {
             if hasActiveFilter { isEditingOrder = false }
         }
@@ -227,21 +194,65 @@ struct MediaListView: View {
         }
     }
 
-    @ViewBuilder
-    private var editModeContent: some View {
-        GlassEffectContainer(spacing: 10) {
-            ReorderableMediaList(
-                items: $unwatchedItems,
-                isEditing: true,
-                isCompact: true,
-                isScrollEnabled: true,
-                subtitleProvider: subtitleProvider,
-                onDelete: { id in onItemDeleted?(id) },
-                onMove: { onOrderChanged?() }
-            )
-            .clipped()
+    private var caughtUpRow: some View {
+        VStack(spacing: 12) {
+            Text("You're all caught up!")
+                .font(.headline)
+            if let onSearchTapped {
+                Button(action: onSearchTapped) {
+                    Label("Add More", systemImage: "plus")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
+                .buttonStyle(.glass)
+            }
         }
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    // MARK: - Reorder / delete
+
+    /// Reorders `unwatchedItems` to match the new order of the *rendered* rows. Rows are keyed by
+    /// media id and `displayedUnwatchedItems` drops nil-id items, so offsets can't be applied to
+    /// `unwatchedItems` directly — any nil-id item is re-inserted at its original absolute index.
+    private func moveUnwatched(from source: IndexSet, to destination: Int) {
+        var orderedIDs = displayedUnwatchedItems.compactMap { $0.media?.id }
+        orderedIDs.move(fromOffsets: source, toOffset: destination)
+
+        var itemsByID: [String: ListItem] = [:]
+        for item in unwatchedItems {
+            if let id = item.media?.id { itemsByID[id] = item }
+        }
+
+        let movedIDs = Set(orderedIDs)
+        var reordered = orderedIDs.compactMap { itemsByID[$0] }
+        for (index, item) in unwatchedItems.enumerated() {
+            let id = item.media?.id
+            if id == nil || !movedIDs.contains(id!) {
+                reordered.insert(item, at: min(index, reordered.count))
+            }
+        }
+
+        unwatchedItems = reordered
+        reorderCount += 1
+        onOrderChanged?()
+    }
+
+    private func deleteUnwatched(at offsets: IndexSet) {
+        delete(offsets, from: displayedUnwatchedItems)
+    }
+
+    private func deleteWatched(at offsets: IndexSet) {
+        delete(offsets, from: displayedWatchedItems)
+    }
+
+    private func delete(_ offsets: IndexSet, from items: [ListItem]) {
+        for index in offsets where items.indices.contains(index) {
+            if let id = items[index].media?.id { onItemDeleted?(id) }
+        }
     }
 
     private func binding(for item: ListItem) -> Binding<ListItem> {
@@ -284,12 +295,14 @@ struct MediaListView: View {
             }
             onWatchedToggled()
         }
+        watchedToggleCount += 1
     }
 }
 
 private struct SectionHeader: View {
     let title: String
     let count: Int
+    var showsFilter: Bool = true
     var availableGenres: [String] = []
     @Binding var selectedGenre: String?
     var availableProviderCategories: [String] = []
@@ -298,6 +311,7 @@ private struct SectionHeader: View {
     init(
         title: String,
         count: Int,
+        showsFilter: Bool = true,
         availableGenres: [String] = [],
         selectedGenre: Binding<String?> = .constant(nil),
         availableProviderCategories: [String] = [],
@@ -305,6 +319,7 @@ private struct SectionHeader: View {
     ) {
         self.title = title
         self.count = count
+        self.showsFilter = showsFilter
         self.availableGenres = availableGenres
         self._selectedGenre = selectedGenre
         self.availableProviderCategories = availableProviderCategories
@@ -320,18 +335,12 @@ private struct SectionHeader: View {
             Text(title)
                 .font(.title3)
                 .fontWeight(.bold)
-                .fontDesign(.rounded)
-                .foregroundStyle(.white)
-            Text("\(count)")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .fontDesign(.rounded)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .glassEffect(.regular, in: .capsule)
+                .foregroundStyle(.primary)
+            Chip(text: "\(count)")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(count) items")
             Spacer()
-            if !availableGenres.isEmpty || !availableProviderCategories.isEmpty {
+            if showsFilter, !availableGenres.isEmpty || !availableProviderCategories.isEmpty {
                 Menu {
                     if availableProviderCategories.count > 1 {
                         Section("Watch Option") {
@@ -382,14 +391,17 @@ private struct SectionHeader: View {
                         }
                     }
                 } label: {
-                    Image(systemName: hasActiveFilter
-                        ? "line.3.horizontal.decrease.circle.fill"
-                        : "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 18))
-                        .foregroundStyle(hasActiveFilter ? .white : .secondary)
-                        .frame(width: 32, height: 32)
-                        .glassEffect(.regular, in: .circle)
+                    Chip(
+                        icon: hasActiveFilter
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle",
+                        text: "Filter",
+                        isEmphasized: hasActiveFilter
+                    )
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
                 }
+                .accessibilityLabel("Filter")
             }
         }
         .padding(.vertical, 4)
@@ -409,6 +421,9 @@ struct MediaListRow: View {
     let onWatchedToggled: () -> Void
     let onDeleteRequested: () -> Void
 
+    /// Rows are buttons; while reordering, a tap must not open the detail sheet.
+    @Environment(\.editMode) private var editMode
+
     /// Show progress bar for any TV show with partial season progress
     private var seasonProgress: (watchedSeasons: [Int], total: Int)? {
         guard let total = item.tvShow?.numberOfSeasons, total > 0 else { return nil }
@@ -420,6 +435,7 @@ struct MediaListRow: View {
 
     var body: some View {
         Button {
+            guard editMode?.wrappedValue.isEditing != true else { return }
             onItemExpanded(expandedItemID == itemID ? nil : itemID)
         } label: {
             MediaCardView(
@@ -429,9 +445,6 @@ struct MediaListRow: View {
                 networks: item.media?.networks ?? [],
                 providerCategories: item.media?.providerCategories ?? [:],
                 isWatched: item.isWatched,
-                watchedToggleAction: { _ in
-                    onWatchedToggled()
-                },
                 voteAverage: item.media?.voteAverage,
                 genres: item.media?.genres ?? [],
                 userRating: item.userRating,

@@ -15,23 +15,13 @@ struct CustomListDetailView: View {
                     Button {
                         showingAddItems = true
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "plus")
-                            Text("Add Items")
-                        }
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .glassEffect(.regular.tint(.indigo.opacity(0.3)).interactive(), in: .capsule)
+                        Label("Add Items", systemImage: "plus")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
                 }
                 .background(AppBackground())
             } else {
-                // No GlassEffectContainer: it morph-coordinates glass children across hierarchy
-                // changes, which makes lazily-recycled rows re-form/scale-in on scroll (and on
-                // delete). Each card keeps its own glass.
                 List {
                     ForEach((list.items ?? []).sorted(by: { $0.addedAt < $1.addedAt }), id: \.persistentModelID) { item in
                         Button {
@@ -44,7 +34,6 @@ struct CustomListDetailView: View {
                                 networks: item.media?.networks ?? [],
                                 providerCategories: item.media?.providerCategories ?? [:],
                                 isWatched: false,
-                                watchedToggleAction: { _ in },
                                 voteAverage: item.media?.voteAverage,
                                 genres: item.media?.genres ?? []
                             )
@@ -74,8 +63,6 @@ struct CustomListDetailView: View {
         }
         .navigationTitle(list.name)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .preferredColorScheme(.dark)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Add Items", systemImage: "plus") {
@@ -137,6 +124,10 @@ private struct CustomListItemDetailView: View {
 
     private let service = TMDBService.shared
 
+    private var backdropPath: String? {
+        item.tvShow?.backdropPath ?? item.movie?.backdropPath
+    }
+
     private var needsFullDetails: Bool {
         guard let media = item.media, Int(media.id) != nil else { return false }
         if let tvShow = item.tvShow {
@@ -154,39 +145,34 @@ private struct CustomListItemDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    HeaderImageView(imageURL: item.media?.thumbnailURL)
+                    HeaderImageView(
+                        backdropPath: backdropPath,
+                        posterURL: item.media?.thumbnailURL,
+                        title: item.media?.title ?? ""
+                    )
 
-                    GlassEffectContainer(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text(item.media?.title ?? "")
-                                .font(.title)
-                                .fontWeight(.bold)
+                    VStack(alignment: .leading, spacing: 14) {
+                        metadataRow
 
-                            metadataRow
+                        GenreSection(genres: item.media?.genres ?? [])
 
-                            GenreSection(genres: item.media?.genres ?? [])
+                        Divider().padding(.vertical, 4)
 
-                            Divider().padding(.vertical, 4)
+                        DescriptionSection(
+                            isLoading: isLoadingDetails,
+                            descriptionText: item.media?.descriptionText,
+                            errorMessage: detailError)
 
-                            DescriptionSection(
-                                isLoading: isLoadingDetails,
-                                descriptionText: item.media?.descriptionText,
-                                errorMessage: detailError)
+                        Divider().padding(.vertical, 4)
 
-                            Divider().padding(.vertical, 4)
-
-                            CastSection(
-                                cast: item.media?.cast ?? [],
-                                castImagePaths: item.media?.castImagePaths ?? [],
-                                castCharacters: item.media?.castCharacters ?? [])
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-                        .padding(.bottom, 24)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+                        CastSection(
+                            cast: item.media?.cast ?? [],
+                            castImagePaths: item.media?.castImagePaths ?? [],
+                            castCharacters: item.media?.castCharacters ?? [])
                     }
-                    .padding(.horizontal, 12)
-                    .offset(y: -40)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 24)
                 }
             }
             .ignoresSafeArea(.container, edges: .top)
@@ -194,17 +180,13 @@ private struct CustomListItemDetailView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
             .task {
-                if needsFullDetails {
-                    await fetchFullDetails()
-                }
+                await fetchFullDetails()
             }
         }
     }
@@ -214,17 +196,17 @@ private struct CustomListItemDetailView: View {
         HStack(spacing: 8) {
             if let tvShow = item.tvShow {
                 if let seasons = tvShow.numberOfSeasons {
-                    MetadataPill(text: "\(seasons) Season\(seasons == 1 ? "" : "s")")
+                    Chip(text: "\(seasons) Season\(seasons == 1 ? "" : "s")")
                 }
                 if let episodes = tvShow.numberOfEpisodes {
-                    MetadataPill(text: "\(episodes) Episodes")
+                    Chip(text: "\(episodes) Episodes")
                 }
             } else if let movie = item.movie {
                 if let year = movie.releaseYear {
-                    MetadataPill(text: year)
+                    Chip(text: year)
                 }
                 if let runtime = movie.runtime {
-                    MetadataPill(text: "\(runtime) min")
+                    Chip(text: "\(runtime) min")
                 }
             }
         }
@@ -233,8 +215,13 @@ private struct CustomListItemDetailView: View {
     @MainActor
     private func fetchFullDetails() async {
         guard let media = item.media, let id = Int(media.id) else { return }
-        isLoadingDetails = true
-        detailError = nil
+        // Always refresh (picks up backdrop/providers); only surface loading/errors when the
+        // core details are actually missing, mirroring MediaDetailView.
+        let showLoading = needsFullDetails
+        if showLoading {
+            isLoadingDetails = true
+            detailError = nil
+        }
 
         do {
             if let tvShow = item.tvShow {
@@ -247,7 +234,9 @@ private struct CustomListItemDetailView: View {
                 movie.update(from: await service.mapToMovie(detail, providers: providers))
             }
         } catch {
-            detailError = error.localizedDescription
+            if showLoading {
+                detailError = error.localizedDescription
+            }
         }
 
         isLoadingDetails = false

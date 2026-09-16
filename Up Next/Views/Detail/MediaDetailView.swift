@@ -41,6 +41,10 @@ struct MediaDetailView: View {
         listItem.media?.networks ?? []
     }
 
+    private var backdropPath: String? {
+        listItem.tvShow?.backdropPath ?? listItem.movie?.backdropPath
+    }
+
     private var needsFullDetails: Bool {
         guard let media = listItem.media, Int(media.id) != nil else { return false }
 
@@ -68,97 +72,92 @@ struct MediaDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    HeaderImageView(imageURL: listItem.media?.thumbnailURL)
+                    HeaderImageView(
+                        backdropPath: backdropPath,
+                        posterURL: listItem.media?.thumbnailURL,
+                        title: listItem.media?.title ?? ""
+                    )
 
-                    GlassEffectContainer(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            Text(listItem.media?.title ?? "")
-                                .font(.title)
-                                .fontWeight(.bold)
+                    VStack(alignment: .leading, spacing: 14) {
+                        MetadataRow(listItem: listItem)
 
-                            MetadataRow(listItem: listItem)
+                        GenreSection(genres: listItem.media?.genres ?? [])
 
-                            GenreSection(genres: listItem.media?.genres ?? [])
+                        DetailProviderRow(
+                            networks: allNetworks,
+                            providerCategories: listItem.media?.providerCategories ?? [:]
+                        )
 
-                            DetailProviderRow(
-                                networks: allNetworks,
-                                providerCategories: listItem.media?.providerCategories ?? [:]
-                            )
+                        Divider().padding(.vertical, 4)
 
-                            Divider().padding(.vertical, 4)
+                        DescriptionSection(
+                            isLoading: isLoadingDetails,
+                            descriptionText: listItem.media?.descriptionText,
+                            errorMessage: detailError)
 
-                            DescriptionSection(
-                                isLoading: isLoadingDetails,
-                                descriptionText: listItem.media?.descriptionText,
-                                errorMessage: detailError)
+                        Divider().padding(.vertical, 4)
 
-                            Divider().padding(.vertical, 4)
+                        CastSection(
+                            cast: listItem.media?.cast ?? [],
+                            castImagePaths: listItem.media?.castImagePaths ?? [],
+                            castCharacters: listItem.media?.castCharacters ?? []
+                        )
 
-                            CastSection(
-                                cast: listItem.media?.cast ?? [],
-                                castImagePaths: listItem.media?.castImagePaths ?? [],
-                                castCharacters: listItem.media?.castCharacters ?? []
-                            )
+                        if onAdd == nil {
+                            if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
+                                Divider().padding(.vertical, 4)
+                                SeasonChecklistCard(listItem: $listItem)
 
-                            if onAdd == nil {
-                                if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
-                                    Divider().padding(.vertical, 4)
-                                    SeasonChecklistCard(listItem: $listItem)
-
-                                    Divider().padding(.vertical, 4)
-                                    DoneWatchingCard(listItem: $listItem)
-                                }
-
-                                let hasSeasonChecklist = listItem.tvShow != nil && (listItem.tvShow?.numberOfSeasons ?? 0) > 1
-                                if !listItem.isDropped && !hasSeasonChecklist {
-                                    Divider().padding(.vertical, 4)
-
-                                    WatchedToggleCard(listItem: $listItem)
-                                }
-
-                                if listItem.isWatched {
-                                    Divider().padding(.vertical, 4)
-
-                                    UserRatingCard(listItem: $listItem)
-                                        .transition(.opacity.combined(with: .move(edge: .top)))
-                                }
+                                Divider().padding(.vertical, 4)
+                                DoneWatchingCard(listItem: $listItem)
                             }
 
-                            Divider().padding(.vertical, 4)
+                            let hasSeasonChecklist = listItem.tvShow != nil && (listItem.tvShow?.numberOfSeasons ?? 0) > 1
+                            if !listItem.isDropped && !hasSeasonChecklist {
+                                Divider().padding(.vertical, 4)
 
-                            actionButtonRow
+                                WatchedToggleCard(listItem: $listItem)
+                            }
 
-                            CollectionSection(
-                                collectionName: collectionName,
-                                parts: collectionParts,
-                                currentMovieID: listItem.movie.map { Int($0.id) ?? 0 },
-                                existingIDs: existingIDs.union(addedSimilarIDs),
-                                onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addCollectionItem($0) } : nil,
-                                onTap: { openCollectionDetail($0) }
-                            )
+                            if listItem.isWatched {
+                                Divider().padding(.vertical, 4)
 
-                            SimilarSection(
-                                title: "Similar",
-                                items: similarItems,
-                                existingIDs: existingIDs.union(addedSimilarIDs),
-                                onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addSimilarItem($0) } : nil,
-                                onTap: { openSimilarDetail($0) }
-                            )
-                            SimilarSection(
-                                title: "Recommended",
-                                items: recommendedItems,
-                                existingIDs: existingIDs.union(addedSimilarIDs),
-                                onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addSimilarItem($0) } : nil,
-                                onTap: { openSimilarDetail($0) }
-                            )
+                                UserRatingCard(listItem: $listItem)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-                        .padding(.bottom, 24)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+
+                        Divider().padding(.vertical, 4)
+
+                        actionButtonRow
+
+                        CollectionSection(
+                            collectionName: collectionName,
+                            parts: collectionParts,
+                            currentMovieID: listItem.movie.map { Int($0.id) ?? 0 },
+                            existingIDs: existingIDs.union(addedSimilarIDs),
+                            onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addCollectionItem($0) } : nil,
+                            onTap: { openCollectionDetail($0) }
+                        )
+
+                        SimilarSection(
+                            title: "Similar",
+                            items: similarItems,
+                            existingIDs: existingIDs.union(addedSimilarIDs),
+                            onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addSimilarItem($0) } : nil,
+                            onTap: { openSimilarDetail($0) }
+                        )
+                        SimilarSection(
+                            title: "Recommended",
+                            items: recommendedItems,
+                            existingIDs: existingIDs.union(addedSimilarIDs),
+                            onAdd: onTVShowAdded != nil || onMovieAdded != nil ? { addSimilarItem($0) } : nil,
+                            onTap: { openSimilarDetail($0) }
+                        )
                     }
-                    .padding(.horizontal, 12)
-                    .offset(y: -50)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 24)
                 }
             }
             .ignoresSafeArea(.container, edges: .top)
@@ -166,10 +165,8 @@ struct MediaDetailView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     if let onAdd {
                         Button {
                             onAdd()
@@ -190,12 +187,7 @@ struct MediaDetailView: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Image(systemName: "checkmark")
-                            .accessibilityLabel("Done")
-                    }
+                    Button("Done") { dismiss() }
                 }
             }
             .task {
@@ -227,75 +219,53 @@ struct MediaDetailView: View {
 
     // MARK: - Action Buttons
 
+    /// The sheet's floating control layer — the one place glass belongs in this view.
     private var actionButtonRow: some View {
-        HStack(spacing: 10) {
-            if let customListVM = customListViewModel, !customListVM.customLists.isEmpty {
-                Button { showingAddToList = true } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "tray.full")
-                            .font(.body)
-                        Text("Lists")
-                            .font(.caption2)
-                            .fontWeight(.medium)
+        GlassEffectContainer(spacing: 10) {
+            HStack(spacing: 10) {
+                if let customListVM = customListViewModel, !customListVM.customLists.isEmpty {
+                    Button { showingAddToList = true } label: {
+                        Label("Lists", systemImage: "tray.full")
+                            .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+                    .buttonStyle(.glass)
+                    .sheet(isPresented: $showingAddToList) {
+                        AddToListSheet(
+                            viewModel: customListVM,
+                            movie: listItem.movie,
+                            tvShow: listItem.tvShow
+                        )
+                    }
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .sheet(isPresented: $showingAddToList) {
-                    AddToListSheet(
-                        viewModel: customListVM,
-                        movie: listItem.movie,
-                        tvShow: listItem.tvShow
-                    )
-                }
-            }
 
-            if trailerKey != nil {
-                Button { showingTrailer = true } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "play.fill")
-                            .font(.body)
-                        Text("Trailer")
-                            .font(.caption2)
-                            .fontWeight(.medium)
+                if trailerKey != nil {
+                    Button { showingTrailer = true } label: {
+                        Label("Trailer", systemImage: "play.fill")
+                            .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+                    .buttonStyle(.glass)
+                    .sheet(isPresented: $showingTrailer) {
+                        if let url = URL(string: "https://www.youtube.com/watch?v=\(trailerKey ?? "")") {
+                            SafariView(url: url)
+                                .ignoresSafeArea()
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .sheet(isPresented: $showingTrailer) {
-                    if let url = URL(string: "https://www.youtube.com/watch?v=\(trailerKey ?? "")") {
-                        SafariView(url: url)
+
+                if let tmdbURL {
+                    Button { showingTMDBPage = true } label: {
+                        Label("TMDB", systemImage: "film")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass)
+                    .sheet(isPresented: $showingTMDBPage) {
+                        SafariView(url: tmdbURL)
                             .ignoresSafeArea()
                     }
                 }
             }
-
-            if let tmdbURL {
-                Button { showingTMDBPage = true } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "film")
-                            .font(.body)
-                        Text("TMDB")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .sheet(isPresented: $showingTMDBPage) {
-                    SafariView(url: tmdbURL)
-                        .ignoresSafeArea()
-                }
-            }
+            .font(.subheadline)
+            .controlSize(.large)
         }
     }
 
@@ -471,62 +441,177 @@ struct MediaDetailView: View {
 
 // MARK: - Shared Detail Components
 
+/// Detail-sheet header. With a TMDB backdrop it renders full-bleed 16:9 artwork with the poster
+/// floating over its bottom-leading edge; without one it falls back to the poster as the header.
 struct HeaderImageView: View {
-    let imageURL: URL?
+    let backdropPath: String?
+    let posterURL: URL?
+    let title: String
 
-    private let headerHeight: CGFloat = 420
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let backdropHeight: CGFloat = 260
+    private let posterWidth: CGFloat = 100
+    private let posterHeight: CGFloat = 150
+    /// How far the floating poster hangs below the backdrop.
+    private let posterOverhang: CGFloat = 60
+    private let posterHeaderHeight: CGFloat = 420
+
+    private var backdropURL: URL? {
+        TMDBService.shared.imageURL(path: backdropPath, size: .w780)
+    }
 
     var body: some View {
-        Group {
-            if let imageURL {
-                CachedAsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .frame(height: headerHeight)
-                    case .success(let image):
-                        GeometryReader { geo in
-                            let minY = geo.frame(in: .scrollView).minY
-                            let overscroll = max(minY, 0)
-                            let scrollOffset = max(-minY, 0)
-                            let yOffset = -scrollOffset * 0.3 - overscroll
+        if let backdropURL {
+            backdropHeader(url: backdropURL)
+        } else {
+            posterHeader
+        }
+    }
 
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(
-                                    width: geo.size.width,
-                                    height: headerHeight + overscroll,
-                                    alignment: .top
-                                )
-                                .offset(y: yOffset)
-                        }
-                        .frame(height: headerHeight)
-                        .overlay(alignment: .bottom) {
-                            let bgColor = Color(red: 0.10, green: 0.06, blue: 0.22)
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0.0),
-                                    .init(color: bgColor.opacity(0.5), location: 0.25),
-                                    .init(color: bgColor.opacity(0.85), location: 0.6),
-                                    .init(color: bgColor, location: 1.0),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
+    // MARK: - Backdrop layout
+
+    private func backdropHeader(url: URL) -> some View {
+        ZStack(alignment: .topLeading) {
+            parallaxImage(url: url, height: backdropHeight)
+                .overlay(alignment: .bottom) { bottomFade(height: 170) }
+
+            VStack(alignment: .leading, spacing: 0) {
+                // Reserve the backdrop's height minus the overlap, so the poster row lands
+                // across the header's bottom edge without an offset hack.
+                Color.clear
+                    .frame(height: backdropHeight - posterOverhang)
+
+                HStack(alignment: .bottom, spacing: 14) {
+                    posterThumbnail
+
+                    Text(title)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .lineLimit(3)
+                        .padding(.bottom, 6)
+
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    // MARK: - Poster-only fallback
+
+    private var posterHeader: some View {
+        Group {
+            if let posterURL {
+                parallaxImage(url: posterURL, height: posterHeaderHeight)
+            } else {
+                imagePlaceholder
+                    .frame(height: posterHeaderHeight)
+            }
+        }
+        .overlay(alignment: .bottom) { bottomFade(height: 260) }
+        .overlay(alignment: .bottomLeading) {
+            Text(title)
+                .font(.title)
+                .fontWeight(.bold)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 4)
+        }
+    }
+
+    // MARK: - Pieces
+
+    @ViewBuilder
+    private func parallaxImage(url: URL, height: CGFloat) -> some View {
+        CachedAsyncImage(url: url) { phase in
+            switch phase {
+            case .empty:
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+            case .success(let image):
+                if reduceMotion {
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: height)
+                        .clipped()
+                } else {
+                    GeometryReader { geo in
+                        let minY = geo.frame(in: .scrollView).minY
+                        let overscroll = max(minY, 0)
+                        let scrollOffset = max(-minY, 0)
+
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(
+                                width: geo.size.width,
+                                height: height + overscroll,
+                                alignment: .top
                             )
-                            .frame(height: 500)
-                            .offset(y: 200)
-                        }
-                    case .failure:
-                        Color.gray.frame(height: headerHeight)
-                    @unknown default:
-                        EmptyView()
+                            .clipped()
+                            .offset(y: -scrollOffset * 0.3 - overscroll)
+                    }
+                    .frame(height: height)
+                }
+            case .failure:
+                imagePlaceholder
+                    .frame(height: height)
+            @unknown default:
+                EmptyView()
+            }
+        }
+    }
+
+    private var posterThumbnail: some View {
+        Group {
+            if let posterURL {
+                CachedAsyncImage(url: posterURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        imagePlaceholder
                     }
                 }
             } else {
-                Color.gray.frame(height: headerHeight)
+                imagePlaceholder
             }
         }
+        .frame(width: posterWidth, height: posterHeight)
+        .clipShape(.rect(cornerRadius: DesignTokens.Radius.poster))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+    }
+
+    private var imagePlaceholder: some View {
+        Rectangle()
+            .fill(.fill.tertiary)
+            .overlay {
+                Image(systemName: "film")
+                    .font(.title)
+                    .foregroundStyle(.tertiary)
+            }
+    }
+
+    /// Fades the artwork into the app background so the header has no hard edge.
+    private func bottomFade(height: CGFloat) -> some View {
+        let base = DesignTokens.Colors.backgroundBase
+        return LinearGradient(
+            stops: [
+                .init(color: base.opacity(0), location: 0.0),
+                .init(color: base.opacity(0.45), location: 0.4),
+                .init(color: base.opacity(0.88), location: 0.75),
+                .init(color: base, location: 1.0),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: height)
+        .allowsHitTesting(false)
     }
 }
 
@@ -576,12 +661,7 @@ struct GenreSection: View {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(genres, id: \.self) { genre in
-                        Text(genre)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .glassEffect(.regular, in: .capsule)
+                        Chip(text: genre)
                     }
                 }
                 .padding(.horizontal, 1)
@@ -669,7 +749,7 @@ struct CastSection: View {
             .font(.title2)
             .foregroundStyle(.tertiary)
             .frame(width: imageSize, height: imageSize)
-            .glassEffect(.regular, in: .circle)
+            .background(.fill.tertiary, in: .circle)
     }
 }
 
@@ -699,6 +779,7 @@ private enum MediaDetailViewPreviewData {
             title: "John Wick: Chapter 4",
             thumbnailURL: URL(
                 string: "https://image.tmdb.org/t/p/w500/vZloFAK7NmvMGKE7VkF5UHaz0I.jpg"),
+            backdropPath: "/h8gHn0OzBoaefsYseUByqsmEDMY.jpg",
             networks: [netflix],
             descriptionText:
                 "With the price on his head ever increasing, John Wick uncovers a path to defeating the High Table.",

@@ -9,75 +9,78 @@ enum MediaType: Identifiable {
 
 struct ShimmerLoadingView: View {
     @State private var shimmerOffset: CGFloat = -200
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
-            GlassEffectContainer(spacing: 8) {
-                VStack(spacing: 10) {
-                    ForEach(0..<6, id: \.self) { index in
-                        HStack(spacing: 12) {
-                            // Match SearchResultRow image dimensions
-                            Color.clear
-                                .frame(width: 60, height: 90)
-                                .glassEffect(.regular, in: .rect(cornerRadius: 10))
-                            
-                            VStack(alignment: .leading, spacing: 6) {
-                                // Title shimmer (2 lines)
-                                Color.clear
-                                    .frame(height: 16)
-                                    .frame(maxWidth: 180)
-                                    .glassEffect(.regular, in: .capsule)
-                                
-                                // Overview shimmer (3 lines)
-                                Color.clear
-                                    .frame(height: 10)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .glassEffect(.regular, in: .capsule)
-                                
-                                Color.clear
-                                    .frame(height: 10)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .glassEffect(.regular, in: .capsule)
-                                
-                                Color.clear
-                                    .frame(height: 10)
-                                    .frame(maxWidth: 200)
-                                    .glassEffect(.regular, in: .capsule)
-                                
-                            }
-                            
-                            Spacer()
+            VStack(spacing: 10) {
+                ForEach(0..<6, id: \.self) { index in
+                    HStack(spacing: 12) {
+                        // Match SearchResultRow image dimensions
+                        RoundedRectangle(cornerRadius: DesignTokens.Radius.poster)
+                            .fill(.fill.tertiary)
+                            .frame(width: 60, height: 90)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            // Title shimmer (2 lines)
+                            Capsule()
+                                .fill(.fill.tertiary)
+                                .frame(height: 16)
+                                .frame(maxWidth: 180)
+
+                            // Overview shimmer (3 lines)
+                            Capsule()
+                                .fill(.fill.tertiary)
+                                .frame(height: 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Capsule()
+                                .fill(.fill.tertiary)
+                                .frame(height: 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Capsule()
+                                .fill(.fill.tertiary)
+                                .frame(height: 10)
+                                .frame(maxWidth: 200)
                         }
-                        // Match SearchResultRow padding
-                        .padding(10)
-                        .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
-                        .opacity(fadeOpacity(for: index))
+
+                        Spacer()
                     }
+                    // Match SearchResultRow padding
+                    .padding(10)
+                    .cardSurface()
+                    .opacity(fadeOpacity(for: index))
                 }
             }
             .overlay(
-                LinearGradient(
-                    colors: [
-                        .clear,
-                        Color.white.opacity(0.04),
-                        .clear,
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .offset(x: shimmerOffset)
+                Group {
+                    if !reduceMotion {
+                        LinearGradient(
+                            colors: [
+                                .clear,
+                                Color.white.opacity(0.04),
+                                .clear,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .offset(x: shimmerOffset)
+                    }
+                }
             )
             .clipped()
         }
         .scrollDisabled(true)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
+            guard !reduceMotion else { return }
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
                 shimmerOffset = 400
             }
         }
     }
-    
+
     private func fadeOpacity(for index: Int) -> Double {
         // Gradually fade out items toward the bottom
         let fadeStart = 2 // Start fading after the 3rd item
@@ -159,39 +162,28 @@ struct SearchResultRow: View {
         .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
-        .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))
+        .cardSurface()
     }
 
     private var rowContent: some View {
         HStack(spacing: 12) {
             CachedAsyncImage(url: imageURL) { phase in
                 switch phase {
-                case .empty:
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 60, height: 90)
-                        .clipShape(.rect(cornerRadius: 10))
                 case .success(let image):
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 60, height: 90)
-                        .clipShape(.rect(cornerRadius: 10))
+                        .clipShape(.rect(cornerRadius: DesignTokens.Radius.poster))
                         .clipped()
-                case .failure:
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 60, height: 90)
-                        .clipShape(.rect(cornerRadius: 10))
-                @unknown default:
-                    EmptyView()
+                default:
+                    posterPlaceholder
                 }
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                    .fontDesign(.rounded)
                     .lineLimit(2)
 
                 if let overview = overview, !overview.isEmpty {
@@ -208,6 +200,12 @@ struct SearchResultRow: View {
 
             Spacer()
         }
+    }
+
+    private var posterPlaceholder: some View {
+        RoundedRectangle(cornerRadius: DesignTokens.Radius.poster)
+            .fill(.fill.tertiary)
+            .frame(width: 60, height: 90)
     }
 
     private var addButton: some View {

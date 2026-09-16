@@ -12,6 +12,8 @@ struct ProviderSettingsView: View {
         GridItem(.adaptive(minimum: 80, maximum: 100), spacing: 16)
     ]
 
+    @ScaledMetric private var errorIconSize: CGFloat = 36
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -39,14 +41,12 @@ struct ProviderSettingsView: View {
             .background(AppBackground())
             .navigationTitle("Your Streaming Services")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .task {
             await loadProviders()
         }
@@ -62,7 +62,7 @@ struct ProviderSettingsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 16))
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
     // MARK: - Loading
@@ -70,7 +70,6 @@ struct ProviderSettingsView: View {
     private var loadingView: some View {
         VStack(spacing: 16) {
             ProgressView()
-                .tint(.white)
             Text("Loading providers...")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -84,7 +83,7 @@ struct ProviderSettingsView: View {
     private func errorView(message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 36))
+                .font(.system(size: errorIconSize))
                 .foregroundStyle(.orange)
 
             Text(message)
@@ -117,7 +116,7 @@ struct ProviderSettingsView: View {
             }
         }
         .padding(16)
-        .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 24))
+        .cardSurface()
     }
 
     // MARK: - Data Loading
@@ -141,7 +140,6 @@ struct ProviderSettingsView: View {
     private var debugSection: some View {
         VStack(spacing: 12) {
             Divider()
-                .background(Color.white.opacity(0.2))
                 .padding(.vertical, 8)
 
             Text("Debug Options")
@@ -152,7 +150,7 @@ struct ProviderSettingsView: View {
                 settings.selectedProviderIDs = []
                 dismiss()
             } label: {
-                Label("Reset Onboarding", systemImage: "arrow.counterclockwise")
+                Label("Reset Provider Selection", systemImage: "arrow.counterclockwise")
                     .font(.subheadline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -172,6 +170,8 @@ private struct ProviderGridCell: View {
     let isSelected: Bool
     let onTap: () -> Void
 
+    @ScaledMetric private var badgeSize: CGFloat = 20
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 8) {
@@ -180,7 +180,7 @@ private struct ProviderGridCell: View {
 
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: badgeSize))
                             .foregroundStyle(.white, .green)
                             .offset(x: 4, y: 4)
                     }
@@ -188,23 +188,19 @@ private struct ProviderGridCell: View {
 
                 Text(provider.providerName)
                     .font(.caption)
-                    .fontDesign(.rounded)
-                    .foregroundStyle(isSelected ? .white : .secondary)
+                    .foregroundStyle(isSelected ? .primary : .secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .frame(height: 32)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
-            .glassEffect(
-                isSelected
-                    ? .regular.tint(.indigo.opacity(0.3))
-                    : .regular.tint(.white.opacity(0.05)),
-                in: .rect(cornerRadius: 14)
-            )
+            .cellSurface(cornerRadius: DesignTokens.Radius.control, tint: isSelected ? .accentColor : nil)
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .accessibilityLabel(provider.providerName)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var providerLogo: some View {
@@ -224,12 +220,12 @@ private struct ProviderGridCell: View {
             }
         }
         .frame(width: 52, height: 52)
-        .clipShape(.rect(cornerRadius: 12))
-        .background(Color.white.opacity(0.85), in: .rect(cornerRadius: 12))
+        .clipShape(.rect(cornerRadius: DesignTokens.Radius.cell))
+        .background(Color.white.opacity(0.85), in: .rect(cornerRadius: DesignTokens.Radius.cell))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.cell)
                 .strokeBorder(
-                    isSelected ? Color.indigo : Color.clear,
+                    isSelected ? Color.accentColor : Color.clear,
                     lineWidth: 2
                 )
         )

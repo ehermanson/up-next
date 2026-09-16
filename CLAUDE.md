@@ -80,7 +80,6 @@ Up Next/
 │   │   ├── MediaListView.swift          # Main list with genre/provider filtering, watched toggle
 │   │   ├── TVShowsTabView.swift         # TV Shows tab (list + detail sheet + filter state)
 │   │   ├── MoviesTabView.swift          # Movies tab (list + detail sheet + filter state)
-│   │   ├── ReorderableMediaList.swift   # UITableView wrapper for drag-to-reorder
 │   │   └── MediaListHelpers.swift       # Helper functions for list display
 │   ├── Detail/
 │   │   ├── MediaDetailView.swift        # Detail sheet: edit watched state, rating, notes, seasons
@@ -107,10 +106,11 @@ Up Next/
 │   └── ProviderSettings.swift           # UserDefaults-backed streaming provider preferences
 │
 ├── UI/                                  # Shared/reusable UI components
+│   ├── DesignTokens.swift               # Radius/spacing/color tokens, cardSurface/cellSurface/chipSurface, Chip
 │   ├── MediaCardView.swift              # Media item card (poster, title, metadata, networks)
 │   ├── NetworkLogosView.swift           # Inline streaming provider logos with overflow badge
 │   ├── CachedAsyncImage.swift           # AsyncImage wrapper with NSCache (200 items, 100 MB)
-│   ├── SharedViews.swift                # ShimmerLoadingView, GlassEffectContainer, EmptyStateView, StarRatingLabel, etc.
+│   ├── SharedViews.swift                # AirDateFormat, StarRatingLabel, EmptyStateView, toast overlay
 │   ├── AppBackground.swift              # MeshGradient background
 │   ├── SafariView.swift                 # In-app Safari (UIViewControllerRepresentable)
 │   ├── TMDBAttributionView.swift        # TMDB attribution footer
@@ -137,10 +137,21 @@ CloudKit is optional — the app falls back to local-only if CloudKit is unavail
 
 ### Provider Logic (TMDBService)
 
-- Curated list of real subscription services (Netflix, Prime, Disney+, HBO Max, etc.)
-- Provider aliases normalize variants (e.g., "Netflix with Ads" → "Netflix")
+- Full regional provider list from `/watch/providers/{movie,tv}`, minus rent/buy storefronts and resold "channel" variants
+- Provider aliases collapse variants onto a canonical name **and canonical TMDB provider id** (e.g., "Netflix Standard with Ads" (1796) → Netflix (8)), so stored `Network.id`s always match `ProviderSettings` selections. Aliases resolve before the channel-variant filter, so e.g. "Paramount+ Amazon Channel" counts as Paramount+.
 - Network → Provider ID mapping (e.g., "AMC" network → AMC+ provider)
 - Region-aware lookups via `Locale.current.region`, fallback to US
+
+### Media IDs
+
+TMDB movie and TV ids are separate namespaces. Any set that mixes both must use `MediaIDKey.make(mediaType, id)` (`"tv:123"` / `"movie:456"`) — see `MediaDetailSimilar.swift`.
+
+### Design System (iOS 26 Liquid Glass)
+
+- `.preferredColorScheme(.dark)` and `.fontDesign(.rounded)` are set once on the root in `Watch_ListApp.swift` — don't repeat them per view.
+- Glass (`.glassEffect`, `.buttonStyle(.glass/.glassProminent)`) is reserved for the floating control layer: toolbar/tab bar, the toast, the detail sheet's action row, and empty-state CTAs. Content (rows, cards, pills, badges, logos, fields) uses `cardSurface` / `cellSurface` / `chipSurface` / `Chip` from `DesignTokens.swift`. No glass on glass.
+- Use `Color.accentColor` for tints (asset `AccentColor`), `DesignTokens.Radius.*` for corner radii, and `DesignTokens.Colors.backgroundBase` when blending into `AppBackground`.
+- Reorder in the watchlist is native `List` + `.onMove` driven by `editMode`.
 
 ### Watched State (TV Shows)
 
@@ -152,6 +163,13 @@ CloudKit is optional — the app falls back to local-only if CloudKit is unavail
 ### Image Caching
 
 `CachedAsyncImage` uses `NSCache` (200 items, 100 MB). Prevents reloads on view recreation.
+
+### Data Integrity
+
+- `Movie`/`TVShow` store `backdropPath` (optional) for the detail-sheet header; the poster is the fallback.
+- `update(from:)` only reassigns `networks` when providers actually changed, deleting `Network` rows nothing else references. Deleting a `ListItem`/`CustomListItem` deletes its media row when nothing else points at it (`deleteMediaIfUnreferenced`).
+- Swipe-delete is deferred 5 s for Undo; it's flushed on `scenePhase == .background`.
+- Full refresh (`refreshAllItems`) matches results by TMDB id, never array index, and only stamps `lastFullRefreshDate` when at least one fetch succeeded.
 
 ## CI/CD (Xcode Cloud)
 

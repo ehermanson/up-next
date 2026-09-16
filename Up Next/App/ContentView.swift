@@ -27,6 +27,7 @@ struct ContentView: View {
                     onSearchTapped: { showingSearch = true },
                     onSettingsTapped: { showingSettings = true }
                 )
+                .toastOverlay(bottomPadding: 12)
             }
             Tab("Movies", systemImage: "film", value: .movies) {
                 MoviesTabView(
@@ -35,9 +36,11 @@ struct ContentView: View {
                     onSearchTapped: { showingSearch = true },
                     onSettingsTapped: { showingSettings = true }
                 )
+                .toastOverlay(bottomPadding: 12)
             }
             Tab("My Lists", systemImage: "tray.full", value: .myLists) {
                 MyListsView(viewModel: customListViewModel)
+                    .toastOverlay(bottomPadding: 12)
             }
             Tab("Discover", systemImage: "sparkles", value: .discover) {
                 DiscoverView(
@@ -46,9 +49,10 @@ struct ContentView: View {
                     onTVShowAdded: { viewModel.addTVShow($0) },
                     onMovieAdded: { viewModel.addMovie($0) }
                 )
+                .toastOverlay(bottomPadding: 12)
             }
         }
-        .toastOverlay(bottomPadding: 100)
+        .tabBarMinimizeBehavior(.onScrollDown)
         .sheet(isPresented: $showingSettings) {
             ProviderSettingsView()
         }

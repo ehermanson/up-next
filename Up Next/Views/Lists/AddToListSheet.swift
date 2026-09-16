@@ -21,9 +21,6 @@ struct AddToListSheet: View {
                     )
                     .background(AppBackground())
                 } else {
-                    // No GlassEffectContainer: it morph-coordinates glass children across hierarchy
-                    // changes, which makes lazily-recycled rows re-form/scale-in on scroll. Each row
-                    // keeps its own glass.
                     List {
                         ForEach(viewModel.customLists, id: \.id) { list in
                             let isInList = mediaID.map { viewModel.containsItem(mediaID: $0, in: list) } ?? false
@@ -34,7 +31,7 @@ struct AddToListSheet: View {
                                     Image(systemName: list.iconName)
                                         .font(.title3)
                                         .frame(width: 36, height: 36)
-                                        .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .rect(cornerRadius: 10))
+                                        .cellSurface(tint: .accentColor)
 
                                     Text(list.name)
                                         .font(.body)
@@ -54,7 +51,9 @@ struct AddToListSheet: View {
                             .buttonStyle(.plain)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
-                            .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 16))
+                            .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityValue(isInList ? "In list" : "Not in list")
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -64,8 +63,6 @@ struct AddToListSheet: View {
             }
             .navigationTitle("Add to List")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

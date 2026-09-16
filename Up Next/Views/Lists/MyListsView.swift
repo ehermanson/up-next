@@ -19,23 +19,12 @@ struct MyListsView: View {
                         Button {
                             showingCreateList = true
                         } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "plus")
-                                Text("Create List")
-                            }
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .glassEffect(.regular.tint(.indigo.opacity(0.3)).interactive(), in: .capsule)
+                            Label("Create List", systemImage: "plus")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.glassProminent)
                     }
                     .background(AppBackground())
                 } else {
-                    // No GlassEffectContainer: it morph-coordinates glass children across hierarchy
-                    // changes, which makes lazily-recycled rows re-form/scale-in on scroll. Each row
-                    // keeps its own glass.
                     List {
                         ForEach(viewModel.customLists, id: \.id) { list in
                             Button {
@@ -46,7 +35,7 @@ struct MyListsView: View {
                                     Image(systemName: list.iconName)
                                         .font(.title2)
                                         .frame(width: 48, height: 48)
-                                        .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .rect(cornerRadius: 12))
+                                        .cellSurface(tint: .accentColor)
 
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(list.name)
@@ -72,7 +61,7 @@ struct MyListsView: View {
                             .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
-                            .glassEffect(.regular.tint(.white.opacity(0.03)), in: .rect(cornerRadius: 20))
+                            .cardSurface()
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     listToDelete = list
@@ -84,7 +73,7 @@ struct MyListsView: View {
                                 } label: {
                                     Label("Edit", systemImage: "pencil")
                                 }
-                                .tint(.indigo)
+                                .tint(.accentColor)
                             }
                         }
                     }
@@ -95,8 +84,6 @@ struct MyListsView: View {
                 }
             }
             .navigationTitle("My Lists")
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("New List", systemImage: "plus") {

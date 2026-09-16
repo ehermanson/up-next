@@ -154,8 +154,6 @@ struct WatchlistSearchView: View {
             .background(AppBackground())
             .navigationTitle(navigationTitleText)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { performDone() }
@@ -228,47 +226,18 @@ struct WatchlistSearchView: View {
             // Only shimmer on a cold search — otherwise keystrokes would blank the
             // previous results while the debounced request is still in flight.
             ShimmerLoadingView()
-                .background(AppBackground())
         } else if let error = errorMessage {
-            VStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.orange)
-                    .frame(width: 80, height: 80)
-                    .glassEffect(.regular.tint(.orange.opacity(0.15)), in: .circle)
-                Text(error)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyStateView(icon: "exclamationmark.triangle", title: error)
         } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if isLoadingRecommendations {
                 ShimmerLoadingView()
-                    .background(AppBackground())
             } else if hasRecommendations {
                 recommendationsList
             } else {
                 EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
             }
         } else if hasNoResults {
-            VStack(spacing: 16) {
-                Image(systemName: "magnifyingglass.circle")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 80, height: 80)
-                    .glassEffect(.regular, in: .circle)
-                Text("No Results Found")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .fontDesign(.rounded)
-                    .foregroundStyle(.primary)
-                Text("Try adjusting your search")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fontDesign(.rounded)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyStateView(icon: "magnifyingglass.circle", title: "No Results Found", subtitle: "Try adjusting your search")
         } else {
             searchResultsList
         }
@@ -286,21 +255,7 @@ struct WatchlistSearchView: View {
                         Button {
                             selectedListID = list.id
                         } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: list.iconName)
-                                    .font(.caption)
-                                Text(list.name)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .glassEffect(
-                                selectedListID == list.id
-                                    ? .regular.tint(.indigo.opacity(0.4))
-                                    : .regular,
-                                in: .capsule
-                            )
+                            Chip(icon: list.iconName, text: list.name, isEmphasized: selectedListID == list.id)
                         }
                         .buttonStyle(.plain)
                     }
@@ -315,35 +270,18 @@ struct WatchlistSearchView: View {
     @ViewBuilder
     private var noListSelectedView: some View {
         let lists = customListViewModel?.customLists ?? []
-        VStack(spacing: 16) {
-            Image(systemName: "tray")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-                .frame(width: 80, height: 80)
-                .glassEffect(.regular, in: .circle)
-            if lists.isEmpty {
-                Text("Create a list first")
-                    .font(.title3)
-                    .fontDesign(.rounded)
-                    .foregroundStyle(.secondary)
-                Text("Go to My Lists to create a collection.")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            } else {
-                Text("Select a list above")
-                    .font(.title3)
-                    .fontDesign(.rounded)
-                    .foregroundStyle(.secondary)
-            }
+        if lists.isEmpty {
+            EmptyStateView(
+                icon: "tray",
+                title: "Create a list first",
+                subtitle: "Go to My Lists to create a collection."
+            )
+        } else {
+            EmptyStateView(icon: "tray", title: "Select a list above")
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var searchResultsList: some View {
-        // No GlassEffectContainer: it morph-coordinates glass children across hierarchy changes,
-        // which makes lazily-recycled rows re-form/scale-in on scroll. Each row keeps its own glass.
         List {
             if effectiveMediaType == .tvShow {
                 ForEach(tvShowResults) { result in
@@ -393,8 +331,6 @@ struct WatchlistSearchView: View {
     }
 
     private var recommendationsList: some View {
-        // No GlassEffectContainer: it morph-coordinates glass children across hierarchy changes,
-        // which makes lazily-recycled rows re-form/scale-in on scroll. Each row keeps its own glass.
         List {
             Section {
                 if effectiveMediaType == .tvShow {
@@ -430,7 +366,6 @@ struct WatchlistSearchView: View {
                 Label(recommendationHeaderText, systemImage: "sparkles")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .fontDesign(.rounded)
                     .foregroundStyle(.secondary)
                     .textCase(nil)
             }

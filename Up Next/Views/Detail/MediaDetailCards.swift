@@ -1,5 +1,21 @@
 import SwiftUI
 
+/// `cardSurface` with a selected-state tint, mirroring `cellSurface(tint:)`.
+/// `tint` has no default so this never becomes ambiguous with `cardSurface(cornerRadius:)`.
+private extension View {
+    func cardSurface(cornerRadius: CGFloat, tint: Color?) -> some View {
+        background {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(.fill.tertiary)
+                .overlay {
+                    if let tint {
+                        RoundedRectangle(cornerRadius: cornerRadius).fill(tint.opacity(0.2))
+                    }
+                }
+        }
+    }
+}
+
 struct WatchedToggleCard: View {
     @Binding var listItem: ListItem
 
@@ -38,7 +54,7 @@ struct WatchedToggleCard: View {
 
             Spacer()
 
-            Toggle("", isOn: Binding(
+            Toggle("Mark as Watched", isOn: Binding(
                 get: { listItem.isWatched },
                 set: { newValue in
                     listItem.droppedAt = nil
@@ -59,7 +75,11 @@ struct WatchedToggleCard: View {
             .labelsHidden()
         }
         .padding(16)
-        .glassEffect(.regular.tint(listItem.isWatched ? .green.opacity(0.1) : .clear), in: .rect(cornerRadius: 20))
+        .cardSurface(
+            cornerRadius: DesignTokens.Radius.cardCompact,
+            tint: listItem.isWatched ? .green : nil
+        )
+        .sensoryFeedback(.selection, trigger: listItem.isWatched)
     }
 }
 
@@ -76,10 +96,11 @@ struct UserRatingCard: View {
                 .font(.headline)
 
             HStack(spacing: 12) {
-                ratingButton(value: -1, icon: "hand.thumbsdown.fill", tint: .red)
-                ratingButton(value: 0, icon: "minus.circle.fill", tint: .gray)
-                ratingButton(value: 1, icon: "hand.thumbsup.fill", tint: .green)
+                ratingButton(value: -1, icon: "hand.thumbsdown.fill", tint: .red, label: "Thumbs down")
+                ratingButton(value: 0, icon: "minus.circle.fill", tint: .gray, label: "Meh")
+                ratingButton(value: 1, icon: "hand.thumbsup.fill", tint: .green, label: "Thumbs up")
             }
+            .sensoryFeedback(.selection, trigger: listItem.userRating)
 
             TextField("Add notes...", text: Binding(
                 get: { listItem.userNotes ?? "" },
@@ -88,26 +109,28 @@ struct UserRatingCard: View {
                 .lineLimit(1...5)
                 .font(.subheadline)
                 .padding(12)
-                .glassEffect(.regular.tint(.white.opacity(0.05)), in: .rect(cornerRadius: 14))
+                .background(.fill.quaternary, in: .rect(cornerRadius: DesignTokens.Radius.control))
         }
     }
 
-    private func ratingButton(value: Int, icon: String, tint: Color) -> some View {
+    private func ratingButton(value: Int, icon: String, tint: Color, label: String) -> some View {
         let selected = isSelected(value)
         return Button {
             listItem.userRating = selected ? nil : value
         } label: {
             Image(systemName: icon)
                 .font(.title2)
-                .foregroundStyle(selected ? tint : .secondary.opacity(0.5))
+                .foregroundStyle(selected ? AnyShapeStyle(tint) : AnyShapeStyle(.tertiary))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .glassEffect(
-                    .regular.tint(selected ? tint.opacity(0.2) : .clear),
-                    in: .rect(cornerRadius: 16)
+                .cellSurface(
+                    cornerRadius: DesignTokens.Radius.cardCompact,
+                    tint: selected ? tint : nil
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 
@@ -141,6 +164,7 @@ struct SeasonChecklistCard: View {
                 }
             }
         }
+        .sensoryFeedback(.selection, trigger: listItem.watchedSeasons)
     }
 
     private func toggleSeason(_ season: Int) {
@@ -157,6 +181,16 @@ struct SeasonChecklistCard: View {
         listItem.syncWatchedStateFromSeasons()
     }
 
+    private func toggleDescription(_ season: Int) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if expandedSeasons.contains(season) {
+                expandedSeasons.remove(season)
+            } else {
+                expandedSeasons.insert(season)
+            }
+        }
+    }
+
     private func seasonRow(season: Int) -> some View {
         let isWatched = listItem.watchedSeasons.contains(season)
         let episodeCount = season <= episodeCounts.count ? episodeCounts[season - 1] : nil
@@ -164,69 +198,89 @@ struct SeasonChecklistCard: View {
         let isLast = season == totalSeasons
         let isExpanded = expandedSeasons.contains(season)
 
-        return HStack(alignment: .top, spacing: 12) {
-            // Timeline: circle + connector line
-            VStack(spacing: 0) {
-                ZStack {
-                    Circle()
-                        .fill(isWatched ? Color.green.opacity(0.15) : Color.white.opacity(0.05))
-                    Circle()
-                        .strokeBorder(isWatched ? Color.green.opacity(0.6) : Color.white.opacity(0.15), lineWidth: 1.5)
-                    if isWatched {
-                        Image(systemName: "checkmark")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.green)
+        return VStack(alignment: .leading, spacing: 2) {
+            Button {
+                toggleSeason(season)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Season \(season)")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+
+                    if let count = episodeCount, count > 0 {
+                        Text("\(count) episode\(count == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .frame(width: circleSize, height: circleSize)
-
-                if !isLast {
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(isWatched ? Color.green.opacity(0.3) : Color.white.opacity(0.06))
-                        .frame(width: 2)
-                        .frame(maxHeight: .infinity)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
             }
-            .frame(width: circleSize)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Season \(season)")
+            .accessibilityValue(isWatched ? "Watched" : "Not watched")
+            .accessibilityAddTraits(.isToggle)
 
-            // Season info
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Season \(season)")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-
-                if let count = episodeCount, count > 0 {
-                    Text("\(count) episode\(count == 1 ? "" : "s")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let description, !description.isEmpty {
+            if let description, !description.isEmpty {
+                Button {
+                    toggleDescription(season)
+                } label: {
                     Text(description)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .lineLimit(isExpanded ? nil : 2)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                if isExpanded {
-                                    expandedSeasons.remove(season)
-                                } else {
-                                    expandedSeasons.insert(season)
-                                }
-                            }
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isExpanded ? "Collapse season description" : "Expand season description")
+            }
+        }
+        .padding(.top, 4)
+        .padding(.leading, circleSize + 12)
+        .padding(.bottom, isLast ? 0 : 12)
+        // The timeline sits in the gutter the leading padding reserves, so it can span the
+        // row's full height (circle + connector) regardless of how tall the text is.
+        .overlay(alignment: .topLeading) {
+            Button {
+                toggleSeason(season)
+            } label: {
+                timeline(isWatched: isWatched, isLast: isLast)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHidden(true)
+        }
+    }
+
+    private func timeline(isWatched: Bool, isLast: Bool) -> some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Circle()
+                    .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.15)) : AnyShapeStyle(.fill.tertiary))
+                Circle()
+                    .strokeBorder(
+                        isWatched ? AnyShapeStyle(Color.green.opacity(0.6)) : AnyShapeStyle(.fill.secondary),
+                        lineWidth: 1.5
+                    )
+                if isWatched {
+                    Image(systemName: "checkmark")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.green)
                 }
             }
-            .padding(.top, 4)
+            .frame(width: circleSize, height: circleSize)
 
-            Spacer()
+            if !isLast {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.3)) : AnyShapeStyle(.fill.tertiary))
+                    .frame(width: 2)
+                    .frame(maxHeight: .infinity)
+            }
         }
-        .padding(.bottom, isLast ? 0 : 12)
-        .contentShape(Rectangle())
-        .onTapGesture { toggleSeason(season) }
+        .frame(width: circleSize)
+        .contentShape(.rect)
     }
 }
 
@@ -253,22 +307,11 @@ struct DoneWatchingCard: View {
                 Button {
                     listItem.resumeShow()
                 } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "arrow.uturn.backward.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Pick Back Up")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text("Move back to your watchlist")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        Spacer()
-                    }
-                    .padding(14)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                    cardLabel(
+                        icon: "arrow.uturn.backward.circle.fill",
+                        title: "Pick Back Up",
+                        subtitle: "Move back to your watchlist"
+                    )
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
@@ -276,26 +319,34 @@ struct DoneWatchingCard: View {
                 Button {
                     listItem.dropShow()
                 } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "archivebox")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Drop Show")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text("Move to your watched list")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        Spacer()
-                    }
-                    .padding(14)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                    cardLabel(
+                        icon: "archivebox",
+                        title: "Drop Show",
+                        subtitle: "Move to your watched list"
+                    )
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.primary)
             }
         }
+    }
+
+    private func cardLabel(icon: String, title: String, subtitle: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 }

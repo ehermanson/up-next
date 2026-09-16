@@ -9,35 +9,32 @@ struct CreateListView: View {
     @State private var iconName: String = "list.bullet"
 
     private var isEditing: Bool { existingList != nil }
+    private let cardRadius: CGFloat = 24
+    @ScaledMetric private var iconSize: CGFloat = 40
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    GlassEffectContainer(spacing: 0) {
-                        VStack(spacing: 16) {
-                            Image(systemName: iconName)
-                                .font(.system(size: 40))
-                                .foregroundStyle(.indigo)
-                                .frame(width: 80, height: 80)
-                                .glassEffect(.regular.tint(.indigo.opacity(0.15)), in: .circle)
+                    VStack(spacing: 16) {
+                        Image(systemName: iconName)
+                            .font(.system(size: iconSize))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 80, height: 80)
+                            .background(.fill.tertiary, in: .circle)
 
-                            TextField("List Name", text: $name)
-                                .font(.title3)
-                                .fontWeight(.medium)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .glassEffect(.regular, in: .rect(cornerRadius: 14))
-                        }
-                        .padding(20)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+                        TextField("List Name", text: $name)
+                            .font(.title3)
+                            .fontWeight(.medium)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(.fill.quaternary, in: .rect(cornerRadius: DesignTokens.Radius.control))
                     }
+                    .padding(20)
+                    .cardSurface(cornerRadius: cardRadius)
                     .padding(.horizontal, 12)
 
-                    // No GlassEffectContainer: the symbol grid is a scrolling LazyVGrid of glass
-                    // buttons, and the container would morph/scale them in as they recycle on scroll.
-                    // The card keeps its own .glassEffect background.
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Icon")
                             .font(.headline)
@@ -50,7 +47,7 @@ struct CreateListView: View {
                         .frame(maxHeight: 400)
                     }
                     .padding(20)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 24))
+                    .cardSurface(cornerRadius: cardRadius)
                     .padding(.horizontal, 12)
                 }
                 .padding(.top, 16)
@@ -58,8 +55,6 @@ struct CreateListView: View {
             .background(AppBackground())
             .navigationTitle(isEditing ? "Edit List" : "New List")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

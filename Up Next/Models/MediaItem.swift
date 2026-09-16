@@ -55,6 +55,10 @@ final class Movie: MediaItemProtocol {
     /// Optional thumbnail image URL
     var thumbnailURL: URL?
 
+    /// TMDB backdrop path (16:9 artwork) used by the detail header. Optional so the
+    /// CloudKit schema change stays additive.
+    var backdropPath: String?
+
     /// Networks/streaming providers for this movie
     @Relationship(deleteRule: .nullify) var networks: [Network]?
 
@@ -88,6 +92,7 @@ final class Movie: MediaItemProtocol {
         id: String = "",
         title: String = "",
         thumbnailURL: URL? = nil,
+        backdropPath: String? = nil,
         networks: [Network]? = nil,
         descriptionText: String? = nil,
         cast: [String] = [],
@@ -103,6 +108,7 @@ final class Movie: MediaItemProtocol {
         self.id = id
         self.title = title
         self.thumbnailURL = thumbnailURL
+        self.backdropPath = backdropPath
         self.networks = networks
         self.descriptionText = descriptionText
         self.cast = cast
@@ -127,6 +133,10 @@ final class TVShow: MediaItemProtocol {
 
     /// Optional thumbnail image URL
     var thumbnailURL: URL?
+
+    /// TMDB backdrop path (16:9 artwork) used by the detail header. Optional so the
+    /// CloudKit schema change stays additive.
+    var backdropPath: String?
 
     /// Networks/streaming providers for this TV show
     @Relationship(deleteRule: .nullify) var networks: [Network]?
@@ -173,6 +183,7 @@ final class TVShow: MediaItemProtocol {
         id: String = "",
         title: String = "",
         thumbnailURL: URL? = nil,
+        backdropPath: String? = nil,
         networks: [Network]? = nil,
         descriptionText: String? = nil,
         cast: [String] = [],
@@ -192,6 +203,7 @@ final class TVShow: MediaItemProtocol {
         self.id = id
         self.title = title
         self.thumbnailURL = thumbnailURL
+        self.backdropPath = backdropPath
         self.networks = networks
         self.descriptionText = descriptionText
         self.cast = cast
@@ -308,6 +320,9 @@ extension Movie {
         if source.thumbnailURL != nil {
             thumbnailURL = source.thumbnailURL
         }
+        if source.backdropPath != nil {
+            backdropPath = source.backdropPath
+        }
     }
 
     /// User-facing release year derived from the stored date
@@ -346,6 +361,9 @@ extension TVShow {
         voteAverage = source.voteAverage
         if source.thumbnailURL != nil {
             thumbnailURL = source.thumbnailURL
+        }
+        if source.backdropPath != nil {
+            backdropPath = source.backdropPath
         }
     }
 

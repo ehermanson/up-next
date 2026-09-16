@@ -13,16 +13,17 @@ struct ProviderLogoView: View {
                     case .success(let image):
                         image.resizable().scaledToFill()
                     default:
-                        Color.gray.opacity(0.1)
+                        Rectangle().fill(.fill.tertiary)
                     }
                 }
             } else {
-                Color.gray.opacity(0.1)
+                Rectangle().fill(.fill.tertiary)
             }
         }
         .frame(width: size, height: size)
+        // Logos are images — they get a clipping shape only, never a material behind them.
         .clipShape(.rect(cornerRadius: radius))
-        .glassEffect(.regular, in: .rect(cornerRadius: radius))
+        .accessibilityLabel(network.name)
     }
 }
 
@@ -57,7 +58,8 @@ struct NetworkLogosView: View {
                         .fontWeight(.medium)
                         .foregroundStyle(.secondary)
                         .frame(width: logoSize, height: logoSize)
-                        .glassEffect(.regular, in: .rect(cornerRadius: logoSize * 0.22))
+                        .cellSurface(cornerRadius: logoSize * 0.22)
+                        .accessibilityLabel("\(overflow) more")
                 }
             }
             .padding(.vertical, 2)

@@ -9,7 +9,6 @@ struct MediaCardView: View {
     let networks: [Network]
     let providerCategories: [Int: String]
     let isWatched: Bool
-    let watchedToggleAction: (Bool) -> Void
     var isCompact: Bool = false
     var voteAverage: Double?
     var genres: [String] = []
@@ -52,55 +51,35 @@ struct MediaCardView: View {
     }
 
     private var cardCornerRadius: CGFloat {
-        isCompact ? 16 : 20
+        isCompact ? DesignTokens.Radius.cardCompact : DesignTokens.Radius.card
+    }
+
+    private var posterCornerRadius: CGFloat {
+        isCompact ? DesignTokens.Radius.posterSmall : DesignTokens.Radius.poster
+    }
+
+    /// Spoken description of the watched badge, including the thumbs rating when present.
+    private var watchedBadgeLabel: String {
+        switch userRating {
+        case 1: return "Watched, liked"
+        case 0: return "Watched, no opinion"
+        case -1: return "Watched, disliked"
+        default: return "Watched"
+        }
     }
 
     var body: some View {
         HStack(spacing: isCompact ? 10 : 12) {
-            if let imageURL = imageURL {
-                CachedAsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        Color.gray.opacity(0.1)
-                    }
-                }
-                .frame(width: posterSize.width, height: posterSize.height)
-                .clipShape(.rect(cornerRadius: isCompact ? 8 : 10))
-                .clipped()
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: posterSize.width, height: posterSize.height)
-                    .clipShape(.rect(cornerRadius: isCompact ? 8 : 10))
-            }
+            poster
 
             VStack(alignment: .leading, spacing: isCompact ? 3 : 5) {
                 HStack {
                     Text(title)
                         .font(isCompact ? .subheadline : .headline)
-                        .fontDesign(.rounded)
                         .lineLimit(isCompact ? 1 : 2)
                     Spacer()
                     if isWatched && !isCompact {
-                        Group {
-                            if let userRating {
-                                Image(systemName: userRating == 1 ? "hand.thumbsup.fill"
-                                      : userRating == 0 ? "minus.circle.fill"
-                                      : "hand.thumbsdown.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Image(systemName: "checkmark")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(6)
-                        .glassEffect(.regular, in: .circle)
-                        .accessibilityLabel("Watched")
+                        watchedBadge
                     }
                 }
                 if !isCompact {
@@ -108,7 +87,6 @@ struct MediaCardView: View {
                         if let subtitle = subtitle {
                             Text(subtitle)
                                 .font(.subheadline)
-                                .fontDesign(.rounded)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
@@ -119,14 +97,12 @@ struct MediaCardView: View {
                     if !genres.isEmpty {
                         Text(genres.prefix(3).joined(separator: ", "))
                             .font(.caption)
-                            .fontDesign(.rounded)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 } else if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.caption)
-                        .fontDesign(.rounded)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -147,24 +123,55 @@ struct MediaCardView: View {
         .padding(isCompact ? 8 : 10)
         .overlay(alignment: .bottomTrailing) {
             if let label = nextAirDateLabel, !isCompact {
-                HStack(spacing: 3) {
-                    Image(systemName: "calendar")
-                    Text(label)
-                }
-                .font(.caption2)
-                .fontDesign(.rounded)
-                .fontWeight(.medium)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                .glassEffect(.regular, in: .capsule)
-                .padding(6)
+                Chip(icon: "calendar", text: label)
+                    .padding(6)
             }
         }
-        .glassEffect(.regular.tint(.white.opacity(0.03)).interactive(), in: .rect(cornerRadius: cardCornerRadius))
+        .cardSurface(cornerRadius: cardCornerRadius)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var poster: some View {
+        Group {
+            if let imageURL = imageURL {
+                CachedAsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        Rectangle().fill(.fill.tertiary)
+                    }
+                }
+            } else {
+                Rectangle().fill(.fill.tertiary)
+            }
+        }
+        .frame(width: posterSize.width, height: posterSize.height)
+        .clipShape(.rect(cornerRadius: posterCornerRadius))
+        .accessibilityHidden(true)
+    }
+
+    private var watchedBadge: some View {
+        Group {
+            if let userRating {
+                Image(systemName: userRating == 1 ? "hand.thumbsup.fill"
+                      : userRating == 0 ? "minus.circle.fill"
+                      : "hand.thumbsdown.fill")
+                    .font(.caption)
+            } else {
+                Image(systemName: "checkmark")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .padding(6)
+        .background(.fill.tertiary, in: .circle)
+        .accessibilityLabel(watchedBadgeLabel)
     }
 }
-        
+
 private struct SeasonProgressBar: View {
     let watchedSeasons: [Int]
     let total: Int
@@ -174,10 +181,12 @@ private struct SeasonProgressBar: View {
             ForEach(1...total, id: \.self) { season in
                 let isWatched = watchedSeasons.contains(season)
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(isWatched ? Color.white.opacity(0.4) : Color.white.opacity(0.1))
+                    .fill(isWatched ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.fill.secondary))
                     .frame(width: 12, height: 4)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(watchedSeasons.count) of \(total) seasons watched")
     }
 }
 
@@ -199,63 +208,71 @@ private let previewNetworks = [
 ]
 
 #Preview("Unwatched TV Show") {
-    MediaCardView(
-        title: "Severance",
-        subtitle: "Season 2",
-        imageURL: nil,
-        networks: previewNetworks,
-        providerCategories: [8: "stream"],
-        isWatched: false,
-        watchedToggleAction: { _ in },
-        voteAverage: 8.3,
-        genres: ["Drama", "Sci-Fi", "Thriller"],
-        seasonProgress: (watchedSeasons: [1, 2], total: 5),
-        nextAirDate: "2026-03-15"
-    )
-    .padding()
+    ZStack {
+        AppBackground()
+        MediaCardView(
+            title: "Severance",
+            subtitle: "Season 2",
+            imageURL: nil,
+            networks: previewNetworks,
+            providerCategories: [8: "stream"],
+            isWatched: false,
+            voteAverage: 8.3,
+            genres: ["Drama", "Sci-Fi", "Thriller"],
+            seasonProgress: (watchedSeasons: [1, 2], total: 5),
+            nextAirDate: "2026-03-15"
+        )
+        .padding()
+    }
 }
 
 #Preview("Unwatched Movie") {
-    MediaCardView(
-        title: "Dune: Part Two",
-        subtitle: "2024 · 166 min",
-        imageURL: nil,
-        networks: previewNetworks,
-        providerCategories: [8: "stream", 1899: "stream"],
-        isWatched: false,
-        watchedToggleAction: { _ in },
-        voteAverage: 8.1,
-        genres: ["Sci-Fi", "Adventure"]
-    )
-    .padding()
+    ZStack {
+        AppBackground()
+        MediaCardView(
+            title: "Dune: Part Two",
+            subtitle: "2024 · 166 min",
+            imageURL: nil,
+            networks: previewNetworks,
+            providerCategories: [8: "stream", 1899: "stream"],
+            isWatched: false,
+            voteAverage: 8.1,
+            genres: ["Sci-Fi", "Adventure"]
+        )
+        .padding()
+    }
 }
 
 #Preview("Compact Card") {
-    MediaCardView(
-        title: "The Bear",
-        subtitle: "Season 3",
-        imageURL: nil,
-        networks: [],
-        providerCategories: [:],
-        isWatched: false,
-        watchedToggleAction: { _ in },
-        isCompact: true
-    )
-    .padding()
+    ZStack {
+        AppBackground()
+        MediaCardView(
+            title: "The Bear",
+            subtitle: "Season 3",
+            imageURL: nil,
+            networks: [],
+            providerCategories: [:],
+            isWatched: false,
+            isCompact: true
+        )
+        .padding()
+    }
 }
 
 #Preview("Watched with Rating") {
-    MediaCardView(
-        title: "Example Movie Title",
-        subtitle: "2022 · 148 min",
-        imageURL: nil,
-        networks: previewNetworks,
-        providerCategories: [8: "stream", 1899: "stream"],
-        isWatched: true,
-        watchedToggleAction: { _ in },
-        voteAverage: 7.8,
-        genres: ["Action", "Adventure", "Thriller"],
-        userRating: 1
-    )
-    .padding()
+    ZStack {
+        AppBackground()
+        MediaCardView(
+            title: "Example Movie Title",
+            subtitle: "2022 · 148 min",
+            imageURL: nil,
+            networks: previewNetworks,
+            providerCategories: [8: "stream", 1899: "stream"],
+            isWatched: true,
+            voteAverage: 7.8,
+            genres: ["Action", "Adventure", "Thriller"],
+            userRating: 1
+        )
+        .padding()
+    }
 }

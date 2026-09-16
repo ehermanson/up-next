@@ -32,6 +32,115 @@ enum MediaIDKey {
     }
 }
 
+// MARK: - Shared card
+
+/// One poster card in the detail sheet's horizontal carousels (Similar, Recommended, Collection).
+private struct PosterCard: View {
+    let posterPath: String?
+    let title: String
+    var subtitle: String?
+    /// The title this detail sheet is already showing — not tappable, outlined instead.
+    var isCurrent: Bool = false
+    var isAdded: Bool = false
+    var onTap: (() -> Void)?
+    var onAdd: (() -> Void)?
+
+    private let cardWidth: CGFloat = 120
+    private let posterHeight: CGFloat = 170
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                Button {
+                    onTap?()
+                } label: {
+                    posterImage
+                        .frame(width: cardWidth, height: posterHeight)
+                        .clipShape(.rect(cornerRadius: DesignTokens.Radius.posterCard))
+                        .overlay {
+                            if isCurrent {
+                                RoundedRectangle(cornerRadius: DesignTokens.Radius.posterCard)
+                                    .strokeBorder(.white.opacity(0.5), lineWidth: 2)
+                            }
+                        }
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(isCurrent || onTap == nil)
+                .accessibilityLabel(title)
+
+                if let onAdd {
+                    Button {
+                        if !isAdded { onAdd() }
+                    } label: {
+                        // Drawn over artwork, so the white tint and shadow are intentional.
+                        Image(systemName: isAdded ? "checkmark.circle.fill" : "plus.circle.fill")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(isAdded ? .green : .white)
+                            .shadow(color: .black.opacity(0.5), radius: 4)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isAdded ? "\(title) is in your library" : "Add \(title)")
+                }
+            }
+
+            Button {
+                onTap?()
+            } label: {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .disabled(isCurrent || onTap == nil)
+            .accessibilityHidden(true)
+
+            if let subtitle {
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: cardWidth)
+    }
+
+    @ViewBuilder
+    private var posterImage: some View {
+        if let url = TMDBService.shared.imageURL(path: posterPath, size: .w342) {
+            CachedAsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    posterPlaceholder
+                }
+            }
+        } else {
+            posterPlaceholder
+        }
+    }
+
+    private var posterPlaceholder: some View {
+        Rectangle()
+            .fill(.fill.tertiary)
+            .overlay {
+                Image(systemName: "film")
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
+            }
+    }
+}
+
+// MARK: - Sections
+
 struct CollectionSection: View {
     let collectionName: String?
     let parts: [TMDBCollectionPart]
@@ -39,9 +148,6 @@ struct CollectionSection: View {
     var existingIDs: Set<String> = []
     var onAdd: ((TMDBCollectionPart) -> Void)?
     var onTap: ((TMDBCollectionPart) -> Void)?
-
-    private let cardWidth: CGFloat = 120
-    private let posterHeight: CGFloat = 170
 
     var body: some View {
         if let name = collectionName, !parts.isEmpty {
@@ -54,7 +160,15 @@ struct CollectionSection: View {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(parts) { part in
-                            collectionCard(for: part)
+                            PosterCard(
+                                posterPath: part.posterPath,
+                                title: part.title,
+                                subtitle: part.releaseYear,
+                                isCurrent: isCurrent(part),
+                                isAdded: isAdded(part),
+                                onTap: onTap.map { tap in { tap(part) } },
+                                onAdd: isCurrent(part) ? nil : onAdd.map { add in { add(part) } }
+                            )
                         }
                     }
                     .padding(.horizontal, 1)
@@ -72,86 +186,6 @@ struct CollectionSection: View {
     private func isAdded(_ part: TMDBCollectionPart) -> Bool {
         existingIDs.contains(MediaIDKey.make(.movie, part.id))
     }
-
-    private func collectionCard(for part: TMDBCollectionPart) -> some View {
-        VStack(spacing: 6) {
-            ZStack(alignment: .topTrailing) {
-                posterImage(path: part.posterPath)
-                    .frame(width: cardWidth, height: posterHeight)
-                    .clipShape(.rect(cornerRadius: 12))
-                    .overlay {
-                        if isCurrent(part) {
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(.white.opacity(0.5), lineWidth: 2)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if !isCurrent(part) { onTap?(part) }
-                    }
-
-                if let onAdd, !isCurrent(part) {
-                    let added = isAdded(part)
-                    Button {
-                        if !added { onAdd(part) }
-                    } label: {
-                        Image(systemName: added ? "checkmark.circle.fill" : "plus.circle.fill")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(added ? .green : .white)
-                            .shadow(color: .black.opacity(0.5), radius: 4)
-                            .padding(6)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            Text(part.title)
-                .font(.caption)
-                .fontWeight(.medium)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(isCurrent(part) ? .primary : .primary)
-                .onTapGesture {
-                    if !isCurrent(part) { onTap?(part) }
-                }
-
-            if let year = part.releaseYear {
-                Text(year)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: cardWidth)
-    }
-
-    @ViewBuilder
-    private func posterImage(path: String?) -> some View {
-        if let url = TMDBService.shared.imageURL(path: path, size: .w342) {
-            CachedAsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
-                    posterPlaceholder
-                }
-            }
-        } else {
-            posterPlaceholder
-        }
-    }
-
-    private var posterPlaceholder: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
-            .overlay {
-                Image(systemName: "film")
-                    .font(.title2)
-                    .foregroundStyle(.tertiary)
-            }
-    }
 }
 
 struct SimilarSection: View {
@@ -160,9 +194,6 @@ struct SimilarSection: View {
     var existingIDs: Set<String> = []
     var onAdd: ((SimilarMediaItem) -> Void)?
     var onTap: ((SimilarMediaItem) -> Void)?
-
-    private let cardWidth: CGFloat = 120
-    private let posterHeight: CGFloat = 170
 
     var body: some View {
         if !items.isEmpty {
@@ -175,7 +206,13 @@ struct SimilarSection: View {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(items) { item in
-                            similarCard(for: item)
+                            PosterCard(
+                                posterPath: item.posterPath,
+                                title: item.title,
+                                isAdded: isAdded(item),
+                                onTap: onTap.map { tap in { tap(item) } },
+                                onAdd: onAdd.map { add in { add(item) } }
+                            )
                         }
                     }
                     .padding(.horizontal, 1)
@@ -188,68 +225,5 @@ struct SimilarSection: View {
 
     private func isAdded(_ item: SimilarMediaItem) -> Bool {
         existingIDs.contains(MediaIDKey.make(item.mediaType, item.id))
-    }
-
-    private func similarCard(for item: SimilarMediaItem) -> some View {
-        VStack(spacing: 6) {
-            ZStack(alignment: .topTrailing) {
-                posterImage(path: item.posterPath)
-                    .frame(width: cardWidth, height: posterHeight)
-                    .clipShape(.rect(cornerRadius: 12))
-                    .contentShape(Rectangle())
-                    .onTapGesture { onTap?(item) }
-
-                if let onAdd {
-                    let added = isAdded(item)
-                    Button {
-                        if !added { onAdd(item) }
-                    } label: {
-                        Image(systemName: added ? "checkmark.circle.fill" : "plus.circle.fill")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(added ? .green : .white)
-                            .shadow(color: .black.opacity(0.5), radius: 4)
-                            .padding(6)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            Text(item.title)
-                .font(.caption)
-                .fontWeight(.medium)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .onTapGesture { onTap?(item) }
-        }
-        .frame(width: cardWidth)
-    }
-
-    @ViewBuilder
-    private func posterImage(path: String?) -> some View {
-        if let url = TMDBService.shared.imageURL(path: path, size: .w342) {
-            CachedAsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
-                    posterPlaceholder
-                }
-            }
-        } else {
-            posterPlaceholder
-        }
-    }
-
-    private var posterPlaceholder: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
-            .overlay {
-                Image(systemName: "film")
-                    .font(.title2)
-                    .foregroundStyle(.tertiary)
-            }
     }
 }
