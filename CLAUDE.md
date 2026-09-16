@@ -231,6 +231,6 @@ The code says `CustomList`/"list"; every user-facing string says "collection" â€
 1. Generates `Info.plist` from template using `$TMDB_API_KEY` env var
 2. Sets the build number (`CURRENT_PROJECT_VERSION`) from `$CI_BUILD_NUMBER`
 
-`MARKETING_VERSION` is managed manually in the project (currently 1.6). To release a new version, bump `MARKETING_VERSION` in `project.pbxproj`, commit, and push.
+`MARKETING_VERSION` is managed manually in the project (currently 1.7). To release a new version, bump `MARKETING_VERSION` in `project.pbxproj`, commit, and push.
 
 **Important**: Distribution Preparation must be set to "App Store Connect" to select a build for distribution.
