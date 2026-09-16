@@ -82,7 +82,7 @@ private struct PosterCard: View {
                             .padding(6)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(isAdded ? "\(title) is in your library" : "Add \(title)")
+                    .accessibilityLabel(isAdded ? "\(title) is already added" : "Add \(title)")
                 }
             }
 

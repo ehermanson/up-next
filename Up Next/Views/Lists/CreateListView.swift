@@ -23,13 +23,18 @@ struct CreateListView: View {
                             .frame(width: 80, height: 80)
                             .background(.fill.tertiary, in: .circle)
 
-                        TextField("List Name", text: $name)
+                        TextField("Collection Name", text: $name)
                             .font(.title3)
                             .fontWeight(.medium)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                             .background(.fill.quaternary, in: .rect(cornerRadius: DesignTokens.Radius.control))
+
+                        Text("Titles in a collection stay out of Up Next. Mark one watched and it shows up in your Watched history.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                     }
                     .padding(20)
                     .cardSurface(cornerRadius: cardRadius)
@@ -53,7 +58,7 @@ struct CreateListView: View {
                 .padding(.top, 16)
             }
             .background(AppBackground())
-            .navigationTitle(isEditing ? "Edit List" : "New List")
+            .navigationTitle(isEditing ? "Edit Collection" : "New Collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

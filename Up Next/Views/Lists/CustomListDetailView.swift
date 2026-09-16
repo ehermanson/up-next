@@ -132,7 +132,7 @@ struct CustomListDetailView: View {
             Button(role: .destructive) {
                 removeWithUndo(item)
             } label: {
-                Label("Remove from List", systemImage: "trash")
+                Label("Remove from Collection", systemImage: "trash")
             }
         }
     }
@@ -290,7 +290,7 @@ private struct CustomListItemDetailSheet: View {
         let isInLibrary: Bool = library.libraryItem(for: mediaID, mediaType: mediaType) != nil
         let markWatchedAction: (() -> Void)? = isInLibrary ? nil : { markWatched() }
         let removeMessage: String =
-            "This removes it from \u{201C}\(list.name)\u{201D} only \u{2014} it stays in your library."
+            "This only removes it from \u{201C}\(list.name)\u{201D}."
 
         return MediaDetailView(
             listItem: detailBinding,
@@ -304,7 +304,7 @@ private struct CustomListItemDetailSheet: View {
             onTVShowAdded: { library.addTVShow($0) },
             onMovieAdded: { library.addMovie($0) },
             onMarkWatched: markWatchedAction,
-            removeLabel: "Remove from list",
+            removeLabel: "Remove from collection",
             removeMessage: removeMessage
         )
     }

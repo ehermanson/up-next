@@ -113,7 +113,7 @@ struct MediaDetailView: View {
                         if let onMarkWatched {
                             Divider().padding(.vertical, 4)
 
-                            MarkAsWatchedCard(action: onMarkWatched)
+                            MarkAsWatchedCard(tabName: listItem.tvShow != nil ? "TV Shows" : "Movies", action: onMarkWatched)
                         } else if onAdd == nil {
                             if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
                                 Divider().padding(.vertical, 4)
@@ -194,7 +194,7 @@ struct MediaDetailView: View {
                         } label: {
                             Label(removeLabel ?? "Remove", systemImage: "trash")
                         }
-                        .accessibilityLabel(removeLabel ?? "Remove from list")
+                        .accessibilityLabel(removeLabel ?? "Remove from watchlist")
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -204,7 +204,7 @@ struct MediaDetailView: View {
             .task {
                 await fetchFullDetails()
             }
-            .alert(removeLabel.map { "\($0)?" } ?? "Remove from list?", isPresented: $isConfirmingRemoval) {
+            .alert(removeLabel.map { "\($0)?" } ?? "Remove from watchlist?", isPresented: $isConfirmingRemoval) {
                 Button("Remove", role: .destructive) {
                     onRemove()
                     dismiss()
@@ -236,7 +236,7 @@ struct MediaDetailView: View {
             HStack(spacing: 10) {
                 if let customListVM = customListViewModel {
                     Button { showingAddToList = true } label: {
-                        Label("Lists", systemImage: "tray.full")
+                        Label("Collections", systemImage: "tray.full")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glass)
@@ -455,6 +455,8 @@ struct MediaDetailView: View {
 /// Shown for a title that lives in a custom list but not in the library. Custom lists are thematic
 /// pools, so the only library action offered is logging it as watched — never queuing it.
 private struct MarkAsWatchedCard: View {
+    /// "TV Shows" / "Movies" — the tab whose Watched section the title will land in.
+    let tabName: String
     let action: () -> Void
 
     var body: some View {
@@ -467,7 +469,7 @@ private struct MarkAsWatchedCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Mark as Watched")
                         .font(.headline)
-                    Text("Adds it to your library's Watched section without queuing it.")
+                    Text("Marks it watched in \(tabName) \u{2014} it won't be added to Up Next.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)

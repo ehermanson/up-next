@@ -40,7 +40,7 @@ struct ContentView: View {
                 )
                 .toastOverlay(bottomPadding: 12)
             }
-            Tab("My Lists", systemImage: "tray.full", value: .myLists) {
+            Tab("Collections", systemImage: "tray.full", value: .myLists) {
                 MyListsView(viewModel: customListViewModel)
                     // List rows derive watched state / rating / season progress from the library.
                     .environment(viewModel)

@@ -242,7 +242,7 @@ struct SearchResultRow: View {
             Image(systemName: "plus")
                 .font(.headline.weight(.semibold))
                 .frame(width: 44, height: 44)
-                .accessibilityLabel("Add to list")
+                .accessibilityLabel("Add")
         }
     }
 }

@@ -13,13 +13,13 @@ struct MyListsView: View {
                 if viewModel.customLists.isEmpty {
                     EmptyStateView(
                         icon: "tray",
-                        title: "No lists yet",
-                        subtitle: "Create a collection to organize your favorites."
+                        title: "No collections yet",
+                        subtitle: "Collections like Christmas Movies or Shows for the Kids. They stay out of Up Next until you want them."
                     ) {
                         Button {
                             showingCreateList = true
                         } label: {
-                            Label("Create List", systemImage: "plus")
+                            Label("Create Collection", systemImage: "plus")
                         }
                         .buttonStyle(.glassProminent)
                     }
@@ -83,10 +83,10 @@ struct MyListsView: View {
                     .background(AppBackground())
                 }
             }
-            .navigationTitle("My Lists")
+            .navigationTitle("Collections")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("New List", systemImage: "plus") {
+                    Button("New Collection", systemImage: "plus") {
                         showingCreateList = true
                     }
                 }
@@ -108,7 +108,7 @@ struct MyListsView: View {
                 CreateListView(viewModel: viewModel, existingList: list)
             }
             .alert(
-                "Delete List",
+                "Delete Collection",
                 isPresented: Binding(
                     get: { listToDelete != nil },
                     set: { if !$0 { listToDelete = nil } }

@@ -50,7 +50,7 @@ MVVM with SwiftData persistence. Three `@Observable` ViewModels own business log
 |-----|------|-----------|
 | TV Shows | `MediaListView` | `MediaLibraryViewModel` |
 | Movies | `MediaListView` | `MediaLibraryViewModel` |
-| My Lists | `MyListsView` | `CustomListViewModel` |
+| Collections | `MyListsView` | `CustomListViewModel` |
 | Discover | `DiscoverView` | `DiscoverViewModel` |
 
 ## File Map
@@ -59,7 +59,7 @@ MVVM with SwiftData persistence. Three `@Observable` ViewModels own business log
 Up Next/
 ├── App/
 │   ├── Watch_ListApp.swift              # @main entry, SwiftData schema registration
-│   └── ContentView.swift                # Tab navigation (TV Shows, Movies, My Lists, Discover)
+│   └── ContentView.swift                # Tab navigation (TV Shows, Movies, Collections, Discover)
 │
 ├── Models/                              # SwiftData @Model classes
 │   ├── MediaItem.swift                  # Movie, TVShow, Network models
@@ -178,9 +178,9 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 - Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — the transition lives on `ListItem.toggleWatched()` (all seasons for TV); custom-list rows offer the same gesture, adding a not-yet-in-library title straight to Watched
 - Watched section is sorted most-recently-watched first
 
-### Custom Lists
+### Custom Lists (user-facing name: "Collections")
 
-Custom lists are thematic pools (Christmas, Halloween, kid-friendly…) kept deliberately separate from the Up Next queue. Rules:
+The code says `CustomList`/"list"; every user-facing string says "collection" — keep it that way. Never surface the word "library" to users (it's an internal term for the TV Shows/Movies tabs' data). Custom lists are thematic pools (Christmas, Halloween, kid-friendly…) kept deliberately separate from the Up Next queue. Rules:
 - **One media row per TMDB id.** `canonicalMovieRow` / `canonicalTVShowRow` (`MediaItem.swift`) look up an existing `Movie`/`TVShow` before any insert — used by `MediaLibraryViewModel.add*` and `CustomListViewModel.addItem`. A search-stub row never overwrites a fully-fetched one. `CustomListViewModel.migrateDuplicateMediaRows` repoints legacy duplicates once per install (`customListMediaRowsMigrated`).
 - **Watched state is derived, never stored on `CustomListItem`.** `CustomListDetailView` reads `MediaLibraryViewModel.libraryItem(for:mediaType:)` (via `@Environment`) for the badge, rating, season progress, and a corner "Watched Dec 2025" chip (`MediaCardView.watchedLabel`).
 - **Detail sheet** is the real `MediaDetailView`: bound to the library `ListItem` when present, otherwise to a transient item wrapping the shared row with `onMarkWatched` → `MediaLibraryViewModel.addWatched(...)` (lands in Watched, never in Up Next). There is intentionally no "Add to Up Next" from a list. `onRemove` there means remove from the list (`removeLabel`/`removeMessage`).

@@ -18,13 +18,13 @@ struct AddToListSheet: View {
                 if viewModel.customLists.isEmpty {
                     EmptyStateView(
                         icon: "tray",
-                        title: "No lists yet",
-                        subtitle: "Lists are for themed collections \u{2014} Christmas movies, kids' shows, comfort watches."
+                        title: "No collections yet",
+                        subtitle: "Collections are for themed groups \u{2014} Christmas movies, kids' shows, comfort watches."
                     ) {
                         Button {
                             showingCreateList = true
                         } label: {
-                            Label("New List", systemImage: "plus")
+                            Label("New Collection", systemImage: "plus")
                         }
                         .buttonStyle(.glassProminent)
                         .controlSize(.large)
@@ -63,7 +63,7 @@ struct AddToListSheet: View {
                             .listRowSeparator(.hidden)
                             .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
                             .accessibilityElement(children: .combine)
-                            .accessibilityValue(isInList ? "In list" : "Not in list")
+                            .accessibilityValue(isInList ? "In collection" : "Not in collection")
                         }
                     }
                     .scrollContentBackground(.hidden)
@@ -71,12 +71,12 @@ struct AddToListSheet: View {
                     .background(AppBackground())
                 }
             }
-            .navigationTitle("Add to List")
+            .navigationTitle("Add to Collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if !viewModel.customLists.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("New List", systemImage: "plus") {
+                        Button("New Collection", systemImage: "plus") {
                             showingCreateList = true
                         }
                     }

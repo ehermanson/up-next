@@ -127,7 +127,7 @@ struct WatchlistSearchView: View {
             if let list = selectedList {
                 return "Add to \(list.name)"
             }
-            return "Add to List"
+            return "Add to Collection"
         }
         switch context {
         case .tvShows: return "Add TV Shows"
@@ -138,7 +138,7 @@ struct WatchlistSearchView: View {
 
     private var emptyPromptText: String {
         if isListMode {
-            return "Search to add to your list"
+            return "Search to add to your collection"
         }
         switch context {
         case .tvShows: return "Search for TV shows to add"
@@ -316,11 +316,11 @@ struct WatchlistSearchView: View {
         if lists.isEmpty {
             EmptyStateView(
                 icon: "tray",
-                title: "Create a list first",
-                subtitle: "Go to My Lists to create a collection."
+                title: "Create a collection first",
+                subtitle: "Go to the Collections tab to create one."
             )
         } else {
-            EmptyStateView(icon: "tray", title: "Select a list above")
+            EmptyStateView(icon: "tray", title: "Select a collection above")
         }
     }
 
