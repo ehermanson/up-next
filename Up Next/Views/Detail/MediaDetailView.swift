@@ -12,6 +12,9 @@ struct MediaDetailView: View {
     var existingIDs: Set<String> = []
     var onTVShowAdded: ((TVShow) -> Void)?
     var onMovieAdded: ((Movie) -> Void)?
+    /// Where `onTVShowAdded`/`onMovieAdded` put things when it isn't the watchlist — a collection
+    /// name. Drives the Add button label and the "added" toasts.
+    var addTargetName: String? = nil
     /// Set when the sheet is opened from a collection. Collections keep their own watched state, so
     /// this replaces the watchlist cards (seasons, watched toggle, rating) with a single card that
     /// only flips the collection entry — nothing in the Movies / TV Shows tabs changes.
@@ -190,11 +193,11 @@ struct MediaDetailView: View {
                         Button {
                             onAdd()
                             if let title = listItem.media?.title {
-                                toast.show("\(title) has been added")
+                                toast.show(addedMessage(for: title))
                             }
                             dismiss()
                         } label: {
-                            Label("Add to Watchlist", systemImage: "plus")
+                            Label(addTargetName.map { "Add to \($0)" } ?? "Add to Watchlist", systemImage: "plus")
                         }
                     } else {
                         Button(role: .destructive) {
@@ -229,7 +232,8 @@ struct MediaDetailView: View {
                     onAdd: canAddToLibrary ? { addSimilarFromDetail(item) } : nil,
                     existingIDs: existingIDs.union(addedSimilarIDs),
                     onTVShowAdded: onTVShowAdded,
-                    onMovieAdded: onMovieAdded
+                    onMovieAdded: onMovieAdded,
+                    addTargetName: addTargetName
                 )
             }
             .toastOverlay()
@@ -372,12 +376,17 @@ struct MediaDetailView: View {
         onTVShowAdded != nil || onMovieAdded != nil
     }
 
+    private func addedMessage(for title: String) -> String {
+        if let addTargetName { return "\(title) added to \(addTargetName)" }
+        return "\(title) has been added"
+    }
+
     private func addSimilarItem(_ item: SimilarMediaItem) {
         let stringID = String(item.id)
         let key = MediaIDKey.make(item.mediaType, stringID)
         guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
         addedSimilarIDs.insert(key)
-        toast.show("\(item.title) has been added")
+        toast.show(addedMessage(for: item.title))
 
         Task {
             if item.mediaType == .tvShow {
@@ -421,7 +430,7 @@ struct MediaDetailView: View {
         let key = MediaIDKey.make(.movie, stringID)
         guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
         addedSimilarIDs.insert(key)
-        toast.show("\(part.title) has been added")
+        toast.show(addedMessage(for: part.title))
 
         Task {
             let movie: Movie
@@ -447,7 +456,7 @@ struct MediaDetailView: View {
         let key = MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
         guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
         addedSimilarIDs.insert(key)
-        toast.show("\(media.title) has been added")
+        toast.show(addedMessage(for: media.title))
         if let tvShow = item.tvShow {
             onTVShowAdded?(tvShow)
         } else if let movie = item.movie {

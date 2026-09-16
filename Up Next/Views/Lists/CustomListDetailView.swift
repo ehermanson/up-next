@@ -257,10 +257,6 @@ private struct CustomListItemDetailSheet: View {
     let onRemove: () -> Void
     let dismiss: () -> Void
 
-    /// Only used to let the sheet's Similar / Recommended "+" buttons add to Up Next — the
-    /// collection entry's own watched state never touches the library.
-    @Environment(MediaLibraryViewModel.self) private var library
-
     /// Wraps the *shared* media row, so anything the detail sheet fetches into that row (providers,
     /// cast, backdrop) is stored once and shows up everywhere else the title appears.
     @State private var detailItem: ListItem
@@ -294,10 +290,15 @@ private struct CustomListItemDetailSheet: View {
         let collectionName: String = list.name
         let entry: CustomListItem = item
         let listVM: CustomListViewModel = listViewModel
-        let existingIDs: Set<String> = MediaIDKey.makeSet(.tvShow, library.existingTVShowIDs)
-            .union(MediaIDKey.makeSet(.movie, library.existingMovieIDs))
-        let addTVShow: (TVShow) -> Void = { library.addTVShow($0) }
-        let addMovie: (Movie) -> Void = { library.addMovie($0) }
+        // Inside a collection, "+" on a similar / recommended title adds to *this* collection,
+        // not to Up Next, and the checkmarks reflect this collection's membership.
+        let collection: CustomList = list
+        let existingIDs: Set<String> = Set((list.items ?? []).compactMap { item -> String? in
+            guard let media = item.media else { return nil }
+            return MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
+        })
+        let addTVShow: (TVShow) -> Void = { listVM.addItem(tvShow: $0, to: collection) }
+        let addMovie: (Movie) -> Void = { listVM.addItem(movie: $0, to: collection) }
         let watchedBinding: Binding<Bool> = Binding(
             get: { entry.isWatched },
             set: { (newValue: Bool) in
@@ -315,6 +316,7 @@ private struct CustomListItemDetailSheet: View {
             existingIDs: existingIDs,
             onTVShowAdded: addTVShow,
             onMovieAdded: addMovie,
+            addTargetName: collectionName,
             collectionWatched: watchedBinding,
             collectionName: collectionName,
             removeLabel: "Remove from collection",
