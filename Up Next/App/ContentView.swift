@@ -71,6 +71,11 @@ struct ContentView: View {
             await viewModel.configure(modelContext: modelContext)
             customListViewModel.configure(modelContext: modelContext)
         }
+        .onChange(of: settings.regionOverride) {
+            // Provider availability is region-specific, so every stored row's networks are now
+            // stale. A full refresh re-fetches details — and therefore providers — for all of them.
+            Task { await viewModel.refreshNow() }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             // A swipe-delete is only committed after the undo window; flush it before the app can
             // be terminated in the background, otherwise the item resurrects on relaunch.

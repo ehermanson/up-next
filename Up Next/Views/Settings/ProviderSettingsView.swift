@@ -5,6 +5,8 @@ struct ProviderSettingsView: View {
     @State private var providers: [TMDBWatchProviderInfo] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var regions: [TMDBWatchProviderRegion] = []
+    @State private var isLoadingRegions = true
 
     private let settings = ProviderSettings.shared
 
@@ -19,6 +21,7 @@ struct ProviderSettingsView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     descriptionSection
+                    regionSection
 
                     if isLoading {
                         loadingView
@@ -48,7 +51,9 @@ struct ProviderSettingsView: View {
             }
         }
         .task {
-            await loadProviders()
+            async let providerLoad: Void = loadProviders()
+            async let regionLoad: Void = loadRegions()
+            _ = await (providerLoad, regionLoad)
         }
     }
 
@@ -63,6 +68,75 @@ struct ProviderSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    // MARK: - Region
+
+    private var regionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Region")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                Spacer()
+
+                if isLoadingRegions {
+                    ProgressView()
+                } else {
+                    Picker("Region", selection: regionSelection) {
+                        Text(automaticRegionLabel).tag(nil as String?)
+                        ForEach(regionOptions) { region in
+                            Text(region.englishName).tag(region.iso31661 as String?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .tint(Color.accentColor)
+                }
+            }
+
+            Text("Streaming availability and provider logos are looked up for this region.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    /// Writes through to the override and reloads the grid, since the available providers are
+    /// region-specific. Existing selections are kept as-is — an off-region provider id simply
+    /// matches nothing, and survives a trip back.
+    private var regionSelection: Binding<String?> {
+        Binding(
+            get: { settings.regionOverride },
+            set: { newValue in
+                guard newValue != settings.regionOverride else { return }
+                settings.regionOverride = newValue
+                Task { await loadProviders() }
+            }
+        )
+    }
+
+    /// The loaded regions, or — when the fetch failed — just the currently selected one, so the
+    /// picker can always render its own value instead of blocking the sheet.
+    private var regionOptions: [TMDBWatchProviderRegion] {
+        if !regions.isEmpty { return regions }
+        guard let current = settings.regionOverride else { return [] }
+        let name = Self.regionName(current)
+        return [TMDBWatchProviderRegion(iso31661: current, englishName: name, nativeName: name)]
+    }
+
+    private var automaticRegionLabel: String {
+        let code = ProviderSettings.deviceRegion
+        let name = regions.first { $0.iso31661 == code }?.englishName ?? Self.regionName(code)
+        return "Automatic (\(name))"
+    }
+
+    /// Localized country name for a region code, falling back to the raw code.
+    private static func regionName(_ code: String) -> String {
+        Locale.current.localizedString(forRegionCode: code) ?? code
     }
 
     // MARK: - Loading
@@ -134,6 +208,14 @@ struct ProviderSettingsView: View {
         }
     }
 
+    /// A failure here is non-fatal: `regionOptions` falls back to Automatic plus whatever region
+    /// is already selected, so the picker still renders.
+    private func loadRegions() async {
+        isLoadingRegions = true
+        regions = (try? await TMDBService.shared.fetchWatchProviderRegions()) ?? []
+        isLoadingRegions = false
+    }
+
     // MARK: - Debug
 
     #if DEBUG
@@ -150,6 +232,7 @@ struct ProviderSettingsView: View {
                 settings.selectedProviderIDs = []
                 settings.hasCompletedProviderOnboarding = false
                 settings.onlyMyServicesInDiscover = true
+                settings.regionOverride = nil
                 dismiss()
             } label: {
                 Label("Reset Providers & Onboarding", systemImage: "arrow.counterclockwise")

@@ -87,23 +87,23 @@ Up Next/
 │   │   ├── MediaDetailMetadata.swift    # Metadata row, provider row, pills, flow layout
 │   │   └── MediaDetailSimilar.swift     # "More Like This" row (recs + similar merged), TMDB collection section, MediaIDKey
 │   ├── Search/
-│   │   ├── WatchlistSearchView.swift    # Context-aware search (all, TV, movies, specific lists)
+│   │   ├── WatchlistSearchView.swift    # Context-aware search (all, TV, movies, specific lists); one stable List under .searchable
 │   │   ├── RecommendationEngine.swift   # Weighted seeds, genre affinity, discover pool + unified scoring; collection-mode thematic scoring; GenreCatalog
-│   │   └── SearchComponents.swift       # Loading states and utility views
+│   │   └── SearchComponents.swift       # MediaType, ShimmerRow/ShimmerRows (List-row placeholders), ShimmerLoadingView, result row
 │   ├── Discover/
 │   │   └── DiscoverView.swift           # Browse/discover tab with carousels and filters
 │   ├── Lists/
 │   │   ├── MyListsView.swift            # Custom lists overview
-│   │   ├── CustomListDetailView.swift   # Unwatched/Watched sections, per-collection watched toggle + detail sheet wrapper
+│   │   ├── CustomListDetailView.swift   # Unwatched/Watched sections, per-collection watched toggle, Surprise Me, detail sheet wrapper
 │   │   ├── CreateListView.swift         # Create/edit list dialog with icon picker
 │   │   └── AddToListSheet.swift         # Add item to a custom list
 │   └── Settings/
-│       └── ProviderSettingsView.swift   # Streaming service selection
+│       └── ProviderSettingsView.swift   # Region override picker + streaming service selection
 │
 ├── Services/
 │   ├── TMDBService.swift                # TMDB API client (singleton): search, details, providers, discover
 │   ├── TMDBModels.swift                 # Codable structs for TMDB API responses
-│   └── ProviderSettings.swift           # UserDefaults-backed streaming provider preferences
+│   └── ProviderSettings.swift           # UserDefaults-backed provider preferences + region override (effectiveRegion)
 │
 ├── UI/                                  # Shared/reusable UI components
 │   ├── DesignTokens.swift               # Radius/spacing/color tokens, cardSurface/cellSurface/chipSurface, Chip
@@ -140,22 +140,28 @@ CloudKit is optional — the app falls back to local-only if CloudKit is unavail
 - Full regional provider list from `/watch/providers/{movie,tv}`, minus rent/buy storefronts and resold "channel" variants
 - Provider aliases collapse variants onto a canonical name **and canonical TMDB provider id** (e.g., "Netflix Standard with Ads" (1796) → Netflix (8)), so stored `Network.id`s always match `ProviderSettings` selections. Aliases resolve before the channel-variant filter, so e.g. "Paramount+ Amazon Channel" counts as Paramount+.
 - Network → Provider ID mapping (e.g., "AMC" network → AMC+ provider)
-- Region-aware lookups via `Locale.current.region`, fallback to US
+- Region-aware lookups via `TMDBService.currentRegion` = `ProviderSettings.effectiveRegion`: the user's override (`providers.regionOverride`) if set, else `Locale.current.region`, else US. `effectiveRegion` is `nonisolated` and reads UserDefaults directly so the service can call it off the main actor.
 
 ### "On My Services" (ProviderSettings)
 
 `ProviderSettings` (UserDefaults-backed, `@Observable` singleton) drives three things:
 - **Discover**: `onlyMyServicesInDiscover` (key `discover.onlyMyServices`, default on) sends `with_watch_providers` + `watch_region` on every carousel/browse request via `DiscoverViewModel.providerFilter`. The toggle row under the media-type picker becomes a "Choose your streaming services" button when nothing is selected.
 - **Watchlist filter**: per-tab `@AppStorage` flags `tvShows.onlyMyServices` / `movies.onlyMyServices`, applied by `filterItems(...)` in `MediaListHelpers.swift` (`isOnSelectedServices` = any network with category `stream`/`ads` whose id is selected). Auto-cleared if the user deselects all providers.
-- **First launch**: `ContentView` presents `ProviderSettingsView` once when no providers are selected and `hasCompletedProviderOnboarding` is false; the flag is set on presentation so it never re-prompts. The DEBUG "Reset Providers & Onboarding" button clears it.
+- **First launch**: `ContentView` presents `ProviderSettingsView` once when no providers are selected and `hasCompletedProviderOnboarding` is false; the flag is set on presentation so it never re-prompts. The DEBUG "Reset Providers & Onboarding" button clears it (and the region override).
+- **Region override**: the "Region" row in `ProviderSettingsView` lists `/watch/providers/regions` (falls back to Automatic + the current pick if the fetch fails). "Automatic" = `nil`; picking the device's own region still stores it. Changing it reloads the provider grid, re-issues Discover (`DiscoverView` observes `regionOverride`; the carousel guard and `BrowseRequest` carry the region so a superseded region can't land), and `ContentView` kicks `MediaLibraryViewModel.refreshNow()` so stored networks re-resolve. Selections are never pruned — an off-region provider id just matches nothing.
 
 ### Discover Data Sources
 
 - **Trending**: `/trending/{tv,movie}/week` when the provider filter is off; `/discover` `popularity.desc` + providers when it's on (`/trending` can't take `with_watch_providers`).
 - **Airing This Week** (TV): `/discover/tv` with `air_date.gte/lte` = today…+7d, respects the provider filter. **In Theaters** (movies): `/movie/now_playing` with `region`, always shown.
 - **New Releases**: `first_air_date.lte` / `primary_release_date.lte` = today so unreleased titles don't leak in. Dates are built with `TMDBService.apiDateString` (UTC).
-- Errors surface as `carouselError` / `browseError` with a retry `EmptyStateView`; pull-to-refresh calls `reload()`. Responses still go through the 10-minute `RequestDeduplicator` cache.
+- Errors surface as `carouselError` / `browseError` with a retry `EmptyStateView` that calls `reload()` (cached). Pull-to-refresh calls `refresh()`, which first drops `RequestDeduplicator` entries for `/discover/`, `/trending/`, `/movie/now_playing` and `/genre/` via `TMDBService.invalidateResponseCache(pathPrefixes:)` — scoped, so detail/search responses stay cached.
 - Search runs `/search/tv` and `/search/movie` concurrently; when the selected segment has no results but the other does, the empty state offers "Show N movies instead". Rows show the release/premiere year.
+- The search sheet keeps exactly one `List` mounted under `.searchable` — shimmer (`ShimmerRows`), error, empty-prompt, no-results and no-collection states are all rows in it (`emptyStateRow`). Swapping the scroll container under the search bar made it jump and drop focus.
+
+### Surprise Me
+
+Random pick that opens the detail sheet, never repeating the previous pick when there's a choice. Watchlist: dice chip beside Filter in the Up Next header (`MediaListView.surpriseHandler`), choosing from `displayedUnwatchedItems` so genre / watch option / on-my-services all apply; hidden while reordering or with < 2 candidates. Collections: "Surprise Me" in the toolbar ellipsis menu (shown when ≥ 2 unwatched or anything watched), choosing from the unwatched section.
 
 ### Recommendations (`RecommendationEngine`)
 

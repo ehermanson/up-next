@@ -250,25 +250,73 @@ struct WatchlistSearchView: View {
         )
     }
 
-    @ViewBuilder
+    /// A single stable `List` lives under `.searchable` at all times — swapping the whole
+    /// scroll container per state would make the search bar jump and can drop keyboard focus.
+    /// Every state below is expressed as rows inside it instead.
     private var mainContent: some View {
+        List {
+            mainContentRows
+        }
+        .scrollContentBackground(.hidden)
+        .listStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var mainContentRows: some View {
         if context == .myLists && selectedList == nil {
-            noListSelectedView
+            noListSelectedRow
         } else if isLoading && !hasResults {
             // Only shimmer on a cold search — otherwise keystrokes would blank the
             // previous results while the debounced request is still in flight.
-            ShimmerLoadingView()
+            ShimmerRows()
         } else if let error = errorMessage {
-            EmptyStateView(icon: "exclamationmark.triangle", title: error)
+            errorRow(error)
         } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if isLoadingRecommendations {
-                ShimmerLoadingView()
+                ShimmerRows()
             } else if hasRecommendations {
-                recommendationsList
+                recommendationsSection
             } else {
-                EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
+                emptyPromptRow
             }
         } else if hasNoResults {
+            noResultsRow
+        } else {
+            resultRows
+        }
+    }
+
+    /// Wraps a non-row state view (an `EmptyStateView`) so it behaves like a normal `List`
+    /// row: no separator/background, centered, with generous vertical breathing room. The
+    /// stable `id` keeps SwiftUI from animating oddly when the state changes.
+    private func emptyStateRow(id: String, @ViewBuilder content: () -> some View) -> some View {
+        content()
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 60)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+            .id(id)
+    }
+
+    private var noListSelectedRow: some View {
+        emptyStateRow(id: "noListSelected") { noListSelectedView }
+    }
+
+    private func errorRow(_ message: String) -> some View {
+        emptyStateRow(id: "error") {
+            EmptyStateView(icon: "exclamationmark.triangle", title: message)
+        }
+    }
+
+    private var emptyPromptRow: some View {
+        emptyStateRow(id: "emptyPrompt") {
+            EmptyStateView(icon: "magnifyingglass", title: emptyPromptText)
+        }
+    }
+
+    private var noResultsRow: some View {
+        emptyStateRow(id: "noResults") {
             EmptyStateView(
                 icon: "magnifyingglass.circle",
                 title: "No Results Found",
@@ -281,8 +329,6 @@ struct WatchlistSearchView: View {
                     .buttonStyle(.glass)
                 }
             }
-        } else {
-            searchResultsList
         }
     }
 
@@ -324,42 +370,39 @@ struct WatchlistSearchView: View {
         }
     }
 
-    private var searchResultsList: some View {
-        List {
-            if effectiveMediaType == .tvShow {
-                ForEach(tvShowResults) { result in
-                    SearchResultRowWithImage(
-                        title: result.name,
-                        overview: result.overview,
-                        posterPath: result.posterPath,
-                        mediaId: result.id,
-                        mediaType: .tvShow,
-                        isAdded: isAlreadyAdded(id: result.id),
-                        onAdd: { addTVShow(result) },
-                        onTap: { openTVShowDetail(result) },
-                        voteAverage: result.voteAverage,
-                        year: year(from: result.firstAirDate)
-                    )
-                }
-            } else {
-                ForEach(movieResults) { result in
-                    SearchResultRowWithImage(
-                        title: result.title,
-                        overview: result.overview,
-                        posterPath: result.posterPath,
-                        mediaId: result.id,
-                        mediaType: .movie,
-                        isAdded: isAlreadyAdded(id: result.id),
-                        onAdd: { addMovie(result) },
-                        onTap: { openMovieDetail(result) },
-                        voteAverage: result.voteAverage,
-                        year: year(from: result.releaseDate)
-                    )
-                }
+    @ViewBuilder
+    private var resultRows: some View {
+        if effectiveMediaType == .tvShow {
+            ForEach(tvShowResults) { result in
+                SearchResultRowWithImage(
+                    title: result.name,
+                    overview: result.overview,
+                    posterPath: result.posterPath,
+                    mediaId: result.id,
+                    mediaType: .tvShow,
+                    isAdded: isAlreadyAdded(id: result.id),
+                    onAdd: { addTVShow(result) },
+                    onTap: { openTVShowDetail(result) },
+                    voteAverage: result.voteAverage,
+                    year: year(from: result.firstAirDate)
+                )
+            }
+        } else {
+            ForEach(movieResults) { result in
+                SearchResultRowWithImage(
+                    title: result.title,
+                    overview: result.overview,
+                    posterPath: result.posterPath,
+                    mediaId: result.id,
+                    mediaType: .movie,
+                    isAdded: isAlreadyAdded(id: result.id),
+                    onAdd: { addMovie(result) },
+                    onTap: { openMovieDetail(result) },
+                    voteAverage: result.voteAverage,
+                    year: year(from: result.releaseDate)
+                )
             }
         }
-        .scrollContentBackground(.hidden)
-        .listStyle(.plain)
     }
 
     // MARK: - Recommendations
@@ -375,50 +418,46 @@ struct WatchlistSearchView: View {
         return "Recommended For You"
     }
 
-    private var recommendationsList: some View {
-        List {
-            Section {
-                if effectiveMediaType == .tvShow {
-                    ForEach(tvRecommendations) { result in
-                        SearchResultRowWithImage(
-                            title: result.name,
-                            overview: result.overview,
-                            posterPath: result.posterPath,
-                            mediaId: result.id,
-                            mediaType: .tvShow,
-                            isAdded: isAlreadyAdded(id: result.id),
-                            onAdd: { addTVShow(result) },
-                            onTap: { openTVShowDetail(result) },
-                            voteAverage: result.voteAverage,
-                            year: year(from: result.firstAirDate)
-                        )
-                    }
-                } else {
-                    ForEach(movieRecommendations) { result in
-                        SearchResultRowWithImage(
-                            title: result.title,
-                            overview: result.overview,
-                            posterPath: result.posterPath,
-                            mediaId: result.id,
-                            mediaType: .movie,
-                            isAdded: isAlreadyAdded(id: result.id),
-                            onAdd: { addMovie(result) },
-                            onTap: { openMovieDetail(result) },
-                            voteAverage: result.voteAverage,
-                            year: year(from: result.releaseDate)
-                        )
-                    }
+    private var recommendationsSection: some View {
+        Section {
+            if effectiveMediaType == .tvShow {
+                ForEach(tvRecommendations) { result in
+                    SearchResultRowWithImage(
+                        title: result.name,
+                        overview: result.overview,
+                        posterPath: result.posterPath,
+                        mediaId: result.id,
+                        mediaType: .tvShow,
+                        isAdded: isAlreadyAdded(id: result.id),
+                        onAdd: { addTVShow(result) },
+                        onTap: { openTVShowDetail(result) },
+                        voteAverage: result.voteAverage,
+                        year: year(from: result.firstAirDate)
+                    )
                 }
-            } header: {
-                Label(recommendationHeaderText, systemImage: "sparkles")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .textCase(nil)
+            } else {
+                ForEach(movieRecommendations) { result in
+                    SearchResultRowWithImage(
+                        title: result.title,
+                        overview: result.overview,
+                        posterPath: result.posterPath,
+                        mediaId: result.id,
+                        mediaType: .movie,
+                        isAdded: isAlreadyAdded(id: result.id),
+                        onAdd: { addMovie(result) },
+                        onTap: { openMovieDetail(result) },
+                        voteAverage: result.voteAverage,
+                        year: year(from: result.releaseDate)
+                    )
+                }
             }
+        } header: {
+            Label(recommendationHeaderText, systemImage: "sparkles")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .textCase(nil)
         }
-        .scrollContentBackground(.hidden)
-        .listStyle(.plain)
     }
 
     private func loadRecommendations() {

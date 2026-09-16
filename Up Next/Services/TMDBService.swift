@@ -31,10 +31,14 @@ final class TMDBService: @unchecked Sendable {
     /// Populated once per app session from the global provider list.
     private var canonicalLogoPaths: [Int: String] = [:]
 
-    /// Returns the user's region code (e.g., "US", "GB", "DE") for watch provider lookups.
-    /// Falls back to "US" if the device locale doesn't provide a region.
+    /// The region code (e.g., "US", "GB", "DE") used for every region-aware lookup: watch
+    /// providers on detail responses, the provider list, `watch_region` on discover and
+    /// `region` on now playing.
+    ///
+    /// Follows the user's region override from `ProviderSettings`, falling back to the device
+    /// locale's region and finally "US".
     var currentRegion: String {
-        Locale.current.region?.identifier ?? "US"
+        ProviderSettings.effectiveRegion
     }
 
     // MARK: - Search
@@ -263,9 +267,29 @@ final class TMDBService: @unchecked Sendable {
         }
     }
 
+    /// Every region TMDB has watch-provider data for, sorted by English name.
+    func fetchWatchProviderRegions() async throws -> [TMDBWatchProviderRegion] {
+        let response: TMDBWatchProviderRegionListResponse = try await performRequest(
+            endpoint: "/watch/providers/regions",
+            queryItems: []
+        )
+        return response.results.sorted {
+            $0.englishName.localizedCaseInsensitiveCompare($1.englishName) == .orderedAscending
+        }
+    }
+
     /// Clear the response cache to force fresh data on next request
     func clearResponseCache() async {
         await deduplicator.clearCache()
+    }
+
+    /// Drop cached responses for the given API-relative path prefixes (e.g. `"/discover/"`),
+    /// leaving the rest of the cache intact. A screen's pull-to-refresh uses this to refetch the
+    /// endpoints it owns without throwing away detail responses the rest of the app still wants.
+    func invalidateResponseCache(pathPrefixes: [String]) async {
+        // Cache keys are full URLs, whose path carries the base URL's `/3` version segment.
+        let basePath = URLComponents(string: baseURL)?.path ?? ""
+        await deduplicator.invalidateCache(pathPrefixes: pathPrefixes.map { basePath + $0 })
     }
 
     // MARK: - Image URLs
@@ -767,6 +791,17 @@ private actor RequestDeduplicator {
 
     func clearCache() {
         cache.removeAll()
+    }
+
+    /// Drops cached entries whose URL path starts with any of the given prefixes. Prefixes are
+    /// full URL paths (including the API version segment), not API-relative endpoints.
+    /// In-flight requests are left alone — they're already fresh.
+    func invalidateCache(pathPrefixes: [String]) {
+        guard !pathPrefixes.isEmpty else { return }
+        cache = cache.filter { url, _ in
+            let path = url.path(percentEncoded: false)
+            return !pathPrefixes.contains { path.hasPrefix($0) }
+        }
     }
 }
 

@@ -112,6 +112,8 @@ final class DiscoverViewModel {
         let sort: SortOption
         let page: Int
         let providerFilter: String?
+        /// Baked into `watch_region`, so a region change makes otherwise-identical requests differ.
+        let region: String
     }
 
     // MARK: - State
@@ -180,8 +182,14 @@ final class DiscoverViewModel {
         return settings.watchProvidersQueryValue
     }
 
-    /// Called when the "on my services" toggle or the selected providers change. Cancels any
-    /// in-flight loads and reissues everything under the new filter.
+    /// The region TMDB lookups currently run against. Tracked alongside `providerFilter` so a
+    /// superseded region's results can't land on the current carousels.
+    private var currentRegion: String {
+        service.currentRegion
+    }
+
+    /// Called when the "on my services" toggle, the selected providers, or the region change.
+    /// Cancels any in-flight loads and reissues everything under the new filter.
     func providerFilterChanged() {
         reloadTask?.cancel()
         browseReloadTask?.cancel()
@@ -191,6 +199,17 @@ final class DiscoverViewModel {
     // MARK: - Loading
 
     func initialLoad() async {
+        await reload()
+    }
+
+    /// Pull-to-refresh. Drops the cached responses for the endpoints Discover owns before
+    /// reloading — otherwise a refresh inside `RequestDeduplicator`'s 10-minute TTL would just
+    /// re-read the cache. Scoped rather than a full `clearResponseCache()` so detail pages,
+    /// search results and the provider list the rest of the app relies on stay cached.
+    func refresh() async {
+        await service.invalidateResponseCache(
+            pathPrefixes: ["/discover/", "/trending/", "/movie/now_playing", "/genre/"]
+        )
         await reload()
     }
 
@@ -206,6 +225,7 @@ final class DiscoverViewModel {
     private func loadCarousels() async {
         let requestedMediaType = selectedMediaType
         let requestedProviderFilter = providerFilter
+        let requestedRegion = currentRegion
         isCarouselLoading = true
         carouselError = nil
 
@@ -230,11 +250,12 @@ final class DiscoverViewModel {
         let results = await (trending, topRated, newReleases, airingThisWeek, inTheaters)
 
         // The shared request task isn't cancelled by us, so check explicitly: a superseded
-        // media type or provider filter's results must not land on the current carousels.
+        // media type, provider filter or region's results must not land on the current carousels.
         // A superseded load also leaves the loading flag alone; its replacement owns it.
         guard !Task.isCancelled,
               requestedMediaType == selectedMediaType,
-              requestedProviderFilter == providerFilter
+              requestedProviderFilter == providerFilter,
+              requestedRegion == currentRegion
         else { return }
 
         trendingItems = results.0.items
@@ -356,7 +377,8 @@ final class DiscoverViewModel {
             genreID: selectedGenre?.id,
             sort: selectedSort,
             page: browsePage,
-            providerFilter: providerFilter
+            providerFilter: providerFilter,
+            region: currentRegion
         )
         latestBrowseRequest = request
         isBrowseLoading = true

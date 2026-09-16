@@ -253,3 +253,18 @@ nonisolated struct TMDBWatchProviderInfo: Codable, Identifiable, Sendable {
     var id: Int { providerId }
     // Note: No CodingKeys needed - decoder uses .convertFromSnakeCase automatically
 }
+
+// Response from /watch/providers/regions
+nonisolated struct TMDBWatchProviderRegionListResponse: Codable, Sendable {
+    let results: [TMDBWatchProviderRegion]
+}
+
+nonisolated struct TMDBWatchProviderRegion: Codable, Identifiable, Sendable, Hashable {
+    /// ISO 3166-1 country code, e.g. "US". `.convertFromSnakeCase` turns `iso_3166_1` into this,
+    /// the same way `TMDBContentRating` decodes it.
+    let iso31661: String
+    let englishName: String
+    let nativeName: String
+
+    var id: String { iso31661 }
+}

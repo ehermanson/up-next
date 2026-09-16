@@ -28,7 +28,7 @@ struct DiscoverView: View {
                 .padding(.bottom, 20)
             }
             .refreshable {
-                await viewModel.reload()
+                await viewModel.refresh()
             }
             .background(AppBackground())
             .navigationTitle("Discover")
@@ -40,6 +40,11 @@ struct DiscoverView: View {
             viewModel.providerFilterChanged()
         }
         .onChange(of: settings.selectedProviderIDs) {
+            viewModel.providerFilterChanged()
+        }
+        .onChange(of: settings.regionOverride) {
+            // `watch_region` / `region` are baked into every URL, so the cache keys already
+            // differ — reissuing under the new region is enough, no invalidation needed.
             viewModel.providerFilterChanged()
         }
         .sheet(isPresented: $showingProviderSettings) {

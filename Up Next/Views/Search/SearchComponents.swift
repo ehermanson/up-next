@@ -7,6 +7,83 @@ enum MediaType: Identifiable {
     var id: Self { self }
 }
 
+/// A single shimmer placeholder row, matching `SearchResultRow`'s image/title/overview
+/// layout. Reused both as plain content (`ShimmerLoadingView`) and as `List` rows
+/// (`ShimmerRows`) so cold-search and loading-recommendations states look identical.
+struct ShimmerRow: View {
+    /// Pre-fade opacity for this row; see `ShimmerRows.fadeOpacity(for:count:)`.
+    var fadeOpacity: Double = 1.0
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Match SearchResultRow image dimensions
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.poster)
+                .fill(.fill.tertiary)
+                .frame(width: 60, height: 90)
+
+            VStack(alignment: .leading, spacing: 6) {
+                // Title shimmer (2 lines)
+                Capsule()
+                    .fill(.fill.tertiary)
+                    .frame(height: 16)
+                    .frame(maxWidth: 180)
+
+                // Overview shimmer (3 lines)
+                Capsule()
+                    .fill(.fill.tertiary)
+                    .frame(height: 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Capsule()
+                    .fill(.fill.tertiary)
+                    .frame(height: 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Capsule()
+                    .fill(.fill.tertiary)
+                    .frame(height: 10)
+                    .frame(maxWidth: 200)
+            }
+
+            Spacer()
+        }
+        // Match SearchResultRow padding
+        .padding(10)
+        .cardSurface()
+        .opacity(fadeOpacity)
+    }
+}
+
+/// `ShimmerRow`s meant to be dropped directly into a `List` as loading placeholders
+/// (cold search, loading recommendations). No moving shimmer overlay here — that's
+/// reserved for the full-container `ShimmerLoadingView` — but the fade-toward-bottom
+/// look is preserved.
+struct ShimmerRows: View {
+    var count: Int = 6
+
+    var body: some View {
+        ForEach(0..<count, id: \.self) { index in
+            ShimmerRow(fadeOpacity: Self.fadeOpacity(for: index, count: count))
+                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        }
+    }
+
+    /// Gradually fades rows toward the bottom.
+    static func fadeOpacity(for index: Int, count: Int) -> Double {
+        let fadeStart = 2 // Start fading after the 3rd item
+        if index < fadeStart {
+            return 1.0
+        } else {
+            let fadeProgress = Double(index - fadeStart) / Double(count - fadeStart)
+            return 1.0 - (fadeProgress * 0.8) // Fade to 40% opacity
+        }
+    }
+}
+
+/// Full-container loading placeholder — still used by `MediaListView`. Composes
+/// `ShimmerRow` so the look stays identical to the in-`List` placeholder rows.
 struct ShimmerLoadingView: View {
     @State private var shimmerOffset: CGFloat = -200
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -15,42 +92,7 @@ struct ShimmerLoadingView: View {
         ScrollView {
             VStack(spacing: 10) {
                 ForEach(0..<6, id: \.self) { index in
-                    HStack(spacing: 12) {
-                        // Match SearchResultRow image dimensions
-                        RoundedRectangle(cornerRadius: DesignTokens.Radius.poster)
-                            .fill(.fill.tertiary)
-                            .frame(width: 60, height: 90)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            // Title shimmer (2 lines)
-                            Capsule()
-                                .fill(.fill.tertiary)
-                                .frame(height: 16)
-                                .frame(maxWidth: 180)
-
-                            // Overview shimmer (3 lines)
-                            Capsule()
-                                .fill(.fill.tertiary)
-                                .frame(height: 10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Capsule()
-                                .fill(.fill.tertiary)
-                                .frame(height: 10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Capsule()
-                                .fill(.fill.tertiary)
-                                .frame(height: 10)
-                                .frame(maxWidth: 200)
-                        }
-
-                        Spacer()
-                    }
-                    // Match SearchResultRow padding
-                    .padding(10)
-                    .cardSurface()
-                    .opacity(fadeOpacity(for: index))
+                    ShimmerRow(fadeOpacity: ShimmerRows.fadeOpacity(for: index, count: 6))
                 }
             }
             .overlay(
@@ -78,17 +120,6 @@ struct ShimmerLoadingView: View {
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
                 shimmerOffset = 400
             }
-        }
-    }
-
-    private func fadeOpacity(for index: Int) -> Double {
-        // Gradually fade out items toward the bottom
-        let fadeStart = 2 // Start fading after the 3rd item
-        if index < fadeStart {
-            return 1.0
-        } else {
-            let fadeProgress = Double(index - fadeStart) / Double(6 - fadeStart)
-            return 1.0 - (fadeProgress * 0.8) // Fade to 40% opacity
         }
     }
 }

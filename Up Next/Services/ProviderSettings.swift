@@ -19,6 +19,33 @@ final class ProviderSettings {
         }
     }
 
+    /// `nil` means "follow the device locale". Storing the device's own region is still an
+    /// explicit choice and persists as one, so a later trip abroad doesn't silently move the user.
+    nonisolated static let regionOverrideKey = "providers.regionOverride"
+    var regionOverride: String? {
+        didSet {
+            if let regionOverride, !regionOverride.isEmpty {
+                UserDefaults.standard.set(regionOverride, forKey: Self.regionOverrideKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.regionOverrideKey)
+            }
+        }
+    }
+
+    /// The device locale's region, or "US" when the locale doesn't carry one.
+    nonisolated static var deviceRegion: String {
+        Locale.current.region?.identifier ?? "US"
+    }
+
+    /// The region every TMDB lookup should use. Reads `UserDefaults` directly rather than the
+    /// shared instance so `TMDBService` can call it from outside the main actor.
+    nonisolated static var effectiveRegion: String {
+        if let override = UserDefaults.standard.string(forKey: regionOverrideKey), !override.isEmpty {
+            return override
+        }
+        return deviceRegion
+    }
+
     private static let hasCompletedProviderOnboardingKey = "hasCompletedProviderOnboarding"
     var hasCompletedProviderOnboarding: Bool {
         didSet {
@@ -51,6 +78,9 @@ final class ProviderSettings {
         } else {
             onlyMyServicesInDiscover = true
         }
+
+        let storedRegion = UserDefaults.standard.string(forKey: Self.regionOverrideKey)
+        regionOverride = (storedRegion?.isEmpty == false) ? storedRegion : nil
 
         hasCompletedProviderOnboarding = UserDefaults.standard.bool(forKey: Self.hasCompletedProviderOnboardingKey)
     }
