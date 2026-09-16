@@ -13,7 +13,10 @@ import Foundation
 final class PersistenceController {
     static let shared = PersistenceController()
 
-    static let containerIdentifier = "iCloud.com.erichermanson.upnext.shared"
+    // `nonisolated` so `LibraryShareItem`'s `CKShareTransferRepresentation` exporter
+    // (`Views/Settings/SharingSettingsView.swift`), which the system share sheet may invoke off
+    // the main actor, can read it without hopping actors.
+    nonisolated static let containerIdentifier = "iCloud.com.erichermanson.upnext.shared"
     static let transactionAuthor = "app"
 
     enum Role {
@@ -40,9 +43,11 @@ final class PersistenceController {
     private static let pendingSharedJoinKey = "sharing.pendingJoin"
 
     /// True while this device has accepted a share but the shared library hasn't arrived yet.
-    /// `group` is nil in that state; the UI should show a "joining" placeholder.
-    var isJoiningSharedLibrary: Bool {
-        UserDefaults.standard.bool(forKey: Self.pendingSharedJoinKey)
+    /// `group` is nil in that state; the UI shows a "joining" placeholder. Stored (not read from
+    /// UserDefaults on demand) so SwiftUI observes the flip; mirrored to UserDefaults to survive
+    /// a relaunch before the import lands.
+    private(set) var isJoiningSharedLibrary: Bool = UserDefaults.standard.bool(forKey: PersistenceController.pendingSharedJoinKey) {
+        didSet { UserDefaults.standard.set(isJoiningSharedLibrary, forKey: Self.pendingSharedJoinKey) }
     }
 
     var viewContext: NSManagedObjectContext { container.viewContext }
@@ -239,7 +244,7 @@ final class PersistenceController {
         if let existing = try viewContext.fetch(sharedRequest).first {
             role = .participant
             group = existing
-            UserDefaults.standard.set(false, forKey: Self.pendingSharedJoinKey)
+            isJoiningSharedLibrary = false
             return
         }
 
@@ -306,7 +311,13 @@ final class PersistenceController {
         }
     }
 
-    // MARK: - Sharing (fleshed out further in Task F)
+    // MARK: - Sharing
+
+    /// The CloudKit container backing this app's stack. `nonisolated` for the same reason as
+    /// `containerIdentifier` above — the sharing exporter reads it off the main actor.
+    nonisolated static var ckContainer: CKContainer {
+        CKContainer(identifier: containerIdentifier)
+    }
 
     /// The single share on `group`, if one exists.
     func existingShare() -> CKShare? {
@@ -329,7 +340,7 @@ final class PersistenceController {
     /// stays nil (and `isJoiningSharedLibrary` true) until `RemoteChangeObserver` sees it land.
     func acceptShare(metadata: CKShare.Metadata) async throws {
         try await container.acceptShareInvitations(from: [metadata], into: sharedStore)
-        UserDefaults.standard.set(true, forKey: Self.pendingSharedJoinKey)
+        isJoiningSharedLibrary = true
 
         // The device is joining someone else's library — anything it had in its own private
         // store is no longer relevant (and shouldn't dangle around unreachable from any group).
@@ -356,7 +367,7 @@ final class PersistenceController {
             throw PersistenceError.noShare
         }
         try await container.purgeObjectsAndRecordsInZone(with: zoneID, in: sharedStore)
-        UserDefaults.standard.set(false, forKey: Self.pendingSharedJoinKey)
+        isJoiningSharedLibrary = false
         try bootstrap()
         remoteChangeCount += 1
     }

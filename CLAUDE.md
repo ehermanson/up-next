@@ -20,29 +20,31 @@ For any effort that involves multiple steps — whether due to dependencies/bloc
 
 ## Project Overview
 
-**Up Next** — Native iOS app (Swift/SwiftUI, iOS 26+) for managing movie and TV show watchlists. Uses the TMDB API for media metadata. No accounts, no analytics, no ads. Optional CloudKit sync.
+**Up Next** — Native iOS app (Swift/SwiftUI, iOS 26+) for managing movie and TV show watchlists. Supports sharing the entire library with one other person (Apple Account). Uses the TMDB API for media metadata. No accounts, no analytics, no ads.
 
 - **Xcode project**: `Up Next.xcodeproj` (no CLI build, no SPM packages)
 - **Bundle ID**: `com.erichermanson.upnext`
 - **Deployment target**: iOS 26.1
 - **Swift version**: 5.0
-- **Persistence**: SwiftData with optional CloudKit (`iCloud.com.erichermanson.upnext`)
+- **Persistence**: Core Data (`NSPersistentCloudKitContainer`, two stores: private + shared scope) in iCloud container `iCloud.com.erichermanson.upnext.shared`
 - **No tests**
 - **No third-party dependencies** — all networking and persistence handled natively
 
 ## Setup
 
-`Up Next/Info.plist` is gitignored (contains TMDB API key):
-
-```bash
-cp "Up Next/Info.plist.template" "Up Next/Info.plist"
-```
-
-Then replace `YOUR_API_KEY_HERE` with a real TMDB API key.
+1. **CloudKit container**: Xcode → target → Signing & Capabilities → iCloud → add container `iCloud.com.erichermanson.upnext.shared` (registers it with the App ID).
+2. **Info.plist**: `Up Next/Info.plist` is gitignored (contains TMDB API key):
+   ```bash
+   cp "Up Next/Info.plist.template" "Up Next/Info.plist"
+   ```
+   Then replace `YOUR_API_KEY_HERE` with a real TMDB API key.
+3. **Simulator builds**: unsigned Simulator builds (e.g., CI smoke tests, `CODE_SIGNING_ALLOWED=NO`) must be launched with `--no-cloudkit` — CloudKit traps without the `icloud-services` entitlement.
 
 ## Architecture
 
-MVVM with SwiftData persistence. Three `@Observable` ViewModels own business logic; Views are thin SwiftUI layers. `TMDBService` is a singleton API client. No dependency injection — ViewModels are created in the app entry point and passed via `.environment()`.
+MVVM with Core Data persistence. Three `@Observable` ViewModels own business logic; Views are thin SwiftUI layers. `TMDBService` is a singleton API client. `PersistenceController` is a singleton (`@MainActor @Observable`) that owns the `NSPersistentCloudKitContainer`, manages two stores (private and shared), and orchestrates bootstrap (role detection, CloudKit share acceptance, seeding). ViewModels call `reloadFromStore()` when `PersistenceController.remoteChangeCount` changes to reflect remote edits. No dependency injection — ViewModels are created in the app entry point and passed via `.environment()`, and the managed object context is set via `.environment(\.managedObjectContext, ...)`.
+
+See `PersistenceController.swift` for the role rule ("a shared group wins"), "relate before save" pattern, and how remote changes are tracked via persistent history diffing with `transactionAuthor = "app"`.
 
 ### Tab Structure
 
@@ -58,23 +60,23 @@ MVVM with SwiftData persistence. Three `@Observable` ViewModels own business log
 ```
 Up Next/
 ├── App/
-│   ├── Watch_ListApp.swift              # @main entry, SwiftData schema registration (in-memory store in screenshot mode)
+│   ├── Watch_ListApp.swift              # @main entry; bootstraps PersistenceController, sets up environment
+│   ├── AppDelegate.swift                # UIApplicationDelegate + SceneDelegate for CloudKit share acceptance
 │   ├── ContentView.swift                # Tab navigation (TV Shows, Movies, Collections, Discover)
 │   └── ScreenshotMode.swift             # DEBUG-only: --screenshots seeds a curated demo library for App Store captures
 │
-├── Models/                              # SwiftData @Model classes
-│   ├── MediaItem.swift                  # Movie, TVShow, Network models
+├── Models/                              # Core Data NSManagedObject subclasses (@objc(Name))
+│   ├── MediaItem.swift                  # Movie, TVShow, Network models + convenience inits + helper functions
 │   ├── ListItem.swift                   # Watchlist item (refs Movie or TVShow, tracks watched state)
-│   ├── MediaList.swift                  # Watchlist container
+│   ├── MediaList.swift                  # Watchlist container (TV Shows / Movies)
 │   ├── CustomList.swift                 # User-created collection (name, icon)
 │   ├── CustomListItem.swift             # Item in a custom list (own `watchedAt`, independent of the library)
-│   ├── UserIdentity.swift               # User attribution for CloudKit sharing
-│   └── WatchListGroup.swift             # Root CloudKit sharing object
+│   └── WatchListGroup.swift             # Share root (one per device); everything flows from here
 │
 ├── ViewModels/
-│   ├── MediaLibraryViewModel.swift      # Main watchlist state, add/remove, refresh, reorder
+│   ├── MediaLibraryViewModel.swift      # Main watchlist state, add/remove, refresh, reorder, reloadFromStore
 │   ├── DiscoverViewModel.swift          # Carousels (trending, airing this week / in theaters, top rated, new), browse, provider filter, error state
-│   └── CustomListViewModel.swift        # Custom list CRUD, per-collection watched state, undo-able removal, one-time duplicate-row migration
+│   └── CustomListViewModel.swift        # Custom list CRUD, per-collection watched state, undo-able removal
 │
 ├── Views/
 │   ├── Watchlist/
@@ -99,9 +101,11 @@ Up Next/
 │   │   ├── CreateListView.swift         # Create/edit list dialog with icon picker
 │   │   └── AddToListSheet.swift         # Add item to a custom list
 │   └── Settings/
-│       └── ProviderSettingsView.swift   # Region override picker + streaming service selection
+│       ├── ProviderSettingsView.swift   # Region override picker + streaming service selection
+│       └── SharingSettingsView.swift    # Sharing UI: owner unshared → share link; owner shared → participants + manage; participant → leave
 │
 ├── Services/
+│   ├── PersistenceController.swift      # Core Data + CloudKit container, role rule, remote change tracking, sharing API
 │   ├── TMDBService.swift                # TMDB API client (singleton): search, details, providers, discover
 │   ├── TMDBModels.swift                 # Codable structs for TMDB API responses
 │   └── ProviderSettings.swift           # UserDefaults-backed provider preferences + region override (effectiveRegion)
@@ -115,14 +119,16 @@ Up Next/
 │   ├── AppBackground.swift              # MeshGradient background
 │   ├── SafariView.swift                 # In-app Safari (UIViewControllerRepresentable)
 │   ├── TMDBAttributionView.swift        # TMDB attribution footer
-│   └── SFSymbolPickerGrid.swift         # SF Symbol picker for custom list icons
+│   ├── SFSymbolPickerGrid.swift         # SF Symbol picker for custom list icons
+│   └── CloudSharingView.swift           # UIViewControllerRepresentable over UICloudSharingController
 │
+├── Up Next.xcdatamodeld/                # Core Data model: 8 entities, CloudKit-safe (all optional/defaulted, relationships optional with inverses)
 ├── AppIcon.icon/                        # Icon Composer (Liquid Glass) app icon: icon.json + Assets/{Ring,Core}.png layers; wins over the appiconset on iOS 26
 ├── Assets.xcassets                      # AccentColor, images, legacy flat AppIcon.appiconset (fallback / App Store)
-├── Info.plist.template                  # Template with TMDB_API_KEY placeholder
-├── Up Next.entitlements                 # CloudKit + APS entitlements
+├── Info.plist.template                  # Template with TMDB_API_KEY + CloudKit entitlements (`CKSharingSupported`, `UIBackgroundModes`)
+├── Up Next.entitlements                 # CloudKit (`iCloud.com.erichermanson.upnext.shared` container) + APS entitlements
 ├── PrivacyInfo.xcprivacy                # Privacy manifest (no tracking)
-└── Watch_List.xcdatamodeld/             # Legacy CoreData model (unused, can ignore)
+└── docs/v2-shared-library-plan.md       # Implementation plan (one shared library via zone sharing)
 
 ci_scripts/
 └── ci_post_clone.sh                     # Xcode Cloud: generates Info.plist, sets build number
@@ -134,12 +140,26 @@ AppStore/
 
 ## Key Patterns
 
-### SwiftData Schema
+### Core Data Model
 
-Registered in `Watch_ListApp.swift`:
-`Movie`, `TVShow`, `Network`, `MediaList`, `ListItem`, `UserIdentity`, `WatchListGroup`, `CustomList`, `CustomListItem`
+Eight entities in `Up Next/Up Next.xcdatamodeld/Up Next.xcdatamodel/contents`:
+`Movie`, `TVShow`, `Network`, `MediaList`, `ListItem`, `WatchListGroup`, `CustomList`, `CustomListItem`
 
-CloudKit is optional — the app falls back to local-only if CloudKit is unavailable.
+All attributes optional or defaulted; all relationships optional with inverses (CloudKit requirements). Collection-typed and optional-number attributes carry a `Raw`/`Number` suffix in the model, and the Swift classes expose the current API names as computed properties (e.g., model `watchedSeasonsRaw` → Swift API `watchedSeasons`, model `runtimeNumber` → Swift API `runtime`). Transformable attributes use `NSSecureUnarchiveFromDataTransformer` (arrays/dicts of String/Int are plist types). The `Up Next.xcdatamodeld` defines relationships with proper inverses; many-to-one deletes cascade only on `MediaList.itemSet` and `CustomList.itemSet` and `WatchListGroup.listSet/customListSet`, else Nullify.
+
+### Sharing
+
+- **One share rooted at `WatchListGroup`** — everything must be reachable: `group.lists → MediaList.items → ListItem.movie/tvShow → Movie.networks → Network`, and `group.customLists → CustomList.items → CustomListItem.movie/tvShow`.
+- **Role rule ("a shared group wins")**: the device is a *participant* if `sharedStore` contains a `WatchListGroup`; else an *owner* if `privateStore` contains one; else bootstrap seeds a group + "TV Shows"/"Movies" lists into `privateStore` (fresh owner). `PersistenceController.activeStore` reflects this; every insert goes to the active store.
+- **Relate before save**: Core Data picks a new object's CloudKit zone from its relationships. Every new object must be related to the graph (to a list / group / media row) in the same save it's created. The "context inference" rule: `ListItem`, `CustomListItem`, `CustomList` and `MediaList` inits must join the context *and store* of any persisted object passed to them (`inferredContext` / `assignToStore` in `MediaItem.swift`), and `CustomList`/`MediaList` take `group:` in the init. Rule: pass relationship targets to the init; never set a relationship to a stored object on a context-less object.
+- **Remote changes → UI**: `PersistenceController` observes `.NSPersistentStoreRemoteChange`, consumes persistent history since the last stored token (per store), ignores transactions authored by this app (`transactionAuthor = "app"`), and bumps `remoteChangeCount` (observable). View models observe this count and call `reloadFromStore()` to refresh their arrays, preserving any pending undo-able deletion or pending removal.
+- **Merge policy**: `NSMergeByPropertyObjectTrumpMergePolicy` (last writer wins). No dedup pass.
+- **Identity**: Use `===` (same context ⇒ uniqued); never compare temporary `objectID`s.
+- **Detail-sheet transient `ListItem`** (Discover / collections / similar titles): inserted into `viewContext` + `activeStore` with `list == nil`, deleted on disappear. Library fetches filter `list != nil`.
+- **Unattached value objects**: `TMDBService.mapToMovie/mapToTVShow` create `Movie`/`TVShow`/`Network` with `context: nil`. They become persistent only via `canonicalMovieRow/canonicalTVShowRow` (insert + add networks) or `update(from:)` (insert networks first).
+- **Accepting a share** (`SceneDelegate.windowScene(_:userDidAcceptCloudKitShareWith:)` → `PersistenceController.acceptShare(metadata:)`): sets `isJoiningSharedLibrary` flag, purges the entire private store, and sets `role = .participant` until the shared zone's first import lands (bumps `remoteChangeCount`, sets `group`).
+- **Stopping sharing** (owner via `UICloudSharingController`): deletes only the `CKShare`; the owner's data stays. Participant via `PersistenceController.leaveShare()`: purges the shared zone and re-bootstraps as a fresh owner.
+- Not real-time: shared zone imports happen on a seconds–minutes delay; there is no API to force an import.
 
 ### Provider Logic (TMDBService)
 
@@ -208,10 +228,10 @@ The target is universal (`TARGETED_DEVICE_FAMILY = 1,2`, resizable windows on iP
 ### Custom Lists (user-facing name: "Collections")
 
 The code says `CustomList`/"list"; every user-facing string says "collection" — keep it that way. Never surface the word "library" to users (it's an internal term for the TV Shows/Movies tabs' data). Custom lists are thematic pools (Christmas, Halloween, kid-friendly…) kept deliberately separate from the Up Next queue. Rules:
-- **One media row per TMDB id.** `canonicalMovieRow` / `canonicalTVShowRow` (`MediaItem.swift`) look up an existing `Movie`/`TVShow` before any insert — used by `MediaLibraryViewModel.add*` and `CustomListViewModel.addItem`. A search-stub row never overwrites a fully-fetched one. `CustomListViewModel.migrateDuplicateMediaRows` repoints legacy duplicates once per install (`customListMediaRowsMigrated`).
+- **One media row per TMDB id.** `canonicalMovieRow` / `canonicalTVShowRow` (`MediaItem.swift`) look up an existing `Movie`/`TVShow` before any insert — used by `MediaLibraryViewModel.add*` and `CustomListViewModel.addItem`. A search-stub row never overwrites a fully-fetched one.
 - **Watched state is the collection's own and is stored on `CustomListItem.watchedAt`** (optional, CloudKit-safe; `isWatched`/`toggleWatched()` derive from it). Nothing in a collection creates, reads or modifies a library `ListItem` for watched purposes — `MediaLibraryViewModel` has no collection-facing watched API at all. `CustomListViewModel.toggleWatched(_:)` flips one entry; `markAllUnwatched(in:)` clears the whole collection.
 - **Two sections**: unwatched (by `addedAt`) first, then a "Watched" section (most-recently-watched first) with a `SectionHeader`-style title + count chip, shown only when something is watched. Leading full-swipe and the context menu offer "Mark Watched"/"Mark Unwatched"; the toolbar's ellipsis menu offers "Mark All Unwatched" (confirmation dialog) whenever anything is watched. The row's corner chip reads "Watched Sep 2026" from `watchedAt` (`MediaCardView.watchedLabel`). No rating or season-progress on collection rows — those are library concepts.
-- **Detail sheet** is the real `MediaDetailView`, but *always* bound to a transient `ListItem` wrapping the shared media row (like Discover) — it never looks up or binds a library `ListItem`. `collectionWatched:`/`collectionName:` swap the watchlist cards (seasons, watched toggle, rating) for a single `CollectionWatchedCard` scoped to the collection. `onAdd` is nil — there is intentionally no "Add to Up Next" for the collection entry itself — but `onTVShowAdded`/`onMovieAdded` add to *that collection* (`CustomListViewModel.addItem`), `existingIDs` is the collection's membership, and `addTargetName` relabels the Add button/toasts ("Add to Christmas", "Elf added to Christmas"). Browsing similar titles from inside a collection grows the collection, never Up Next. `MediaDetailView.canAddToLibrary` hides those buttons (and the nested sheet's Add) whenever a presenter passes no add hooks, so a "+" can never toast without doing anything. The wrapper points at a persisted media row, so SwiftData autosave can cascade-insert it — the sheet tears it down on `.onDisappear` (deleting it if it was inserted), and `MediaLibraryViewModel.loadItems` additionally filters `list != nil`, so a collection can never leave a stray `ListItem` in the Movies/TV tabs. `onRemove` there means remove from the collection (`removeLabel`/`removeMessage`).
+- **Detail sheet** is the real `MediaDetailView`, but *always* bound to a transient `ListItem` wrapping the shared media row (like Discover) — inserted into the view context with `list == nil`, deleted on `.onDisappear`. The library fetches filter `list != nil` so collections never leak stray items to the Movies/TV tabs. `collectionWatched:`/`collectionName:` swap the watchlist cards (seasons, watched toggle, rating) for a single `CollectionWatchedCard` scoped to the collection. `onAdd` is nil — there is intentionally no "Add to Up Next" for the collection entry itself — but `onTVShowAdded`/`onMovieAdded` add to *that collection* (`CustomListViewModel.addItem`), `existingIDs` is the collection's membership, and `addTargetName` relabels the Add button/toasts ("Add to Christmas", "Elf added to Christmas"). Browsing similar titles from inside a collection grows the collection, never Up Next. `MediaDetailView.canAddToLibrary` hides those buttons (and the nested sheet's Add) whenever a presenter passes no add hooks, so a "+" can never toast without doing anything. `onRemove` there means remove from the collection (`removeLabel`/`removeMessage`).
 - Removal is deferred 5 s with an Undo toast (`commitPendingRemoval` flushed on `scenePhase == .background`). `refreshAllItems` also refreshes rows referenced only by lists.
 
 ### Upcoming Strip
@@ -225,10 +245,12 @@ The code says `CustomList`/"list"; every user-facing string says "collection" �
 ### Data Integrity
 
 - `Movie`/`TVShow` store `backdropPath` (optional) for the detail-sheet header; the poster is the fallback.
-- `networks` is an **unordered** SwiftData relationship — never render it raw. `displayOrderedNetworks(_:categories:)` (`MediaItem.swift`; also `MediaItemProtocol.orderedNetworks`) gives the stable order (stream → ads → rent → buy, then name, then id); `MediaCardView` and `DetailProviderRow` sort internally so callers can pass the raw array.
+- `networks` is an **unordered** Core Data relationship — never render it raw. `displayOrderedNetworks(_:categories:)` (`MediaItem.swift`; also `MediaItemProtocol.orderedNetworks`) gives the stable order (stream → ads → rent → buy, then name, then id); `MediaCardView` and `DetailProviderRow` sort internally so callers can pass the raw array.
 - `update(from:)` only reassigns `networks` when providers actually changed, deleting `Network` rows nothing else references. Deleting a `ListItem`/`CustomListItem` deletes its media row when nothing else points at it (`deleteMediaIfUnreferenced`).
 - Swipe-delete is deferred 5 s for Undo; it's flushed on `scenePhase == .background`.
 - Full refresh (`refreshAllItems`) matches results by TMDB id, never array index, and only stamps `lastFullRefreshDate` when at least one fetch succeeded.
+- Identity comparisons use `===` (same context ⇒ uniqued) — never compare temporary `objectID`s.
+- Views that read from model objects use `@ObservedObject` (e.g., `@ObservedObject var listItem: ListItem`) since `NSManagedObject` is an `ObservableObject`.
 
 ## App Store Screenshots
 
@@ -240,6 +262,8 @@ DEBUG builds accept `--screenshots` (see `ScreenshotMode.swift`): the app uses a
 1. Generates `Info.plist` from template using `$TMDB_API_KEY` env var
 2. Sets the build number (`CURRENT_PROJECT_VERSION`) from `$CI_BUILD_NUMBER`
 
-`MARKETING_VERSION` is managed manually in the project (currently 1.7). To release a new version, bump `MARKETING_VERSION` in `project.pbxproj`, commit, and push.
+`MARKETING_VERSION` is managed manually in the project (currently 2.0). To release a new version, bump `MARKETING_VERSION` in `project.pbxproj`, commit, and push.
+
+**CloudKit schema**: When changes are made to the Core Data model (new attributes, entities, or relationships), the Development schema is automatically created by the first saves to the CloudKit container. Before any TestFlight build, the Development schema must be deployed to Production in CloudKit Console (do this by running a DEBUG build on a device first to let `NSPersistentCloudKitContainer` initialize the Development schema, then deploy it in the console). This is one-time per schema change; once deployed, subsequent builds sync incrementally.
 
 **Important**: Distribution Preparation must be set to "App Store Connect" to select a build for distribution.

@@ -20,6 +20,7 @@ struct ProviderSettingsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
+                    SharingSection()
                     descriptionSection
                     regionSection
 
