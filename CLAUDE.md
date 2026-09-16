@@ -129,7 +129,7 @@ ci_scripts/
 
 AppStore/
 ├── 1.7-metadata.md                      # Paste-ready App Store Connect copy (What's New, description, keywords)
-└── screenshots/{iphone-6.9,ipad-13}/    # Store screenshots captured via screenshot mode
+└── screenshots/{iphone-6.9,iphone-6.5,ipad-13}/  # Store screenshots via screenshot mode; 6.5" is resized from 6.9"
 ```
 
 ## Key Patterns
