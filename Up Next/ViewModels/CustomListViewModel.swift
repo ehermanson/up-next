@@ -54,7 +54,11 @@ final class CustomListViewModel {
     func removeItem(_ item: CustomListItem, from list: CustomList) {
         guard let context = modelContext else { return }
         list.items?.removeAll { $0.persistentModelID == item.persistentModelID }
+        let movie = item.movie
+        let tvShow = item.tvShow
+        let itemID = item.persistentModelID
         context.delete(item)
+        deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: context)
         save()
     }
 

@@ -162,23 +162,25 @@ final class TMDBService: @unchecked Sendable {
         var merged: [TMDBWatchProviderInfo] = []
 
         for provider in movieProviders.results + tvProviders.results {
-            guard !seenIds.contains(provider.providerId) else { continue }
             guard !rentBuyOnlyProviderIDs.contains(provider.providerId) else { continue }
 
-            let isChannelVariant = Self.isChannelVariant(named: provider.providerName)
-            guard !isChannelVariant else { continue }
+            // Resolve the alias first — an aliased channel variant is a real subscription.
+            let alias = Self.providerAliases[provider.providerName]
+            let canonicalName = alias?.name ?? provider.providerName
+            let canonicalID = alias?.id ?? provider.providerId
+            if alias == nil, Self.isChannelVariant(named: provider.providerName) { continue }
 
-            let canonicalName = Self.providerAliases[provider.providerName] ?? provider.providerName
+            guard !seenIds.contains(canonicalID) else { continue }
             guard !seenNames.contains(canonicalName) else { continue }
 
-            seenIds.insert(provider.providerId)
+            seenIds.insert(canonicalID)
             seenNames.insert(canonicalName)
 
-            if canonicalName == provider.providerName {
+            if canonicalName == provider.providerName, canonicalID == provider.providerId {
                 merged.append(provider)
             } else {
                 merged.append(TMDBWatchProviderInfo(
-                    providerId: provider.providerId,
+                    providerId: canonicalID,
                     providerName: canonicalName,
                     logoPath: provider.logoPath,
                     displayPriority: provider.displayPriority
@@ -344,11 +346,12 @@ final class TMDBService: @unchecked Sendable {
 
         // Add originating networks only if not already covered by watch providers
         for tmdbNetwork in detail.networks ?? [] {
-            let canonical = Self.providerAliases[tmdbNetwork.name] ?? tmdbNetwork.name
+            let alias = Self.providerAliases[tmdbNetwork.name]
+            let canonical = alias?.name ?? tmdbNetwork.name
             guard !seenNames.contains(canonical) else { continue }
             seenNames.insert(canonical)
             // Use provider ID if known, otherwise fall back to network ID
-            let networkID = Self.networkToProviderID[tmdbNetwork.name] ?? tmdbNetwork.id
+            let networkID = Self.networkToProviderID[tmdbNetwork.name] ?? alias?.id ?? tmdbNetwork.id
             // Prefer canonical logo, then streaming provider's logo, then network logo
             let logoPath = canonicalLogoPaths[networkID] ?? providerLogos[networkID] ?? tmdbNetwork.logoPath
             let network = Network(
@@ -430,35 +433,44 @@ final class TMDBService: @unchecked Sendable {
         "Max": 1899,
     ]
 
-    /// Maps variant provider names to a canonical name so duplicates collapse.
-    /// The first entry encountered keeps its ID, logo, and category.
-    private static let providerAliases: [String: String] = [
+    /// The provider a variant name collapses onto: canonical display name plus canonical TMDB ID.
+    private struct CanonicalProvider {
+        let name: String
+        let id: Int
+    }
+
+    /// Maps variant provider names to the canonical provider they collapse onto.
+    /// The canonical ID (not the variant's own ID) is what gets stored, so a tier variant like
+    /// "Netflix Standard with Ads" (1796) never shadows Netflix (8) in the user's provider selection.
+    /// Aliases are resolved before the channel-variant filter, so a resold channel with an alias here
+    /// (e.g. "Paramount+ Amazon Channel") counts as the real subscription rather than being dropped.
+    private static let providerAliases: [String: CanonicalProvider] = [
         // Netflix tiers
-        "Netflix basic with Ads": "Netflix",
-        "Netflix Standard with Ads": "Netflix",
+        "Netflix basic with Ads": CanonicalProvider(name: "Netflix", id: 8),
+        "Netflix Standard with Ads": CanonicalProvider(name: "Netflix", id: 8),
         // Peacock tiers
-        "Peacock Premium": "Peacock",
-        "Peacock Premium Plus": "Peacock",
+        "Peacock Premium": CanonicalProvider(name: "Peacock", id: 386),
+        "Peacock Premium Plus": CanonicalProvider(name: "Peacock", id: 386),
         // HBO/Max
-        "HBO": "HBO Max",
-        "Max": "HBO Max",
-        "Max Amazon Channel": "HBO Max",
+        "HBO": CanonicalProvider(name: "HBO Max", id: 1899),
+        "Max": CanonicalProvider(name: "HBO Max", id: 1899),
+        "Max Amazon Channel": CanonicalProvider(name: "HBO Max", id: 1899),
         // Disney
-        "Disney Plus": "Disney+",
+        "Disney Plus": CanonicalProvider(name: "Disney+", id: 337),
         // AMC
-        "AMC": "AMC+",
-        "AMC+ Roku Premium Channel": "AMC+",
-        "AMC Plus": "AMC+",
+        "AMC": CanonicalProvider(name: "AMC+", id: 526),
+        "AMC+ Roku Premium Channel": CanonicalProvider(name: "AMC+", id: 526),
+        "AMC Plus": CanonicalProvider(name: "AMC+", id: 526),
         // Paramount
-        "Paramount+ Premium": "Paramount+",
-        "Paramount Plus Premium": "Paramount+",
-        "Paramount Plus": "Paramount+",
-        "Paramount+ Amazon Channel": "Paramount+",
+        "Paramount+ Premium": CanonicalProvider(name: "Paramount+", id: 531),
+        "Paramount Plus Premium": CanonicalProvider(name: "Paramount+", id: 531),
+        "Paramount Plus": CanonicalProvider(name: "Paramount+", id: 531),
+        "Paramount+ Amazon Channel": CanonicalProvider(name: "Paramount+", id: 531),
         // Hulu
-        "Hulu (No Ads)": "Hulu",
+        "Hulu (No Ads)": CanonicalProvider(name: "Hulu", id: 15),
         // Amazon
-        "Amazon Prime Video": "Prime Video",
-        "Amazon Prime Video with Ads": "Prime Video",
+        "Amazon Prime Video": CanonicalProvider(name: "Prime Video", id: 9),
+        "Amazon Prime Video with Ads": CanonicalProvider(name: "Prime Video", id: 9),
     ]
 
     /// Build networks and provider categories from a watch provider response.
@@ -481,23 +493,26 @@ final class TMDBService: @unchecked Sendable {
 
         for (category, entries) in categorized {
             for entry in entries {
-                guard !seenIDs.contains(entry.providerId) else { continue }
-                let isChannel = Self.isChannelVariant(named: entry.providerName)
-                guard !isChannel else { continue }
+                // Resolve the alias first — an aliased channel variant (e.g. "Paramount+ Amazon
+                // Channel") is a real subscription, so it must survive the channel-variant filter.
+                let alias = Self.providerAliases[entry.providerName]
+                let canonicalName = alias?.name ?? entry.providerName
+                let canonicalID = alias?.id ?? entry.providerId
+                if alias == nil, Self.isChannelVariant(named: entry.providerName) { continue }
 
-                let canonicalName = Self.providerAliases[entry.providerName] ?? entry.providerName
+                guard !seenIDs.contains(canonicalID) else { continue }
                 guard !seenNames.contains(canonicalName) else { continue }
 
-                seenIDs.insert(entry.providerId)
+                seenIDs.insert(canonicalID)
                 seenNames.insert(canonicalName)
-                let logoPath = canonicalLogoPaths[entry.providerId] ?? entry.logoPath
+                let logoPath = canonicalLogoPaths[canonicalID] ?? entry.logoPath
                 networks.append(Network(
-                    id: entry.providerId,
+                    id: canonicalID,
                     name: canonicalName,
                     logoPath: logoPath,
                     originCountry: "US"
                 ))
-                categories[entry.providerId] = category
+                categories[canonicalID] = category
             }
         }
 

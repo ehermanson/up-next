@@ -86,10 +86,21 @@ final class DiscoverViewModel {
         }
     }
 
+    /// The filter state a browse request was issued under. A response whose request no longer
+    /// matches the latest one is stale — a filter changed or the page counter was reset while
+    /// it was in flight — and must not be applied.
+    private struct BrowseRequest: Equatable {
+        let mediaType: DiscoverMediaType
+        let genreID: Int?
+        let sort: SortOption
+        let page: Int
+    }
+
     // MARK: - State
 
     private var reloadTask: Task<Void, Never>?
     private var browseReloadTask: Task<Void, Never>?
+    private var latestBrowseRequest: BrowseRequest?
 
     var selectedMediaType: DiscoverMediaType = .tvShows {
         didSet {
@@ -142,6 +153,7 @@ final class DiscoverViewModel {
     }
 
     private func loadCarousels() async {
+        let requestedMediaType = selectedMediaType
         isCarouselLoading = true
 
         await withTaskGroup(of: (String, [DiscoverItem]).self) { group in
@@ -170,6 +182,9 @@ final class DiscoverViewModel {
             }
 
             for await (key, items) in group {
+                // The shared request task isn't cancelled by us, so check explicitly: a
+                // superseded media type's results must not land on the current carousels.
+                guard !Task.isCancelled, requestedMediaType == selectedMediaType else { continue }
                 switch key {
                 case "trending": trendingItems = items
                 case "topRated": topRatedItems = items
@@ -178,6 +193,8 @@ final class DiscoverViewModel {
                 }
             }
         }
+        // A superseded load leaves the flag alone; its replacement owns it.
+        guard !Task.isCancelled, requestedMediaType == selectedMediaType else { return }
         isCarouselLoading = false
     }
 
@@ -194,53 +211,67 @@ final class DiscoverViewModel {
     }
 
     private func loadBrowsePage() async {
+        let request = BrowseRequest(
+            mediaType: selectedMediaType,
+            genreID: selectedGenre?.id,
+            sort: selectedSort,
+            page: browsePage
+        )
+        latestBrowseRequest = request
         isBrowseLoading = true
-        let genreID = selectedGenre.map { String($0.id) }
-        let sortBy = selectedMediaType == .movies
-            ? selectedSort.movieSortBy : selectedSort.tvSortBy
-        let voteCountGte = selectedSort == .topRated ? 200 :
-                           selectedSort == .newest ? 50 : nil
+
+        let genreID = request.genreID.map(String.init)
+        let sortBy = request.mediaType == .movies
+            ? request.sort.movieSortBy : request.sort.tvSortBy
+        let voteCountGte = request.sort == .topRated ? 200 :
+                           request.sort == .newest ? 50 : nil
 
         do {
-            if selectedMediaType == .tvShows {
+            let newItems: [DiscoverItem]
+            let totalPages: Int
+            if request.mediaType == .tvShows {
                 let response = try await service.discoverTVShows(
-                    page: browsePage, sortBy: sortBy, withGenres: genreID,
+                    page: request.page, sortBy: sortBy, withGenres: genreID,
                     voteCountGte: voteCountGte
                 )
-                let newItems = response.results.map { DiscoverItem.tvShow($0) }
-                if browsePage == 1 {
-                    browseItems = newItems
-                } else {
-                    browseItems.append(contentsOf: newItems)
-                }
-                browseTotalPages = response.totalPages ?? 1
+                newItems = response.results.map { DiscoverItem.tvShow($0) }
+                totalPages = response.totalPages ?? 1
             } else {
                 let response = try await service.discoverMovies(
-                    page: browsePage, sortBy: sortBy, withGenres: genreID,
+                    page: request.page, sortBy: sortBy, withGenres: genreID,
                     voteCountGte: voteCountGte
                 )
-                let newItems = response.results.map { DiscoverItem.movie($0) }
-                if browsePage == 1 {
-                    browseItems = newItems
-                } else {
-                    browseItems.append(contentsOf: newItems)
-                }
-                browseTotalPages = response.totalPages ?? 1
+                newItems = response.results.map { DiscoverItem.movie($0) }
+                totalPages = response.totalPages ?? 1
             }
+
+            // The shared request task isn't cancelled by us, so check explicitly: filters may
+            // have changed (or the page counter reset) while this page was in flight.
+            guard !Task.isCancelled, latestBrowseRequest == request else { return }
+            if request.page == 1 {
+                browseItems = newItems
+            } else {
+                browseItems.append(contentsOf: newItems)
+            }
+            browseTotalPages = totalPages
         } catch {
             // Silently fail; items stay as-is
+            guard !Task.isCancelled, latestBrowseRequest == request else { return }
         }
+        // A superseded page leaves the flag alone; its replacement owns it.
         isBrowseLoading = false
     }
 
     private func loadGenres() async {
+        let requestedMediaType = selectedMediaType
         do {
-            if selectedMediaType == .tvShows {
-                genres = try await service.fetchTVGenres()
-            } else {
-                genres = try await service.fetchMovieGenres()
-            }
+            let loaded = requestedMediaType == .tvShows
+                ? try await service.fetchTVGenres()
+                : try await service.fetchMovieGenres()
+            guard !Task.isCancelled, requestedMediaType == selectedMediaType else { return }
+            genres = loaded
         } catch {
+            guard !Task.isCancelled, requestedMediaType == selectedMediaType else { return }
             genres = []
         }
     }

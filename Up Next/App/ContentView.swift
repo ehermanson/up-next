@@ -10,6 +10,7 @@ struct ContentView: View {
     }
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = MediaLibraryViewModel()
     @State private var customListViewModel = CustomListViewModel()
 
@@ -54,6 +55,13 @@ struct ContentView: View {
         .task {
             await viewModel.configure(modelContext: modelContext)
             customListViewModel.configure(modelContext: modelContext)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // A swipe-delete is only committed after the undo window; flush it before the app can
+            // be terminated in the background, otherwise the item resurrects on relaunch.
+            if newPhase == .background {
+                viewModel.commitPendingDeletion()
+            }
         }
         .sheet(isPresented: $showingSearch) {
             WatchlistSearchView(

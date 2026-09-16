@@ -210,6 +210,78 @@ final class TVShow: MediaItemProtocol {
     }
 }
 
+// MARK: - Shared cleanup helpers
+
+/// True when two network lists describe the same providers. `TMDBService` builds brand-new
+/// `Network` instances on every fetch, so identity comparison would always report a change.
+private func networksAreEquivalent(_ lhs: [Network]?, _ rhs: [Network]?) -> Bool {
+    let left = lhs ?? []
+    let right = rhs ?? []
+    guard left.count == right.count else { return false }
+    return zip(left, right).allSatisfy { a, b in
+        a.id == b.id && a.name == b.name && a.logoPath == b.logoPath
+    }
+}
+
+/// Deletes the `Network` rows in `networks` that nothing other than `ownerID` refers to. Without
+/// this they pile up as orphans (and CloudKit records) every time metadata is refreshed.
+private func deleteUnreferencedNetworks(
+    _ networks: [Network]?,
+    excludingOwner ownerID: PersistentIdentifier,
+    in context: ModelContext
+) {
+    guard let networks else { return }
+    for network in networks {
+        let stillReferenced = (network.movies ?? []).contains { $0.persistentModelID != ownerID }
+            || (network.tvShows ?? []).contains { $0.persistentModelID != ownerID }
+        guard !stillReferenced else { continue }
+        context.delete(network)
+    }
+}
+
+/// Replaces `current` with `incoming` only when the providers actually differ, deleting any
+/// network rows that `ownerID` was the last referrer of. Returns the list to store, or nil when
+/// nothing changed and the caller should leave the relationship alone.
+private func reconciledNetworks(
+    current: [Network]?,
+    incoming: [Network]?,
+    ownerID: PersistentIdentifier,
+    in context: ModelContext?
+) -> [Network]?? {
+    guard !networksAreEquivalent(current, incoming) else { return nil }
+    if let context {
+        deleteUnreferencedNetworks(current, excludingOwner: ownerID, in: context)
+    }
+    return .some(incoming)
+}
+
+/// Deletes a `Movie`/`TVShow` row — plus any networks only it referred to — once nothing points at
+/// it any more. `deletedItemID` is the list item that was just deleted; it can linger in the
+/// inverse relationships until the context is saved, so it's filtered out.
+func deleteMediaIfUnreferenced(
+    movie: Movie?,
+    tvShow: TVShow?,
+    ignoring deletedItemID: PersistentIdentifier,
+    in context: ModelContext
+) {
+    if let movie {
+        let stillReferenced = (movie.listItems ?? []).contains { $0.persistentModelID != deletedItemID }
+            || (movie.customListItems ?? []).contains { $0.persistentModelID != deletedItemID }
+        if !stillReferenced {
+            deleteUnreferencedNetworks(movie.networks, excludingOwner: movie.persistentModelID, in: context)
+            context.delete(movie)
+        }
+    }
+    if let tvShow {
+        let stillReferenced = (tvShow.listItems ?? []).contains { $0.persistentModelID != deletedItemID }
+            || (tvShow.customListItems ?? []).contains { $0.persistentModelID != deletedItemID }
+        if !stillReferenced {
+            deleteUnreferencedNetworks(tvShow.networks, excludingOwner: tvShow.persistentModelID, in: context)
+            context.delete(tvShow)
+        }
+    }
+}
+
 extension Movie {
     /// Applies all TMDB-sourced fields from a freshly-fetched instance.
     /// Add new TMDB fields here — this is the single place to keep in sync.
@@ -220,7 +292,14 @@ extension Movie {
         castImagePaths = source.castImagePaths
         castCharacters = source.castCharacters
         genres = source.genres
-        networks = source.networks
+        if let replacement = reconciledNetworks(
+            current: networks,
+            incoming: source.networks,
+            ownerID: persistentModelID,
+            in: modelContext
+        ) {
+            networks = replacement
+        }
         providerCategories = source.providerCategories
         contentRating = source.contentRating
         releaseDate = source.releaseDate
@@ -248,7 +327,14 @@ extension TVShow {
         castImagePaths = source.castImagePaths
         castCharacters = source.castCharacters
         genres = source.genres
-        networks = source.networks
+        if let replacement = reconciledNetworks(
+            current: networks,
+            incoming: source.networks,
+            ownerID: persistentModelID,
+            in: modelContext
+        ) {
+            networks = replacement
+        }
         providerCategories = source.providerCategories
         numberOfSeasons = source.numberOfSeasons
         numberOfEpisodes = source.numberOfEpisodes

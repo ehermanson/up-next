@@ -29,6 +29,7 @@ struct WatchlistSearchView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
+    /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
     @State private var selectedListID: UUID?
     @State private var tvRecommendations: [TMDBTVShowSearchResult] = []
@@ -78,6 +79,10 @@ struct WatchlistSearchView: View {
         }
     }
 
+    private var hasResults: Bool {
+        effectiveMediaType == .tvShow ? !tvShowResults.isEmpty : !movieResults.isEmpty
+    }
+
     private var hasNoResults: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !isLoading &&
@@ -116,7 +121,7 @@ struct WatchlistSearchView: View {
             return customListViewModel?.containsItem(mediaID: stringID, in: list) == true
         }
         let existingIDs = effectiveMediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
-        return existingIDs.contains(stringID) || addedIDs.contains(stringID)
+        return existingIDs.contains(stringID) || addedIDs.contains(MediaIDKey.make(effectiveMediaType, stringID))
     }
 
     private func performDone() {
@@ -219,7 +224,9 @@ struct WatchlistSearchView: View {
     private var mainContent: some View {
         if context == .myLists && selectedList == nil {
             noListSelectedView
-        } else if isLoading {
+        } else if isLoading && !hasResults {
+            // Only shimmer on a cold search — otherwise keystrokes would blank the
+            // previous results while the debounced request is still in flight.
             ShimmerLoadingView()
                 .background(AppBackground())
         } else if let error = errorMessage {
@@ -449,13 +456,14 @@ struct WatchlistSearchView: View {
 
             let listItems = list.items ?? []
             seeds = RecommendationEngine.selectListSeeds(from: listItems, mediaType: mediaType)
-            allExisting = RecommendationEngine.existingIDs(in: listItems, mediaType: mediaType).union(addedIDs)
+            allExisting = RecommendationEngine.existingIDs(in: listItems, mediaType: mediaType)
+                .union(MediaIDKey.rawIDs(mediaType, in: addedIDs))
             listName = list.name
         } else {
             let libraryItems = mediaType == .tvShow ? libraryTVShows : libraryMovies
             seeds = RecommendationEngine.selectSeeds(from: libraryItems)
             let existingIDs = mediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
-            allExisting = existingIDs.union(addedIDs)
+            allExisting = existingIDs.union(MediaIDKey.rawIDs(mediaType, in: addedIDs))
             listName = nil
         }
 
@@ -542,7 +550,9 @@ struct WatchlistSearchView: View {
     // MARK: - Detail Sheet
 
     private var allExistingIDs: Set<String> {
-        existingTVShowIDs.union(existingMovieIDs).union(addedIDs)
+        MediaIDKey.makeSet(.tvShow, existingTVShowIDs)
+            .union(MediaIDKey.makeSet(.movie, existingMovieIDs))
+            .union(addedIDs)
     }
 
     private func openTVShowDetail(_ result: TMDBTVShowSearchResult) {
@@ -559,7 +569,7 @@ struct WatchlistSearchView: View {
         guard let media = item.media else { return }
         let stringID = media.id
         guard let intID = Int(stringID), !isAlreadyAdded(id: intID) else { return }
-        addedIDs.insert(stringID)
+        addedIDs.insert(MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, stringID))
 
         if let tvShow = item.tvShow {
             if isListMode, let list = selectedList {
@@ -633,16 +643,23 @@ struct WatchlistSearchView: View {
 
     private func performSearch(query: String) async {
         do {
+            // The shared request task isn't cancelled by us, so check explicitly after each
+            // await — a superseded keystroke's response must not overwrite the current one.
             if effectiveMediaType == .tvShow {
-                tvShowResults = try await service.searchTVShows(query: query)
+                let results = try await service.searchTVShows(query: query)
+                guard !Task.isCancelled else { return }
+                tvShowResults = results
             } else {
-                movieResults = try await service.searchMovies(query: query)
+                let results = try await service.searchMovies(query: query)
+                guard !Task.isCancelled else { return }
+                movieResults = results
             }
         } catch is CancellationError {
             return
         } catch let urlError as URLError where urlError.code == .cancelled {
             return
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = error.localizedDescription
         }
         isLoading = false
@@ -652,7 +669,7 @@ struct WatchlistSearchView: View {
 
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
-        addedIDs.insert(String(result.id))
+        addedIDs.insert(MediaIDKey.make(.tvShow, result.id))
         toast.show("\(result.name) has been added")
         Task {
             let tvShow: TVShow
@@ -673,7 +690,7 @@ struct WatchlistSearchView: View {
 
     private func addMovie(_ result: TMDBMovieSearchResult) {
         guard !isAlreadyAdded(id: result.id) else { return }
-        addedIDs.insert(String(result.id))
+        addedIDs.insert(MediaIDKey.make(.movie, result.id))
         toast.show("\(result.title) has been added")
         Task {
             let movie: Movie

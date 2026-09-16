@@ -56,13 +56,17 @@ struct TVShowsTabView: View {
             item: Binding(
                 get: { selectedItem },
                 set: { _ in expandedItemID = nil }
-            )
+            ),
+            // Swipe-to-dismiss never runs the detail view's `dismiss` closure, so persist here
+            // instead — that covers every way the sheet can go away. `persistChanges` is idempotent.
+            onDismiss: {
+                viewModel.persistChanges(for: .tvShow)
+            }
         ) { item in
             MediaDetailView(
                 listItem: binding(forItem: item),
                 dismiss: {
                     expandedItemID = nil
-                    viewModel.persistChanges(for: .tvShow)
                 },
                 onRemove: {
                     if let id = item.media?.id {
@@ -74,7 +78,8 @@ struct TVShowsTabView: View {
                     viewModel.handleSeasonCountUpdate(for: listItem, previousSeasonCount: previousCount)
                 },
                 customListViewModel: customListViewModel,
-                existingIDs: viewModel.existingTVShowIDs.union(viewModel.existingMovieIDs),
+                existingIDs: MediaIDKey.makeSet(.tvShow, viewModel.existingTVShowIDs)
+                    .union(MediaIDKey.makeSet(.movie, viewModel.existingMovieIDs)),
                 onTVShowAdded: { viewModel.addTVShow($0) },
                 onMovieAdded: { viewModel.addMovie($0) }
             )

@@ -8,6 +8,30 @@ struct SimilarMediaItem: Identifiable {
     let mediaType: MediaType
 }
 
+/// TMDB gives movies and TV shows separate ID namespaces, so any set holding both
+/// has to key on the media type too — otherwise a movie and a show that happen to
+/// share a numeric ID look like the same title.
+enum MediaIDKey {
+    static func make(_ mediaType: MediaType, _ id: String) -> String {
+        "\(mediaType == .tvShow ? "tv" : "movie"):\(id)"
+    }
+
+    static func make(_ mediaType: MediaType, _ id: Int) -> String {
+        make(mediaType, String(id))
+    }
+
+    /// Namespaces a set of raw IDs that are all known to be one media type.
+    static func makeSet(_ mediaType: MediaType, _ ids: Set<String>) -> Set<String> {
+        Set(ids.map { make(mediaType, $0) })
+    }
+
+    /// Inverse of `makeSet`: the raw IDs of one media type within a namespaced set.
+    static func rawIDs(_ mediaType: MediaType, in keys: Set<String>) -> Set<String> {
+        let prefix = make(mediaType, "")
+        return Set(keys.compactMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil })
+    }
+}
+
 struct CollectionSection: View {
     let collectionName: String?
     let parts: [TMDBCollectionPart]
@@ -46,7 +70,7 @@ struct CollectionSection: View {
     }
 
     private func isAdded(_ part: TMDBCollectionPart) -> Bool {
-        existingIDs.contains(String(part.id))
+        existingIDs.contains(MediaIDKey.make(.movie, part.id))
     }
 
     private func collectionCard(for part: TMDBCollectionPart) -> some View {
@@ -163,7 +187,7 @@ struct SimilarSection: View {
     }
 
     private func isAdded(_ item: SimilarMediaItem) -> Bool {
-        existingIDs.contains(String(item.id))
+        existingIDs.contains(MediaIDKey.make(item.mediaType, item.id))
     }
 
     private func similarCard(for item: SimilarMediaItem) -> some View {

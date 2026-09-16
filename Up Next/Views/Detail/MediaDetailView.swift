@@ -8,6 +8,7 @@ struct MediaDetailView: View {
     var onSeasonCountChanged: ((ListItem, Int?) -> Void)?
     var customListViewModel: CustomListViewModel?
     var onAdd: (() -> Void)?
+    /// Type-namespaced IDs of titles already in the library (see `MediaIDKey`).
     var existingIDs: Set<String> = []
     var onTVShowAdded: ((TVShow) -> Void)?
     var onMovieAdded: ((Movie) -> Void)?
@@ -378,8 +379,9 @@ struct MediaDetailView: View {
 
     private func addSimilarItem(_ item: SimilarMediaItem) {
         let stringID = String(item.id)
-        guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
-        addedSimilarIDs.insert(stringID)
+        let key = MediaIDKey.make(item.mediaType, stringID)
+        guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
+        addedSimilarIDs.insert(key)
         toast.show("\(item.title) has been added")
 
         Task {
@@ -420,8 +422,10 @@ struct MediaDetailView: View {
 
     private func addCollectionItem(_ part: TMDBCollectionPart) {
         let stringID = String(part.id)
-        guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
-        addedSimilarIDs.insert(stringID)
+        // Collection parts are always movies.
+        let key = MediaIDKey.make(.movie, stringID)
+        guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
+        addedSimilarIDs.insert(key)
         toast.show("\(part.title) has been added")
 
         Task {
@@ -445,9 +449,9 @@ struct MediaDetailView: View {
 
     private func addSimilarFromDetail(_ item: ListItem) {
         guard let media = item.media else { return }
-        let stringID = media.id
-        guard !existingIDs.contains(stringID), !addedSimilarIDs.contains(stringID) else { return }
-        addedSimilarIDs.insert(stringID)
+        let key = MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
+        guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
+        addedSimilarIDs.insert(key)
         toast.show("\(media.title) has been added")
         if let tvShow = item.tvShow {
             onTVShowAdded?(tvShow)

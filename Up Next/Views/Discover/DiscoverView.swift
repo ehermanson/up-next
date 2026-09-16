@@ -8,6 +8,7 @@ struct DiscoverView: View {
 
     @Environment(ToastState.self) private var toast
     @State private var viewModel = DiscoverViewModel()
+    /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
     @State private var detailListItem: ListItem?
 
@@ -39,7 +40,9 @@ struct DiscoverView: View {
                 onAdd: {
                     addFromDetail(item)
                 },
-                existingIDs: existingTVShowIDs.union(existingMovieIDs).union(addedIDs),
+                existingIDs: MediaIDKey.makeSet(.tvShow, existingTVShowIDs)
+                    .union(MediaIDKey.makeSet(.movie, existingMovieIDs))
+                    .union(addedIDs),
                 onTVShowAdded: { onTVShowAdded($0) },
                 onMovieAdded: { onMovieAdded($0) }
             )
@@ -312,9 +315,9 @@ struct DiscoverView: View {
 
     private func addFromDetail(_ item: ListItem) {
         guard let media = item.media else { return }
-        let stringID = media.id
-        guard !addedIDs.contains(stringID) else { return }
-        addedIDs.insert(stringID)
+        let key = MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
+        guard !addedIDs.contains(key) else { return }
+        addedIDs.insert(key)
 
         if let tvShow = item.tvShow {
             onTVShowAdded(tvShow)
@@ -326,9 +329,9 @@ struct DiscoverView: View {
     // MARK: - Add Directly
 
     private func addItem(_ item: DiscoverViewModel.DiscoverItem) {
-        let stringID = String(item.tmdbId)
-        guard !addedIDs.contains(stringID) else { return }
-        addedIDs.insert(stringID)
+        let key = MediaIDKey.make(item.mediaType, item.tmdbId)
+        guard !addedIDs.contains(key) else { return }
+        addedIDs.insert(key)
         toast.show("\(item.title) has been added")
 
         Task {
@@ -362,6 +365,6 @@ struct DiscoverView: View {
     private func isAlreadyAdded(id: Int, mediaType: MediaType) -> Bool {
         let stringID = String(id)
         let existingIDs = mediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
-        return existingIDs.contains(stringID) || addedIDs.contains(stringID)
+        return existingIDs.contains(stringID) || addedIDs.contains(MediaIDKey.make(mediaType, stringID))
     }
 }

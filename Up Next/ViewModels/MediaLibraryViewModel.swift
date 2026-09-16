@@ -68,8 +68,11 @@ final class MediaLibraryViewModel {
         if !didSeed && needsFullRefresh {
             refreshTask?.cancel()
             refreshTask = Task {
-                await refreshAllItems()
-                markRefreshComplete()
+                // Don't stamp the refresh when every fetch failed (e.g. an offline launch),
+                // otherwise stale air dates are locked in for the whole refresh interval.
+                if await refreshAllItems() {
+                    markRefreshComplete()
+                }
             }
         }
     }
@@ -83,7 +86,7 @@ final class MediaLibraryViewModel {
 
     func addTVShow(_ tvShow: TVShow) {
         guard let context = modelContext, let user = currentUser else { return }
-        commitPendingDeletion()
+        commitPendingDeletion(ifTargeting: tvShow.id, mediaType: .tvShow)
         guard !containsItem(withID: tvShow.id, mediaType: .tvShow) else { return }
 
         let list = ensureList(for: .tvShow, using: user)
@@ -105,7 +108,7 @@ final class MediaLibraryViewModel {
 
     func addMovie(_ movie: Movie) {
         guard let context = modelContext, let user = currentUser else { return }
-        commitPendingDeletion()
+        commitPendingDeletion(ifTargeting: movie.id, mediaType: .movie)
         guard !containsItem(withID: movie.id, mediaType: .movie) else { return }
 
         let list = ensureList(for: .movie, using: user)
@@ -176,14 +179,30 @@ final class MediaLibraryViewModel {
     }
 
     /// Finalizes a pending delete by removing it from the store. No-op if nothing is pending.
-    private func commitPendingDeletion() {
+    /// Also called when the app backgrounds, so a deferred delete can't resurrect on relaunch.
+    func commitPendingDeletion() {
         pendingDeleteCommit?.cancel()
         pendingDeleteCommit = nil
         guard let pending = pendingDeletion else { return }
         pendingDeletion = nil
         guard let context = modelContext else { return }
+        let movie = pending.item.movie
+        let tvShow = pending.item.tvShow
+        let itemID = pending.item.persistentModelID
         context.delete(pending.item)
+        deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: context)
         try? context.save()
+    }
+
+    /// Commits a pending delete only when it targets the same media. Re-adding an item that's
+    /// awaiting deletion would otherwise leave a duplicate behind if the user then hit Undo, while
+    /// adding anything *else* must leave the Undo window intact.
+    private func commitPendingDeletion(ifTargeting id: String, mediaType: MediaType) {
+        guard let pending = pendingDeletion,
+              pending.mediaType == mediaType,
+              pending.item.media?.id == id
+        else { return }
+        commitPendingDeletion()
     }
 
     func persistChanges(for mediaType: MediaType) {
@@ -270,9 +289,9 @@ final class MediaLibraryViewModel {
               current > previous
         else { return }
 
-        // If all previous seasons were watched, the show was "complete" — move it back to Up Next
-        let allPreviousWatched = (1...previous).allSatisfy { listItem.watchedSeasons.contains($0) }
-        if allPreviousWatched {
+        // If all previous seasons were watched, the show was "complete" — move it back to Up Next.
+        // TMDB reports 0 seasons for announced shows, in which case nothing was watched yet.
+        if previous > 0, (1...previous).allSatisfy({ listItem.watchedSeasons.contains($0) }) {
             listItem.isWatched = false
             listItem.watchedAt = nil
         }
@@ -282,20 +301,24 @@ final class MediaLibraryViewModel {
 
     // MARK: - Private helpers
 
-    private func refreshAllItems() async {
-        guard let context = modelContext else { return }
+    /// Refreshes cached TMDB metadata for every item. Returns whether the refresh can be considered
+    /// complete — true when at least one detail fetch succeeded (or there was nothing to fetch),
+    /// false when every fetch failed, so the caller can retry rather than stamping the run.
+    private func refreshAllItems() async -> Bool {
+        guard let context = modelContext else { return false }
         let service = TMDBService.shared
         let maxConcurrent = 8
 
         // Collect value-type inputs — no @Model captures in task closures
-        let tvInputs: [(index: Int, id: Int, prevSeasons: Int?)] = tvShows.enumerated().compactMap { i, item in
+        let tvInputs: [(id: Int, prevSeasons: Int?)] = tvShows.compactMap { item in
             guard let tvShow = item.tvShow, let id = Int(tvShow.id) else { return nil }
-            return (i, id, tvShow.numberOfSeasons)
+            return (id, tvShow.numberOfSeasons)
         }
-        let movieInputs: [(index: Int, id: Int)] = movies.enumerated().compactMap { i, item in
+        let movieInputs: [Int] = movies.compactMap { item in
             guard let movie = item.movie, let id = Int(movie.id) else { return nil }
-            return (i, id)
+            return id
         }
+        var successfulFetches = 0
 
         // Fetch TV details in batches, returning Codable results
         for batch in stride(from: 0, to: tvInputs.count, by: maxConcurrent) {
@@ -304,7 +327,7 @@ final class MediaLibraryViewModel {
                 for input in slice {
                     group.addTask {
                         let detail = try? await service.getTVShowDetails(id: input.id)
-                        return (input.index, input.prevSeasons, detail)
+                        return (input.id, input.prevSeasons, detail)
                     }
                 }
                 var out: [(Int, Int?, TMDBTVShowDetail?)] = []
@@ -312,15 +335,18 @@ final class MediaLibraryViewModel {
                 return out
             }
 
-            // Apply updates on main actor (no isolation crossing)
-            for (index, prevSeasons, detail) in results {
-                guard let detail, index < tvShows.count,
-                      let tvShow = tvShows[index].tvShow else { continue }
+            // Apply updates on main actor (no isolation crossing). Match by TMDB id rather than
+            // index — a delete, undo or add during the refresh shifts indices.
+            for (id, prevSeasons, detail) in results {
+                guard let detail else { continue }
+                successfulFetches += 1
+                guard let listItem = tvShows.first(where: { $0.tvShow?.id == String(id) }),
+                      let tvShow = listItem.tvShow else { continue }
                 let providers = detail.watchProviders?.results?[service.currentRegion]
                 tvShow.update(from: await service.mapToTVShow(detail, providers: providers))
                 if let newCount = tvShow.numberOfSeasons,
                    let prev = prevSeasons, newCount > prev {
-                    handleSeasonCountUpdate(for: tvShows[index], previousSeasonCount: prevSeasons)
+                    handleSeasonCountUpdate(for: listItem, previousSeasonCount: prevSeasons)
                 }
             }
         }
@@ -329,10 +355,10 @@ final class MediaLibraryViewModel {
         for batch in stride(from: 0, to: movieInputs.count, by: maxConcurrent) {
             let slice = movieInputs[batch..<min(batch + maxConcurrent, movieInputs.count)]
             let results = await withTaskGroup(of: (Int, TMDBMovieDetail?).self) { group in
-                for input in slice {
+                for movieID in slice {
                     group.addTask {
-                        let detail = try? await service.getMovieDetails(id: input.id)
-                        return (input.index, detail)
+                        let detail = try? await service.getMovieDetails(id: movieID)
+                        return (movieID, detail)
                     }
                 }
                 var out: [(Int, TMDBMovieDetail?)] = []
@@ -340,9 +366,10 @@ final class MediaLibraryViewModel {
                 return out
             }
 
-            for (index, detail) in results {
-                guard let detail, index < movies.count,
-                      let movie = movies[index].movie else { continue }
+            for (id, detail) in results {
+                guard let detail else { continue }
+                successfulFetches += 1
+                guard let movie = movies.first(where: { $0.movie?.id == String(id) })?.movie else { continue }
                 let providers = detail.watchProviders?.results?[service.currentRegion]
                 movie.update(from: await service.mapToMovie(detail, providers: providers))
             }
@@ -351,6 +378,9 @@ final class MediaLibraryViewModel {
         syncUnwatched(for: .tvShow)
         syncUnwatched(for: .movie)
         try? context.save()
+
+        // Nothing to fetch counts as done; otherwise require at least one success.
+        return tvInputs.isEmpty && movieInputs.isEmpty ? true : successfulFetches > 0
     }
 
     @discardableResult
