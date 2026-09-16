@@ -4,9 +4,18 @@ import SwiftUI
 struct CustomListDetailView: View {
     let viewModel: CustomListViewModel
     let list: CustomList
+
+    /// Custom lists are thematic pools, kept out of the Up Next queue — but watched state, ratings
+    /// and season progress all live in the library, so rows derive them from it.
+    @Environment(MediaLibraryViewModel.self) private var library
+    @Environment(ToastState.self) private var toast
+
     @State private var showingAddItems = false
     @State private var selectedItem: CustomListItem?
-    @State private var itemToDelete: CustomListItem?
+
+    private var sortedItems: [CustomListItem] {
+        (list.items ?? []).sorted { $0.addedAt < $1.addedAt }
+    }
 
     var body: some View {
         Group {
@@ -23,36 +32,8 @@ struct CustomListDetailView: View {
                 .background(AppBackground())
             } else {
                 List {
-                    ForEach((list.items ?? []).sorted(by: { $0.addedAt < $1.addedAt }), id: \.persistentModelID) { item in
-                        Button {
-                            selectedItem = item
-                        } label: {
-                            MediaCardView(
-                                title: item.media?.title ?? "",
-                                subtitle: customListSubtitle(for: item),
-                                imageURL: item.media?.thumbnailURL,
-                                networks: item.media?.networks ?? [],
-                                providerCategories: item.media?.providerCategories ?? [:],
-                                isWatched: false,
-                                voteAverage: item.media?.voteAverage,
-                                genres: item.media?.genres ?? []
-                            )
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 5)
-                        .listRowInsets(EdgeInsets())
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                itemToDelete = item
-                            } label: {
-                                Label("Remove", systemImage: "trash")
-                            }
-                        }
+                    ForEach(sortedItems, id: \.persistentModelID) { item in
+                        row(for: item)
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -82,164 +63,223 @@ struct CustomListDetailView: View {
             )
         }
         .sheet(item: $selectedItem) { item in
-            CustomListItemDetailView(item: item)
-        }
-        .alert(
-            "Remove from List",
-            isPresented: Binding(
-                get: { itemToDelete != nil },
-                set: { if !$0 { itemToDelete = nil } }
-            ),
-            presenting: itemToDelete
-        ) { item in
-            Button("Remove", role: .destructive) {
-                viewModel.removeItem(item, from: list)
-                itemToDelete = nil
-            }
-            Button("Cancel", role: .cancel) {
-                itemToDelete = nil
-            }
-        } message: { item in
-            Text("Are you sure you want to remove \"\(item.media?.title ?? "this item")\" from \"\(list.name)\"?")
+            CustomListItemDetailSheet(
+                item: item,
+                list: list,
+                listViewModel: viewModel,
+                onRemove: { removeWithUndo(item) },
+                dismiss: { selectedItem = nil }
+            )
         }
     }
 
-    private func customListSubtitle(for item: CustomListItem) -> String? {
-        if let tvShow = item.tvShow {
-            return tvShow.seasonsEpisodesSummary
-        } else if let movie = item.movie {
-            let parts = [movie.releaseYear, movie.runtime.map { "\($0) min" }].compactMap { $0 }
-            return parts.isEmpty ? nil : parts.joined(separator: " \u{00b7} ")
+    // MARK: - Rows
+
+    @ViewBuilder
+    private func row(for item: CustomListItem) -> some View {
+        let mediaType: MediaType = item.tvShow != nil ? .tvShow : .movie
+        let libraryItem = item.media.flatMap { library.libraryItem(for: $0.id, mediaType: mediaType) }
+
+        Button {
+            selectedItem = item
+        } label: {
+            MediaCardView(
+                title: item.media?.title ?? "",
+                subtitle: subtitle(for: item, libraryItem: libraryItem),
+                imageURL: item.media?.thumbnailURL,
+                networks: item.media?.networks ?? [],
+                providerCategories: item.media?.providerCategories ?? [:],
+                isWatched: libraryItem?.isWatched ?? false,
+                voteAverage: item.media?.voteAverage,
+                genres: item.media?.genres ?? [],
+                userRating: libraryItem?.userRating,
+                seasonProgress: seasonProgress(for: item, libraryItem: libraryItem)
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        return nil
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                removeWithUndo(item)
+            } label: {
+                Label("Remove", systemImage: "trash")
+            }
+        }
+        .contextMenu {
+            Button(role: .destructive) {
+                removeWithUndo(item)
+            } label: {
+                Label("Remove from List", systemImage: "trash")
+            }
+        }
+    }
+
+    /// Same rule as the watchlist's rows: only show the bar for partial progress.
+    private func seasonProgress(
+        for item: CustomListItem,
+        libraryItem: ListItem?
+    ) -> (watchedSeasons: [Int], total: Int)? {
+        guard let libraryItem, let total = item.tvShow?.numberOfSeasons, total > 0 else { return nil }
+        let watched = libraryItem.watchedSeasons
+        guard !watched.isEmpty, watched.count < total || libraryItem.isDropped else { return nil }
+        return (watchedSeasons: watched, total: total)
+    }
+
+    private func subtitle(for item: CustomListItem, libraryItem: ListItem?) -> String? {
+        let base: String? = {
+            if let tvShow = item.tvShow {
+                return tvShow.seasonsEpisodesSummary
+            } else if let movie = item.movie {
+                let parts = [movie.releaseYear, movie.runtime.map { "\($0) min" }].compactMap { $0 }
+                return parts.isEmpty ? nil : parts.joined(separator: " \u{00b7} ")
+            }
+            return nil
+        }()
+
+        guard let libraryItem, libraryItem.isWatched, let watchedAt = libraryItem.watchedAt else {
+            return base
+        }
+        let stamp = "Watched \(watchedAt.formatted(.dateTime.month(.abbreviated).year()))"
+        guard let base else { return stamp }
+        return "\(base) \u{00b7} \(stamp)"
+    }
+
+    // MARK: - Removal
+
+    /// Removes an item immediately (animated) and shows a toast with an Undo action — the same
+    /// pattern as a watchlist swipe-delete. The title stays in the library either way.
+    private func removeWithUndo(_ item: CustomListItem) {
+        let removedTitle = withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            viewModel.removeItem(item, from: list)
+        }
+        guard let title = removedTitle else { return }
+        toast.show(
+            "Removed \u{201C}\(title)\u{201D} from \u{201C}\(list.name)\u{201D}",
+            icon: "trash.circle.fill",
+            actionLabel: "Undo"
+        ) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                viewModel.undoLastRemoval()
+            }
+        }
     }
 }
 
-private struct CustomListItemDetailView: View {
+// MARK: - Detail sheet
+
+/// Wraps `MediaDetailView` for a custom-list item. Reads the library itself so the binding — and
+/// the "Mark as Watched" affordance — re-resolve the moment the title lands in the library.
+private struct CustomListItemDetailSheet: View {
     let item: CustomListItem
-    @Environment(\.dismiss) private var dismiss
+    let list: CustomList
+    let listViewModel: CustomListViewModel
+    let onRemove: () -> Void
+    let dismiss: () -> Void
 
-    @State private var isLoadingDetails = false
-    @State private var detailError: String?
+    @Environment(MediaLibraryViewModel.self) private var library
 
-    private let service = TMDBService.shared
+    /// Stand-in for titles that aren't in the library. It wraps the *shared* media row, so anything
+    /// the detail sheet fetches into that row survives the switch to the real library item.
+    @State private var fallbackItem: ListItem
 
-    private var backdropPath: String? {
-        item.tvShow?.backdropPath ?? item.movie?.backdropPath
+    init(
+        item: CustomListItem,
+        list: CustomList,
+        listViewModel: CustomListViewModel,
+        onRemove: @escaping () -> Void,
+        dismiss: @escaping () -> Void
+    ) {
+        self.item = item
+        self.list = list
+        self.listViewModel = listViewModel
+        self.onRemove = onRemove
+        self.dismiss = dismiss
+        let placeholder: ListItem
+        if let tvShow = item.tvShow {
+            placeholder = ListItem(tvShow: tvShow)
+        } else if let movie = item.movie {
+            placeholder = ListItem(movie: movie)
+        } else {
+            placeholder = ListItem()
+        }
+        _fallbackItem = State(initialValue: placeholder)
     }
 
-    private var needsFullDetails: Bool {
-        guard let media = item.media, Int(media.id) != nil else { return false }
-        if let tvShow = item.tvShow {
-            if tvShow.cast.isEmpty || tvShow.genres.isEmpty { return true }
-            return false
-        }
-        if let movie = item.movie {
-            if movie.cast.isEmpty || movie.genres.isEmpty { return true }
-            return false
-        }
-        return false
+    private var mediaType: MediaType {
+        item.tvShow != nil ? .tvShow : .movie
+    }
+
+    private var mediaID: String {
+        item.media?.id ?? ""
+    }
+
+    /// Resolves to the library's `ListItem` whenever the title is in the library, so the sheet's
+    /// state follows it in place the moment "Mark as Watched" inserts one.
+    private var detailBinding: Binding<ListItem> {
+        Binding<ListItem>(
+            get: { library.libraryItem(for: mediaID, mediaType: mediaType) ?? fallbackItem },
+            set: { (newValue: ListItem) in
+                let type = mediaType
+                let id = mediaID
+                if type == .tvShow {
+                    if let index = library.tvShows.firstIndex(where: { $0.media?.id == id }) {
+                        library.tvShows[index] = newValue
+                        return
+                    }
+                } else {
+                    if let index = library.movies.firstIndex(where: { $0.media?.id == id }) {
+                        library.movies[index] = newValue
+                        return
+                    }
+                }
+                fallbackItem = newValue
+            }
+        )
+    }
+
+    private var existingIDs: Set<String> {
+        MediaIDKey.makeSet(.tvShow, library.existingTVShowIDs)
+            .union(MediaIDKey.makeSet(.movie, library.existingMovieIDs))
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    HeaderImageView(
-                        backdropPath: backdropPath,
-                        posterURL: item.media?.thumbnailURL,
-                        title: item.media?.title ?? ""
-                    )
+        // Read through the library every render: after "Mark as Watched" inserts the real
+        // `ListItem`, this resolves to it and the season/rating cards take over in place.
+        let isInLibrary: Bool = library.libraryItem(for: mediaID, mediaType: mediaType) != nil
+        let markWatchedAction: (() -> Void)? = isInLibrary ? nil : { markWatched() }
+        let removeMessage: String =
+            "This removes it from \u{201C}\(list.name)\u{201D} only \u{2014} it stays in your library."
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        metadataRow
-
-                        GenreSection(genres: item.media?.genres ?? [])
-
-                        Divider().padding(.vertical, 4)
-
-                        DescriptionSection(
-                            isLoading: isLoadingDetails,
-                            descriptionText: item.media?.descriptionText,
-                            errorMessage: detailError)
-
-                        Divider().padding(.vertical, 4)
-
-                        CastSection(
-                            cast: item.media?.cast ?? [],
-                            castImagePaths: item.media?.castImagePaths ?? [],
-                            castCharacters: item.media?.castCharacters ?? [])
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 24)
-                }
-            }
-            .ignoresSafeArea(.container, edges: .top)
-            .background(AppBackground())
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .task {
-                await fetchFullDetails()
-            }
-        }
+        return MediaDetailView(
+            listItem: detailBinding,
+            dismiss: dismiss,
+            onRemove: onRemove,
+            onSeasonCountChanged: { listItem, previousCount in
+                library.handleSeasonCountUpdate(for: listItem, previousSeasonCount: previousCount)
+            },
+            customListViewModel: listViewModel,
+            existingIDs: existingIDs,
+            onTVShowAdded: { library.addTVShow($0) },
+            onMovieAdded: { library.addMovie($0) },
+            onMarkWatched: markWatchedAction,
+            removeLabel: "Remove from list",
+            removeMessage: removeMessage
+        )
     }
 
-    @ViewBuilder
-    private var metadataRow: some View {
-        HStack(spacing: 8) {
-            if let tvShow = item.tvShow {
-                if let seasons = tvShow.numberOfSeasons {
-                    Chip(text: "\(seasons) Season\(seasons == 1 ? "" : "s")")
-                }
-                if let episodes = tvShow.numberOfEpisodes {
-                    Chip(text: "\(episodes) Episodes")
-                }
-            } else if let movie = item.movie {
-                if let year = movie.releaseYear {
-                    Chip(text: year)
-                }
-                if let runtime = movie.runtime {
-                    Chip(text: "\(runtime) min")
-                }
-            }
+    private func markWatched() {
+        if let tvShow = item.tvShow {
+            library.addWatched(tvShow: tvShow)
+            library.persistChanges(for: .tvShow)
+        } else if let movie = item.movie {
+            library.addWatched(movie: movie)
+            library.persistChanges(for: .movie)
         }
-    }
-
-    @MainActor
-    private func fetchFullDetails() async {
-        guard let media = item.media, let id = Int(media.id) else { return }
-        // Always refresh (picks up backdrop/providers); only surface loading/errors when the
-        // core details are actually missing, mirroring MediaDetailView.
-        let showLoading = needsFullDetails
-        if showLoading {
-            isLoadingDetails = true
-            detailError = nil
-        }
-
-        do {
-            if let tvShow = item.tvShow {
-                let detail = try await service.getTVShowDetails(id: id)
-                let providers = detail.watchProviders?.results?[service.currentRegion]
-                tvShow.update(from: await service.mapToTVShow(detail, providers: providers))
-            } else if let movie = item.movie {
-                let detail = try await service.getMovieDetails(id: id)
-                let providers = detail.watchProviders?.results?[service.currentRegion]
-                movie.update(from: await service.mapToMovie(detail, providers: providers))
-            }
-        } catch {
-            if showLoading {
-                detailError = error.localizedDescription
-            }
-        }
-
-        isLoadingDetails = false
     }
 }
-

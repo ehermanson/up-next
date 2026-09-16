@@ -6,6 +6,8 @@ struct AddToListSheet: View {
     let tvShow: TVShow?
     @Environment(\.dismiss) private var dismiss
 
+    @State private var showingCreateList = false
+
     private var mediaID: String? {
         movie?.id ?? tvShow?.id
     }
@@ -17,8 +19,16 @@ struct AddToListSheet: View {
                     EmptyStateView(
                         icon: "tray",
                         title: "No lists yet",
-                        subtitle: "Create a list from the My Lists tab first."
-                    )
+                        subtitle: "Lists are for themed collections \u{2014} Christmas movies, kids' shows, comfort watches."
+                    ) {
+                        Button {
+                            showingCreateList = true
+                        } label: {
+                            Label("New List", systemImage: "plus")
+                        }
+                        .buttonStyle(.glassProminent)
+                        .controlSize(.large)
+                    }
                     .background(AppBackground())
                 } else {
                     List {
@@ -64,9 +74,19 @@ struct AddToListSheet: View {
             .navigationTitle("Add to List")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if !viewModel.customLists.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("New List", systemImage: "plus") {
+                            showingCreateList = true
+                        }
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showingCreateList) {
+                CreateListView(viewModel: viewModel)
             }
         }
     }

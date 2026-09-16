@@ -238,6 +238,55 @@ final class TVShow: MediaItemProtocol {
     }
 }
 
+// MARK: - Canonical row lookup
+
+/// The stored `Movie` row for a TMDB id, if there is one. There should only ever be a single row
+/// per id — the watchlist and every custom list share it — but older installs can hold duplicates,
+/// so the row the library refers to (the one with `listItems`) wins.
+func existingMovie(id: String, in context: ModelContext) -> Movie? {
+    let descriptor = FetchDescriptor<Movie>(predicate: #Predicate<Movie> { $0.id == id })
+    guard let matches = try? context.fetch(descriptor), !matches.isEmpty else { return nil }
+    return matches.first { !($0.listItems ?? []).isEmpty } ?? matches.first
+}
+
+/// The stored `TVShow` row for a TMDB id, if there is one. See `existingMovie(id:in:)`.
+func existingTVShow(id: String, in context: ModelContext) -> TVShow? {
+    let descriptor = FetchDescriptor<TVShow>(predicate: #Predicate<TVShow> { $0.id == id })
+    guard let matches = try? context.fetch(descriptor), !matches.isEmpty else { return nil }
+    return matches.first { !($0.listItems ?? []).isEmpty } ?? matches.first
+}
+
+/// A row mapped straight from a TMDB *search* result carries no cast, genres or runtime. Applying
+/// one over a fully-fetched row would blank real metadata, so those updates are skipped.
+private func hasFullDetail(_ movie: Movie) -> Bool {
+    !movie.cast.isEmpty || !movie.genres.isEmpty || movie.runtime != nil
+}
+
+/// See `hasFullDetail(_: Movie)`.
+private func hasFullDetail(_ tvShow: TVShow) -> Bool {
+    !tvShow.cast.isEmpty || !tvShow.genres.isEmpty || tvShow.numberOfSeasons != nil
+}
+
+/// Returns the stored row for `movie`'s id — refreshed from `movie` — or `movie` itself when the
+/// title isn't stored yet. Callers attach their new list item to the result so a title never ends
+/// up with two media rows.
+func canonicalMovieRow(for movie: Movie, in context: ModelContext) -> Movie {
+    guard let existing = existingMovie(id: movie.id, in: context), existing !== movie else { return movie }
+    if hasFullDetail(movie) || !hasFullDetail(existing) {
+        existing.update(from: movie)
+    }
+    return existing
+}
+
+/// See `canonicalMovieRow(for:in:)`.
+func canonicalTVShowRow(for tvShow: TVShow, in context: ModelContext) -> TVShow {
+    guard let existing = existingTVShow(id: tvShow.id, in: context), existing !== tvShow else { return tvShow }
+    if hasFullDetail(tvShow) || !hasFullDetail(existing) {
+        existing.update(from: tvShow)
+    }
+    return existing
+}
+
 // MARK: - Shared cleanup helpers
 
 /// True when two network lists describe the same providers. `TMDBService` builds brand-new
@@ -253,7 +302,7 @@ private func networksAreEquivalent(_ lhs: [Network]?, _ rhs: [Network]?) -> Bool
 
 /// Deletes the `Network` rows in `networks` that nothing other than `ownerID` refers to. Without
 /// this they pile up as orphans (and CloudKit records) every time metadata is refreshed.
-private func deleteUnreferencedNetworks(
+func deleteUnreferencedNetworks(
     _ networks: [Network]?,
     excludingOwner ownerID: PersistentIdentifier,
     in context: ModelContext

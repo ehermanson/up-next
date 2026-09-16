@@ -12,6 +12,13 @@ struct MediaDetailView: View {
     var existingIDs: Set<String> = []
     var onTVShowAdded: ((TVShow) -> Void)?
     var onMovieAdded: ((Movie) -> Void)?
+    /// Set for a title that isn't in the library yet but shouldn't be queued either (custom lists).
+    /// Replaces the watched/season cards with a single "Mark as Watched" card.
+    var onMarkWatched: (() -> Void)?
+    /// Copy for the leading destructive button and its confirmation. Defaults to the watchlist's
+    /// "delete this title" wording; custom lists override it with list-scoped wording.
+    var removeLabel: String?
+    var removeMessage: String?
 
     @Environment(ToastState.self) private var toast
 
@@ -103,7 +110,11 @@ struct MediaDetailView: View {
                             castCharacters: listItem.media?.castCharacters ?? []
                         )
 
-                        if onAdd == nil {
+                        if let onMarkWatched {
+                            Divider().padding(.vertical, 4)
+
+                            MarkAsWatchedCard(action: onMarkWatched)
+                        } else if onAdd == nil {
                             if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
                                 Divider().padding(.vertical, 4)
                                 SeasonChecklistCard(listItem: $listItem)
@@ -181,9 +192,9 @@ struct MediaDetailView: View {
                         Button(role: .destructive) {
                             isConfirmingRemoval = true
                         } label: {
-                            Label("Remove", systemImage: "trash")
+                            Label(removeLabel ?? "Remove", systemImage: "trash")
                         }
-                        .accessibilityLabel("Remove from list")
+                        .accessibilityLabel(removeLabel ?? "Remove from list")
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -193,14 +204,14 @@ struct MediaDetailView: View {
             .task {
                 await fetchFullDetails()
             }
-            .alert("Remove from list?", isPresented: $isConfirmingRemoval) {
+            .alert(removeLabel.map { "\($0)?" } ?? "Remove from list?", isPresented: $isConfirmingRemoval) {
                 Button("Remove", role: .destructive) {
                     onRemove()
                     dismiss()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will delete this title from your watch list.")
+                Text(removeMessage ?? "This will delete this title from your watch list.")
             }
             .sheet(item: $selectedSimilarItem) { item in
                 MediaDetailView(
@@ -223,7 +234,7 @@ struct MediaDetailView: View {
     private var actionButtonRow: some View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
-                if let customListVM = customListViewModel, !customListVM.customLists.isEmpty {
+                if let customListVM = customListViewModel {
                     Button { showingAddToList = true } label: {
                         Label("Lists", systemImage: "tray.full")
                             .frame(maxWidth: .infinity)
@@ -437,6 +448,40 @@ struct MediaDetailView: View {
         )
     }
 
+}
+
+// MARK: - Mark as Watched
+
+/// Shown for a title that lives in a custom list but not in the library. Custom lists are thematic
+/// pools, so the only library action offered is logging it as watched — never queuing it.
+private struct MarkAsWatchedCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Mark as Watched")
+                        .font(.headline)
+                    Text("Adds it to your library's Watched section without queuing it.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
 }
 
 // MARK: - Shared Detail Components

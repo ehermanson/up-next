@@ -42,6 +42,8 @@ struct ContentView: View {
             }
             Tab("My Lists", systemImage: "tray.full", value: .myLists) {
                 MyListsView(viewModel: customListViewModel)
+                    // List rows derive watched state / rating / season progress from the library.
+                    .environment(viewModel)
                     .toastOverlay(bottomPadding: 12)
             }
             Tab("Discover", systemImage: "sparkles", value: .discover) {
@@ -74,6 +76,7 @@ struct ContentView: View {
             // be terminated in the background, otherwise the item resurrects on relaunch.
             if newPhase == .background {
                 viewModel.commitPendingDeletion()
+                customListViewModel.commitPendingRemoval()
             }
         }
         .sheet(isPresented: $showingSearch) {
