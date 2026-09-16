@@ -85,10 +85,10 @@ Up Next/
 │   │   ├── MediaDetailView.swift        # Detail sheet: edit watched state, rating, notes, seasons
 │   │   ├── MediaDetailCards.swift       # Interactive cards: watched toggle, rating, season checklist
 │   │   ├── MediaDetailMetadata.swift    # Metadata row, provider row, pills, flow layout
-│   │   └── MediaDetailSimilar.swift     # Similar/recommended sections, collection section
+│   │   └── MediaDetailSimilar.swift     # "More Like This" row (recs + similar merged), TMDB collection section, MediaIDKey
 │   ├── Search/
 │   │   ├── WatchlistSearchView.swift    # Context-aware search (all, TV, movies, specific lists)
-│   │   ├── RecommendationEngine.swift   # Seed selection, aggregation, thematic scoring
+│   │   ├── RecommendationEngine.swift   # Weighted seeds, genre affinity, discover pool + unified scoring; collection-mode thematic scoring; GenreCatalog
 │   │   └── SearchComponents.swift       # Loading states and utility views
 │   ├── Discover/
 │   │   └── DiscoverView.swift           # Browse/discover tab with carousels and filters
@@ -156,6 +156,14 @@ CloudKit is optional — the app falls back to local-only if CloudKit is unavail
 - **New Releases**: `first_air_date.lte` / `primary_release_date.lte` = today so unreleased titles don't leak in. Dates are built with `TMDBService.apiDateString` (UTC).
 - Errors surface as `carouselError` / `browseError` with a retry `EmptyStateView`; pull-to-refresh calls `reload()`. Responses still go through the 10-minute `RequestDeduplicator` cache.
 - Search runs `/search/tv` and `/search/movie` concurrently; when the selected segment has no results but the other does, the empty state offers "Show N movies instead". Rows show the release/premiere year.
+
+### Recommendations (`RecommendationEngine`)
+
+- **Recommended For You** (search sheet, watchlist contexts): `weightedSeeds` picks ≤3 positive seeds sharing one budget (thumbs-up +2 → recent unwatched +1 → recently watched +0.75) and ≤2 thumbs-down seeds at −2. Each seed costs one `/recommendations`; alongside them one `/discover` sweep uses the top 3 positive-affinity genres (`with_genres` OR'd), `ProviderSettings.watchProvidersQueryValue` (whenever any providers are selected — independent of the Discover toggle), `vote_count.gte=100` and released-to-date. Skipped when there's neither a genre nor a provider constraint.
+- **Scoring**: `Σ seedWeight × 1/(1+rank/10)` + 1.5 × genre affinity (sum over the candidate's `genreIds`, clamped ±2) + 0.5 × quality (`(voteAverage−6)/4`) + 1.0 if it came from the discover pool and providers are selected. Floors: 50 votes, 6.0 average, total > 0 (so a title only a thumbs-down seed vouches for drops out). Capped at 20. Providers are a strong boost, not a hard filter — `/recommendations` results carry no provider data.
+- **Genre affinity** is keyed by the genre *names* stored on media rows (+2 thumbs-up / +1 neutral / −1 thumbs-down, normalised to [−1, 1]); `GenreCatalog.shared` memoises `/genre/{tv,movie}/list` per process to translate to/from the `genreIds` the list endpoints return. `TMDBTVShowSearchResult`/`TMDBMovieSearchResult` carry optional `genreIds` and `voteCount` for this.
+- **Collection mode** (`selectListSeeds` + `aggregate` + thematic keywords / `searchThematicResults`) is unchanged apart from the 50-vote floor (a `nil` `voteCount` is kept, since `/search` may omit it).
+- **Detail sheet**: `MediaDetailView.mergedMoreLikeThis` folds TMDB's `recommendations` (first) and `similar` into one "More Like This" row, deduped by `MediaIDKey`, minus the current title and anything in `existingIDs` *at open time* — titles added while the sheet is open keep their checkmark rather than vanishing. Capped at 12.
 
 ### Media IDs
 

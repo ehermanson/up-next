@@ -28,6 +28,11 @@ struct TMDBTVShowSearchResult: Codable, Identifiable {
     let backdropPath: String?
     let firstAirDate: String?
     let voteAverage: Double?
+    /// `/search`, `/discover` and `/recommendations` all return these; the detail endpoint does not
+    /// (it returns full `genres`). Used by `RecommendationEngine` for genre affinity and the
+    /// vote-count floor.
+    let genreIds: [Int]?
+    let voteCount: Int?
 }
 
 struct TMDBTVShowDetail: Codable {
@@ -87,6 +92,9 @@ struct TMDBMovieSearchResult: Codable, Identifiable {
     let backdropPath: String?
     let releaseDate: String?
     let voteAverage: Double?
+    /// See `TMDBTVShowSearchResult.genreIds`.
+    let genreIds: [Int]?
+    let voteCount: Int?
 }
 
 struct TMDBMovieDetail: Codable {

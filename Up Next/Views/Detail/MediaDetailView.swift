@@ -33,8 +33,9 @@ struct MediaDetailView: View {
     @State private var isConfirmingRemoval = false
     @State private var showingTMDBPage = false
     @State private var showingAddToList = false
-    @State private var similarItems: [SimilarMediaItem] = []
-    @State private var recommendedItems: [SimilarMediaItem] = []
+    /// TMDB's recommendations and similar-titles feeds merged into one ranked, deduped list —
+    /// see `mergedMoreLikeThis`.
+    @State private var moreLikeThisItems: [SimilarMediaItem] = []
     @State private var trailerKey: String?
     @State private var showingTrailer = false
     @State private var selectedSimilarItem: ListItem?
@@ -163,15 +164,8 @@ struct MediaDetailView: View {
                         )
 
                         SimilarSection(
-                            title: "Similar",
-                            items: similarItems,
-                            existingIDs: existingIDs.union(addedSimilarIDs),
-                            onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
-                            onTap: { openSimilarDetail($0) }
-                        )
-                        SimilarSection(
-                            title: "Recommended",
-                            items: recommendedItems,
+                            title: "More Like This",
+                            items: moreLikeThisItems,
                             existingIDs: existingIDs.union(addedSimilarIDs),
                             onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
                             onTap: { openSimilarDetail($0) }
@@ -327,24 +321,36 @@ struct MediaDetailView: View {
                     onSeasonCountChanged?(listItem, previousSeasonCount)
                 }
 
-                similarItems = (detail.similar?.results ?? []).prefix(10).map {
+                let similar = (detail.similar?.results ?? []).map {
                     SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)
                 }
-                recommendedItems = (detail.recommendations?.results ?? []).prefix(10).map {
+                let recommended = (detail.recommendations?.results ?? []).map {
                     SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)
                 }
+                moreLikeThisItems = Self.mergedMoreLikeThis(
+                    recommended: recommended,
+                    similar: similar,
+                    currentKey: MediaIDKey.make(.tvShow, id),
+                    existingIDs: existingIDs
+                )
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
             } else if let movie = listItem.movie {
                 let detail = try await service.getMovieDetails(id: id)
                 let providers = detail.watchProviders?.results?[service.currentRegion]
                 movie.update(from: await service.mapToMovie(detail, providers: providers))
 
-                similarItems = (detail.similar?.results ?? []).prefix(10).map {
+                let similar = (detail.similar?.results ?? []).map {
                     SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
                 }
-                recommendedItems = (detail.recommendations?.results ?? []).prefix(10).map {
+                let recommended = (detail.recommendations?.results ?? []).map {
                     SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
                 }
+                moreLikeThisItems = Self.mergedMoreLikeThis(
+                    recommended: recommended,
+                    similar: similar,
+                    currentKey: MediaIDKey.make(.movie, id),
+                    existingIDs: existingIDs
+                )
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
 
                 if let collection = detail.belongsToCollection {

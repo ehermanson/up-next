@@ -425,29 +425,27 @@ struct WatchlistSearchView: View {
         recommendationTask?.cancel()
 
         let mediaType = effectiveMediaType
+
+        guard isListMode else {
+            loadPersonalRecommendations(for: mediaType)
+            return
+        }
+
         let seeds: [Int]
         let allExisting: Set<String>
         let listName: String?
 
-        if isListMode {
-            guard let list = selectedList else {
-                clearRecommendations(for: mediaType)
-                isLoadingRecommendations = false
-                return
-            }
-
-            let listItems = list.items ?? []
-            seeds = RecommendationEngine.selectListSeeds(from: listItems, mediaType: mediaType)
-            allExisting = RecommendationEngine.existingIDs(in: listItems, mediaType: mediaType)
-                .union(MediaIDKey.rawIDs(mediaType, in: addedIDs))
-            listName = list.name
-        } else {
-            let libraryItems = mediaType == .tvShow ? libraryTVShows : libraryMovies
-            seeds = RecommendationEngine.selectSeeds(from: libraryItems)
-            let existingIDs = mediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
-            allExisting = existingIDs.union(MediaIDKey.rawIDs(mediaType, in: addedIDs))
-            listName = nil
+        guard let list = selectedList else {
+            clearRecommendations(for: mediaType)
+            isLoadingRecommendations = false
+            return
         }
+
+        let listItems = list.items ?? []
+        seeds = RecommendationEngine.selectListSeeds(from: listItems, mediaType: mediaType)
+        allExisting = RecommendationEngine.existingIDs(in: listItems, mediaType: mediaType)
+            .union(MediaIDKey.rawIDs(mediaType, in: addedIDs))
+        listName = list.name
 
         guard !seeds.isEmpty else {
             let keywords = RecommendationEngine.thematicKeywords(for: listName)
@@ -515,6 +513,71 @@ struct WatchlistSearchView: View {
                 ) { id in
                     (try? await service.fetchMovieRecommendations(id: id)) ?? []
                 }
+                guard !Task.isCancelled else { return }
+                movieRecommendations = results
+            }
+        }
+    }
+
+    /// "Recommended For You": seeded by what's already on the watchlist, steered by genre taste,
+    /// thumbs-down, and the user's streaming services.
+    private func loadPersonalRecommendations(for mediaType: MediaType) {
+        let watchlistItems = mediaType == .tvShow ? libraryTVShows : libraryMovies
+        let seeds = RecommendationEngine.weightedSeeds(from: watchlistItems)
+        let affinity = RecommendationEngine.genreAffinity(from: watchlistItems)
+        let providerQuery = ProviderSettings.shared.watchProvidersQueryValue
+        let existingIDs = mediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
+        let allExisting = existingIDs.union(MediaIDKey.rawIDs(mediaType, in: addedIDs))
+
+        // Thumbs-down seeds alone can only subtract, so they aren't enough to build a pool from.
+        let hasPositiveSeed = seeds.contains { $0.weight > 0 }
+        guard hasPositiveSeed || !affinity.isEmpty || providerQuery != nil else {
+            clearRecommendations(for: mediaType)
+            isLoadingRecommendations = false
+            return
+        }
+
+        isLoadingRecommendations = true
+
+        recommendationTask = Task {
+            defer { isLoadingRecommendations = false }
+
+            if mediaType == .tvShow {
+                let results: [TMDBTVShowSearchResult] = await RecommendationEngine.fetchLibraryRecommendations(
+                    seeds: seeds,
+                    affinity: affinity,
+                    mediaType: mediaType,
+                    providerQuery: providerQuery,
+                    excluding: allExisting,
+                    recommendationFetcher: { try await service.fetchTVRecommendations(id: $0) },
+                    discoverFetcher: { genres, providers, voteCountGte, dateLte in
+                        try await service.discoverTVShows(
+                            withGenres: genres,
+                            withWatchProviders: providers,
+                            voteCountGte: voteCountGte,
+                            firstAirDateLte: dateLte
+                        ).results
+                    }
+                )
+                guard !Task.isCancelled else { return }
+                tvRecommendations = results
+            } else {
+                let results: [TMDBMovieSearchResult] = await RecommendationEngine.fetchLibraryRecommendations(
+                    seeds: seeds,
+                    affinity: affinity,
+                    mediaType: mediaType,
+                    providerQuery: providerQuery,
+                    excluding: allExisting,
+                    recommendationFetcher: { try await service.fetchMovieRecommendations(id: $0) },
+                    discoverFetcher: { genres, providers, voteCountGte, dateLte in
+                        try await service.discoverMovies(
+                            withGenres: genres,
+                            withWatchProviders: providers,
+                            voteCountGte: voteCountGte,
+                            releaseDateLte: dateLte
+                        ).results
+                    }
+                )
                 guard !Task.isCancelled else { return }
                 movieRecommendations = results
             }

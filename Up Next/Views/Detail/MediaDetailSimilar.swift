@@ -32,6 +32,31 @@ enum MediaIDKey {
     }
 }
 
+extension MediaDetailView {
+    /// TMDB serves "similar" and "recommendations" as two separately-ranked, heavily-overlapping
+    /// lists. This merges them into one "More Like This" feed: recommendations first (TMDB ranks
+    /// them better), then similar, deduped by TMDB id keeping the first (better-ranked) occurrence,
+    /// with the current title and anything already added dropped. `existingIDs` must be the set
+    /// captured when the sheet opened — not a live-updating one — so a title the user adds while
+    /// browsing keeps its green checkmark instead of disappearing out from under their finger.
+    static func mergedMoreLikeThis(
+        recommended: [SimilarMediaItem],
+        similar: [SimilarMediaItem],
+        currentKey: String,
+        existingIDs: Set<String>
+    ) -> [SimilarMediaItem] {
+        var seenKeys: Set<String> = []
+        var merged: [SimilarMediaItem] = []
+        for item in recommended + similar {
+            let key = MediaIDKey.make(item.mediaType, item.id)
+            guard key != currentKey, !existingIDs.contains(key), !seenKeys.contains(key) else { continue }
+            seenKeys.insert(key)
+            merged.append(item)
+        }
+        return Array(merged.prefix(12))
+    }
+}
+
 // MARK: - Shared card
 
 /// One poster card in the detail sheet's horizontal carousels (Similar, Recommended, Collection).
