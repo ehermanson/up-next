@@ -72,7 +72,7 @@ Up Next/
 │
 ├── ViewModels/
 │   ├── MediaLibraryViewModel.swift      # Main watchlist state, add/remove, refresh, reorder
-│   ├── DiscoverViewModel.swift          # Trending/top-rated/new carousels, browse with pagination
+│   ├── DiscoverViewModel.swift          # Trending/top-rated/new carousels, browse with pagination, provider filter
 │   └── CustomListViewModel.swift        # CRUD for custom lists and their items
 │
 ├── Views/
@@ -80,7 +80,7 @@ Up Next/
 │   │   ├── MediaListView.swift          # Main list with genre/provider filtering, watched toggle
 │   │   ├── TVShowsTabView.swift         # TV Shows tab (list + detail sheet + filter state)
 │   │   ├── MoviesTabView.swift          # Movies tab (list + detail sheet + filter state)
-│   │   └── MediaListHelpers.swift       # Helper functions for list display
+│   │   └── MediaListHelpers.swift       # Unwatched ordering, filterItems (genre / watch option / on my services)
 │   ├── Detail/
 │   │   ├── MediaDetailView.swift        # Detail sheet: edit watched state, rating, notes, seasons
 │   │   ├── MediaDetailCards.swift       # Interactive cards: watched toggle, rating, season checklist
@@ -142,6 +142,13 @@ CloudKit is optional — the app falls back to local-only if CloudKit is unavail
 - Network → Provider ID mapping (e.g., "AMC" network → AMC+ provider)
 - Region-aware lookups via `Locale.current.region`, fallback to US
 
+### "On My Services" (ProviderSettings)
+
+`ProviderSettings` (UserDefaults-backed, `@Observable` singleton) drives three things:
+- **Discover**: `onlyMyServicesInDiscover` (key `discover.onlyMyServices`, default on) sends `with_watch_providers` + `watch_region` on every carousel/browse request via `DiscoverViewModel.providerFilter`. The toggle row under the media-type picker becomes a "Choose your streaming services" button when nothing is selected.
+- **Watchlist filter**: per-tab `@AppStorage` flags `tvShows.onlyMyServices` / `movies.onlyMyServices`, applied by `filterItems(...)` in `MediaListHelpers.swift` (`isOnSelectedServices` = any network with category `stream`/`ads` whose id is selected). Auto-cleared if the user deselects all providers.
+- **First launch**: `ContentView` presents `ProviderSettingsView` once when no providers are selected and `hasCompletedProviderOnboarding` is false; the flag is set on presentation so it never re-prompts. The DEBUG "Reset Providers & Onboarding" button clears it.
+
 ### Media IDs
 
 TMDB movie and TV ids are separate namespaces. Any set that mixes both must use `MediaIDKey.make(mediaType, id)` (`"tv:123"` / `"movie:456"`) — see `MediaDetailSimilar.swift`.
@@ -158,7 +165,10 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 - `watchedSeasons`: Array of watched season numbers (1-based)
 - `nextSeasonToWatch`: Computed from total seasons vs watched
 - `syncWatchedStateFromSeasons()`: Auto-marks fully-watched shows
+- `toggleSeason(_:)` cascades: marking S*n* marks 1…*n*; un-marking S*n* un-marks *n*…last
 - Shows remain in unwatched list when partially watched
+- Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — `MediaListView.toggleWatched` marks all seasons
+- Watched section is sorted most-recently-watched first
 
 ### Image Caching
 

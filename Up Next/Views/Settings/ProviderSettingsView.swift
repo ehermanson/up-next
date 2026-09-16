@@ -56,7 +56,7 @@ struct ProviderSettingsView: View {
 
     private var descriptionSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Select the streaming services you subscribe to. Your selections are highlighted first on library cards.")
+            Text("Select the streaming services you subscribe to. They're highlighted on your cards and used to filter Discover and your watchlist.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -148,9 +148,11 @@ struct ProviderSettingsView: View {
 
             Button {
                 settings.selectedProviderIDs = []
+                settings.hasCompletedProviderOnboarding = false
+                settings.onlyMyServicesInDiscover = true
                 dismiss()
             } label: {
-                Label("Reset Provider Selection", systemImage: "arrow.counterclockwise")
+                Label("Reset Providers & Onboarding", systemImage: "arrow.counterclockwise")
                     .font(.subheadline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)

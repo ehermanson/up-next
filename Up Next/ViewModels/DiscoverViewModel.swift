@@ -94,6 +94,7 @@ final class DiscoverViewModel {
         let genreID: Int?
         let sort: SortOption
         let page: Int
+        let providerFilter: String?
     }
 
     // MARK: - State
@@ -139,6 +140,21 @@ final class DiscoverViewModel {
 
     private let service = TMDBService.shared
 
+    /// Non-nil only when the user opted into filtering Discover to their selected services.
+    private var providerFilter: String? {
+        let settings = ProviderSettings.shared
+        guard settings.onlyMyServicesInDiscover, settings.hasSelectedProviders else { return nil }
+        return settings.watchProvidersQueryValue
+    }
+
+    /// Called when the "on my services" toggle or the selected providers change. Cancels any
+    /// in-flight loads and reissues everything under the new filter.
+    func providerFilterChanged() {
+        reloadTask?.cancel()
+        browseReloadTask?.cancel()
+        reloadTask = Task { await reload() }
+    }
+
     // MARK: - Loading
 
     func initialLoad() async {
@@ -154,20 +170,21 @@ final class DiscoverViewModel {
 
     private func loadCarousels() async {
         let requestedMediaType = selectedMediaType
+        let requestedProviderFilter = providerFilter
         isCarouselLoading = true
 
         await withTaskGroup(of: (String, [DiscoverItem]).self) { group in
             group.addTask { [selectedMediaType] in
                 let items = await self.fetchItems(
                     mediaType: selectedMediaType, sortBy: "popularity.desc",
-                    voteCountGte: nil, page: 1
+                    voteCountGte: nil, page: 1, providerFilter: requestedProviderFilter
                 )
                 return ("trending", items)
             }
             group.addTask { [selectedMediaType] in
                 let items = await self.fetchItems(
                     mediaType: selectedMediaType, sortBy: "vote_average.desc",
-                    voteCountGte: 200, page: 1
+                    voteCountGte: 200, page: 1, providerFilter: requestedProviderFilter
                 )
                 return ("topRated", items)
             }
@@ -176,7 +193,7 @@ final class DiscoverViewModel {
                     ? "primary_release_date.desc" : "first_air_date.desc"
                 let items = await self.fetchItems(
                     mediaType: selectedMediaType, sortBy: sortBy,
-                    voteCountGte: 50, page: 1
+                    voteCountGte: 50, page: 1, providerFilter: requestedProviderFilter
                 )
                 return ("newReleases", items)
             }
@@ -215,7 +232,8 @@ final class DiscoverViewModel {
             mediaType: selectedMediaType,
             genreID: selectedGenre?.id,
             sort: selectedSort,
-            page: browsePage
+            page: browsePage,
+            providerFilter: providerFilter
         )
         latestBrowseRequest = request
         isBrowseLoading = true
@@ -232,6 +250,7 @@ final class DiscoverViewModel {
             if request.mediaType == .tvShows {
                 let response = try await service.discoverTVShows(
                     page: request.page, sortBy: sortBy, withGenres: genreID,
+                    withWatchProviders: request.providerFilter,
                     voteCountGte: voteCountGte
                 )
                 newItems = response.results.map { DiscoverItem.tvShow($0) }
@@ -239,6 +258,7 @@ final class DiscoverViewModel {
             } else {
                 let response = try await service.discoverMovies(
                     page: request.page, sortBy: sortBy, withGenres: genreID,
+                    withWatchProviders: request.providerFilter,
                     voteCountGte: voteCountGte
                 )
                 newItems = response.results.map { DiscoverItem.movie($0) }
@@ -278,17 +298,19 @@ final class DiscoverViewModel {
 
     private func fetchItems(
         mediaType: DiscoverMediaType, sortBy: String,
-        voteCountGte: Int?, page: Int
+        voteCountGte: Int?, page: Int, providerFilter: String?
     ) async -> [DiscoverItem] {
         do {
             if mediaType == .tvShows {
                 let response = try await service.discoverTVShows(
-                    page: page, sortBy: sortBy, voteCountGte: voteCountGte
+                    page: page, sortBy: sortBy, withWatchProviders: providerFilter,
+                    voteCountGte: voteCountGte
                 )
                 return response.results.map { .tvShow($0) }
             } else {
                 let response = try await service.discoverMovies(
-                    page: page, sortBy: sortBy, voteCountGte: voteCountGte
+                    page: page, sortBy: sortBy, withWatchProviders: providerFilter,
+                    voteCountGte: voteCountGte
                 )
                 return response.results.map { .movie($0) }
             }

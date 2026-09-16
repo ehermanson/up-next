@@ -167,20 +167,6 @@ struct SeasonChecklistCard: View {
         .sensoryFeedback(.selection, trigger: listItem.watchedSeasons)
     }
 
-    private func toggleSeason(_ season: Int) {
-        if listItem.watchedSeasons.contains(season) {
-            listItem.watchedSeasons.removeAll { $0 == season }
-        } else {
-            listItem.watchedSeasons.append(season)
-        }
-        // If all seasons are now watched while dropped, clear the drop (legitimately complete)
-        if listItem.isDropped, let total = listItem.tvShow?.numberOfSeasons, total > 0 {
-            let allWatched = (1...total).allSatisfy { listItem.watchedSeasons.contains($0) }
-            if allWatched { listItem.droppedAt = nil }
-        }
-        listItem.syncWatchedStateFromSeasons()
-    }
-
     private func toggleDescription(_ season: Int) {
         withAnimation(.easeInOut(duration: 0.2)) {
             if expandedSeasons.contains(season) {
@@ -200,7 +186,7 @@ struct SeasonChecklistCard: View {
 
         return VStack(alignment: .leading, spacing: 2) {
             Button {
-                toggleSeason(season)
+                listItem.toggleSeason(season)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Season \(season)")
@@ -244,7 +230,7 @@ struct SeasonChecklistCard: View {
         // row's full height (circle + connector) regardless of how tall the text is.
         .overlay(alignment: .topLeading) {
             Button {
-                toggleSeason(season)
+                listItem.toggleSeason(season)
             } label: {
                 timeline(isWatched: isWatched, isLast: isLast)
             }

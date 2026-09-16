@@ -11,14 +11,17 @@ struct DiscoverView: View {
     /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
     @State private var detailListItem: ListItem?
+    @State private var showingProviderSettings = false
 
     private let service = TMDBService.shared
+    private let settings = ProviderSettings.shared
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     mediaTypePicker
+                    providerFilterRow
                     carouselSections
                     browseAllSection
                 }
@@ -29,6 +32,15 @@ struct DiscoverView: View {
         }
         .task {
             await viewModel.initialLoad()
+        }
+        .onChange(of: settings.onlyMyServicesInDiscover) {
+            viewModel.providerFilterChanged()
+        }
+        .onChange(of: settings.selectedProviderIDs) {
+            viewModel.providerFilterChanged()
+        }
+        .sheet(isPresented: $showingProviderSettings) {
+            ProviderSettingsView()
         }
         .sheet(item: $detailListItem) { item in
             MediaDetailView(
@@ -57,6 +69,35 @@ struct DiscoverView: View {
         }
         .pickerStyle(.segmented)
         .padding(.horizontal, 16)
+    }
+
+    // MARK: - Provider Filter Row
+
+    private var providerFilterRow: some View {
+        Group {
+            if settings.hasSelectedProviders {
+                Toggle(isOn: Bindable(settings).onlyMyServicesInDiscover) {
+                    Label("On my services", systemImage: "checkmark.seal")
+                }
+                .tint(Color.accentColor)
+            } else {
+                Button {
+                    showingProviderSettings = true
+                } label: {
+                    Label("Choose your streaming services", systemImage: "play.tv")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+        .padding(.horizontal, 16)
+    }
+
+    /// True when Discover results are currently narrowed to the user's selected services.
+    private var providerFilterIsActive: Bool {
+        settings.onlyMyServicesInDiscover && settings.hasSelectedProviders
     }
 
     // MARK: - Carousel Sections
@@ -229,24 +270,35 @@ struct DiscoverView: View {
     }
 
     private var browseList: some View {
-        LazyVStack(spacing: 8) {
-            ForEach(viewModel.browseItems) { item in
-                browseRow(item)
-            }
-
-            if viewModel.isBrowseLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-            } else if viewModel.browsePage < viewModel.browseTotalPages {
-                Color.clear
-                    .frame(height: 1)
-                    .onAppear {
-                        Task { await viewModel.loadNextBrowsePage() }
+        Group {
+            if viewModel.browseItems.isEmpty && !viewModel.isBrowseLoading && providerFilterIsActive {
+                EmptyStateView(
+                    icon: "tv.slash",
+                    title: "Nothing on your services",
+                    subtitle: "Turn off \"On my services\" to see everything."
+                )
+                .padding(.vertical, 40)
+            } else {
+                LazyVStack(spacing: 8) {
+                    ForEach(viewModel.browseItems) { item in
+                        browseRow(item)
                     }
+
+                    if viewModel.isBrowseLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 20)
+                    } else if viewModel.browsePage < viewModel.browseTotalPages {
+                        Color.clear
+                            .frame(height: 1)
+                            .onAppear {
+                                Task { await viewModel.loadNextBrowsePage() }
+                            }
+                    }
+                }
+                .padding(.horizontal, 16)
             }
         }
-        .padding(.horizontal, 16)
     }
 
     private func browseRow(_ item: DiscoverViewModel.DiscoverItem) -> some View {

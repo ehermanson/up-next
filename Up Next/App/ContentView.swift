@@ -18,6 +18,8 @@ struct ContentView: View {
     @State private var showingSettings = false
     @State private var showingSearch = false
 
+    private let settings = ProviderSettings.shared
+
     var body: some View {
         TabView(selection: $selectedTab) {
             Tab("TV Shows", systemImage: "tv", value: .tvShows) {
@@ -57,6 +59,13 @@ struct ContentView: View {
             ProviderSettingsView()
         }
         .task {
+            // First launch: prompt for streaming services once, and never again even if the
+            // sheet is dismissed without choosing any. Presented before the (possibly slow)
+            // library load so the user isn't staring at an empty list first.
+            if !settings.hasSelectedProviders && !settings.hasCompletedProviderOnboarding {
+                showingSettings = true
+                settings.hasCompletedProviderOnboarding = true
+            }
             await viewModel.configure(modelContext: modelContext)
             customListViewModel.configure(modelContext: modelContext)
         }

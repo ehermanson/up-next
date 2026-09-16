@@ -11,6 +11,10 @@ struct TVShowsTabView: View {
     @State private var expandedItemID: String? = nil
     @State private var selectedGenre: String? = nil
     @State private var selectedProviderCategory: String? = nil
+    @AppStorage("tvShows.onlyMyServices") private var onlyMyServices = false
+
+    /// Held (not read through the singleton inline) so `@Observable` tracks provider changes.
+    private let settings = ProviderSettings.shared
 
     private var selectedItem: ListItem? {
         guard let id = expandedItemID else { return nil }
@@ -18,7 +22,13 @@ struct TVShowsTabView: View {
     }
 
     private var filteredUnwatchedItems: [ListItem] {
-        filterItems(viewModel.unwatchedTVShows, genre: selectedGenre, providerCategory: selectedProviderCategory)
+        filterItems(
+            viewModel.unwatchedTVShows,
+            genre: selectedGenre,
+            providerCategory: selectedProviderCategory,
+            onlyMyServices: onlyMyServices,
+            selectedProviderIDs: settings.selectedProviderIDs
+        )
     }
 
     var body: some View {
@@ -32,6 +42,8 @@ struct TVShowsTabView: View {
             selectedGenre: $selectedGenre,
             availableProviderCategories: viewModel.availableTVProviderCategories,
             selectedProviderCategory: $selectedProviderCategory,
+            onlyMyServices: $onlyMyServices,
+            showsMyServicesFilter: settings.hasSelectedProviders,
             navigationTitle: "TV Shows",
             subtitleProvider: { item in
                 tvShowSubtitle(for: item)
@@ -89,6 +101,10 @@ struct TVShowsTabView: View {
                 selectedGenre = nil
             }
         }
+        .onChange(of: settings.hasSelectedProviders) {
+            // Without any selected services the filter would hide everything — turn it off.
+            if !settings.hasSelectedProviders { onlyMyServices = false }
+        }
         .onChange(of: viewModel.availableTVProviderCategories) {
             if let cat = selectedProviderCategory, !viewModel.availableTVProviderCategories.contains(cat) {
                 selectedProviderCategory = nil
@@ -144,27 +160,5 @@ struct TVShowsTabView: View {
         }
 
         return tvShow.seasonsEpisodesSummary
-    }
-
-    private func filterItems(_ items: [ListItem], genre: String?, providerCategory: String?) -> [ListItem] {
-        guard genre != nil || providerCategory != nil else { return items }
-        var result = items
-        if let genre {
-            result = result.filter { $0.media?.genres.contains(genre) == true }
-        }
-        if let providerCategory {
-            let rawCategories: Set<String>
-            switch providerCategory {
-            case "Stream": rawCategories = ["stream"]
-            case "Free with Ads": rawCategories = ["ads"]
-            case "Rent or Buy": rawCategories = ["rent", "buy"]
-            default: rawCategories = []
-            }
-            result = result.filter { item in
-                guard let categories = item.media?.providerCategories.values else { return false }
-                return categories.contains(where: { rawCategories.contains($0) })
-            }
-        }
-        return result
     }
 }

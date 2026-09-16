@@ -220,8 +220,9 @@ final class MediaLibraryViewModel {
             )
             watchedTVShows = tvShows.filter { $0.isWatched }
                 .sorted { lhs, rhs in
+                    // Most recently watched first; items missing a date sink to the bottom.
                     switch (lhs.watchedAt, rhs.watchedAt) {
-                    case (let l?, let r?): return l < r
+                    case (let l?, let r?): return l > r
                     case (nil, _?): return false
                     case (_?, nil): return true
                     case (nil, nil): return false
@@ -237,8 +238,9 @@ final class MediaLibraryViewModel {
             )
             watchedMovies = movies.filter { $0.isWatched }
                 .sorted { lhs, rhs in
+                    // Most recently watched first; items missing a date sink to the bottom.
                     switch (lhs.watchedAt, rhs.watchedAt) {
-                    case (let l?, let r?): return l < r
+                    case (let l?, let r?): return l > r
                     case (nil, _?): return false
                     case (_?, nil): return true
                     case (nil, nil): return false

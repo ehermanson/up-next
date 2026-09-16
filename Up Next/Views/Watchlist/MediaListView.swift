@@ -11,6 +11,9 @@ struct MediaListView: View {
     @Binding var selectedGenre: String?
     var availableProviderCategories: [String]
     @Binding var selectedProviderCategory: String?
+    @Binding var onlyMyServices: Bool
+    /// Hidden entirely when the user hasn't picked any streaming services yet.
+    var showsMyServicesFilter: Bool
 
     let navigationTitle: String
     let subtitleProvider: (ListItem) -> String?
@@ -34,7 +37,7 @@ struct MediaListView: View {
     private static let listChangeAnimation: Animation = .spring(response: 0.4, dampingFraction: 0.85)
 
     private var hasActiveFilter: Bool {
-        selectedGenre != nil || selectedProviderCategory != nil
+        selectedGenre != nil || selectedProviderCategory != nil || onlyMyServices
     }
 
     private var canReorder: Bool {
@@ -98,7 +101,9 @@ struct MediaListView: View {
                                 availableGenres: availableGenres,
                                 selectedGenre: $selectedGenre,
                                 availableProviderCategories: availableProviderCategories,
-                                selectedProviderCategory: $selectedProviderCategory
+                                selectedProviderCategory: $selectedProviderCategory,
+                                onlyMyServices: $onlyMyServices,
+                                showsMyServicesFilter: showsMyServicesFilter
                             )
 
                             ForEach(displayedUnwatchedItems, id: \.media?.id) { item in
@@ -307,6 +312,8 @@ private struct SectionHeader: View {
     @Binding var selectedGenre: String?
     var availableProviderCategories: [String] = []
     @Binding var selectedProviderCategory: String?
+    @Binding var onlyMyServices: Bool
+    var showsMyServicesFilter: Bool = false
 
     init(
         title: String,
@@ -315,7 +322,9 @@ private struct SectionHeader: View {
         availableGenres: [String] = [],
         selectedGenre: Binding<String?> = .constant(nil),
         availableProviderCategories: [String] = [],
-        selectedProviderCategory: Binding<String?> = .constant(nil)
+        selectedProviderCategory: Binding<String?> = .constant(nil),
+        onlyMyServices: Binding<Bool> = .constant(false),
+        showsMyServicesFilter: Bool = false
     ) {
         self.title = title
         self.count = count
@@ -324,10 +333,17 @@ private struct SectionHeader: View {
         self._selectedGenre = selectedGenre
         self.availableProviderCategories = availableProviderCategories
         self._selectedProviderCategory = selectedProviderCategory
+        self._onlyMyServices = onlyMyServices
+        self.showsMyServicesFilter = showsMyServicesFilter
     }
 
     private var hasActiveFilter: Bool {
-        selectedGenre != nil || selectedProviderCategory != nil
+        selectedGenre != nil || selectedProviderCategory != nil || onlyMyServices
+    }
+
+    /// The filter menu is worth showing as soon as *any* of its sections has something to offer.
+    private var hasFilterOptions: Bool {
+        showsMyServicesFilter || !availableGenres.isEmpty || !availableProviderCategories.isEmpty
     }
 
     var body: some View {
@@ -340,8 +356,21 @@ private struct SectionHeader: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(count) items")
             Spacer()
-            if showsFilter, !availableGenres.isEmpty || !availableProviderCategories.isEmpty {
+            if showsFilter, hasFilterOptions {
                 Menu {
+                    if showsMyServicesFilter {
+                        Section {
+                            Button {
+                                onlyMyServices.toggle()
+                            } label: {
+                                if onlyMyServices {
+                                    Label("On my services", systemImage: "checkmark")
+                                } else {
+                                    Text("On my services")
+                                }
+                            }
+                        }
+                    }
                     if availableProviderCategories.count > 1 {
                         Section("Watch Option") {
                             Button {
@@ -433,6 +462,18 @@ struct MediaListRow: View {
         return (watchedSeasons: watched, total: total)
     }
 
+    /// Label/icon/tint for the watched action. A dropped show that's watched resumes rather than
+    /// un-watching — same branch `toggleWatched(_:)` takes.
+    private var watchedAction: (title: String, icon: String, tint: Color) {
+        if !item.isWatched {
+            return ("Mark Watched", "checkmark.circle.fill", .green)
+        }
+        if item.isDropped {
+            return ("Pick Back Up", "arrow.uturn.backward.circle.fill", Color.accentColor)
+        }
+        return ("Mark Unwatched", "circle", .gray)
+    }
+
     var body: some View {
         Button {
             guard editMode?.wrappedValue.isEditing != true else { return }
@@ -461,6 +502,27 @@ struct MediaListRow: View {
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                onDeleteRequested()
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        // Swipe actions are suppressed automatically while the list is in edit mode.
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                onWatchedToggled()
+            } label: {
+                Label(watchedAction.title, systemImage: watchedAction.icon)
+            }
+            .tint(watchedAction.tint)
+        }
+        .contextMenu {
+            Button {
+                onWatchedToggled()
+            } label: {
+                Label(watchedAction.title, systemImage: watchedAction.icon)
+            }
             Button(role: .destructive) {
                 onDeleteRequested()
             } label: {
@@ -562,6 +624,8 @@ struct MediaListRow: View {
         selectedGenre: .constant(nil),
         availableProviderCategories: [],
         selectedProviderCategory: .constant(nil),
+        onlyMyServices: .constant(false),
+        showsMyServicesFilter: true,
         navigationTitle: "TV Shows",
         subtitleProvider: { item in
             if let summary = item.tvShow?.seasonsEpisodesSummary {

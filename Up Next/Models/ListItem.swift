@@ -112,6 +112,29 @@ final class ListItem {
         }
     }
 
+    /// Toggles a season, cascading to the seasons around it: people watch shows in order, so
+    /// marking season N watched also marks 1...N (any later seasons already watched stay watched),
+    /// and un-marking season N un-marks N...last. Without the cascade, tapping S5 on a fresh show
+    /// would leave `nextSeasonToWatch` pointing at S1.
+    /// No-op for movies or shows without `numberOfSeasons`.
+    func toggleSeason(_ season: Int) {
+        guard season >= 1, let tvShow = tvShow, let total = tvShow.numberOfSeasons, total > 0 else { return }
+
+        var watched = Set(watchedSeasons)
+        if watched.contains(season) {
+            watched = watched.filter { $0 < season }
+        } else {
+            watched.formUnion(1...season)
+        }
+        watchedSeasons = watched.sorted()
+
+        // If all seasons are now watched while dropped, clear the drop (legitimately complete)
+        if isDropped, (1...total).allSatisfy({ watched.contains($0) }) {
+            droppedAt = nil
+        }
+        syncWatchedStateFromSeasons()
+    }
+
     /// Marks the show as "done watching" — appears in Watched regardless of season completion.
     func dropShow() {
         let now = Date.now
