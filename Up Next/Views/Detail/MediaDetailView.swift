@@ -198,7 +198,7 @@ struct MediaDetailView: View {
                     if let heroTint {
                         GeometryReader { proxy in
                             LinearGradient(
-                                colors: [heroTint.opacity(0.35), .clear],
+                                colors: [heroTint.opacity(0.55), .clear],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -784,7 +784,7 @@ struct HeaderImageView: View {
     /// exact sheet background so the fade never shows a seam against it.
     private func bottomFade(height: CGFloat) -> some View {
         let base = DesignTokens.Colors.backgroundBase
-        let mid = tint.map { base.mixed(with: $0, amount: 0.6) } ?? base
+        let mid = tint.map { base.mixed(with: $0, amount: 0.75) } ?? base
         return LinearGradient(
             stops: [
                 .init(color: base.opacity(0), location: 0.0),

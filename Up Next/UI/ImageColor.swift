@@ -50,8 +50,8 @@ extension UIImage {
         // Condition for a dark sheet: clamp saturation up so a washed-out poster still reads as
         // a color, and clamp brightness into a narrow deep-tint band so a bright/white poster
         // doesn't blow out the background and a neon one doesn't scream.
-        let clampedSaturation = max(saturation, 0.35)
-        let clampedBrightness = min(max(brightness, 0.18), 0.30)
+        let clampedSaturation = max(saturation, 0.55)
+        let clampedBrightness = min(max(brightness, 0.38), 0.55)
 
         return Color(hue: hue, saturation: clampedSaturation, brightness: clampedBrightness)
     }
