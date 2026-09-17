@@ -440,6 +440,26 @@ final class PersistenceController {
     /// library, so `ContentView` asks first and then calls `acceptPendingShareInvitation()`.
     private(set) var pendingShareInvitation: CKShare.Metadata?
 
+    /// The partner's latest changes, phrased for people ("Sarah added Elf to Movies"), set by
+    /// `RemoteActivityNotifier` when they land while the app is on screen so `ContentView` can
+    /// toast them. In the background they become local notifications instead.
+    var recentRemoteActivity: [String] = []
+
+    /// The other person's name for notifications and toasts: the owner's name for a participant,
+    /// the first non-owner participant's for an owner. iOS may withhold names from apps without
+    /// the extended share-access entitlement, hence the fallback.
+    func partnerDisplayName() -> String {
+        let fallback = "Your partner"
+        guard let share = existingShare() else { return fallback }
+        let identity: CKUserIdentity? = role == .participant
+            ? share.owner.userIdentity
+            : share.participants.first { $0.role != .owner }?.userIdentity
+        guard let components = identity?.nameComponents else { return fallback }
+        let name = PersonNameComponentsFormatter().string(from: components)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? fallback : name
+    }
+
     /// Entry point for share links (both the running-app and cold-launch paths). Owners are asked
     /// before their library is replaced; a device that's already a participant has nothing to
     /// lose (re-tapping the same link), so it accepts straight away.
@@ -495,6 +515,8 @@ final class PersistenceController {
 
         try applyRoleRule()
         remoteChangeCount += 1
+        // Sharing is live from here on — the partner's edits are worth a ping.
+        RemoteActivityNotifier.requestPermissionIfNeeded()
     }
 
     /// Re-applies the role rule after a remote change when the current root can no longer be
@@ -594,20 +616,21 @@ private final class RemoteChangeObserver {
     }
 
     private func handleRemoteChange() {
-        var didFindForeignTransaction = false
+        var foreignTransactions: [NSPersistentHistoryTransaction] = []
 
         for store in [persistence.privateStore, persistence.sharedStore] {
             guard let store else { continue }
             do {
-                if try processHistory(for: store) {
-                    didFindForeignTransaction = true
-                }
+                foreignTransactions += try processHistory(for: store)
             } catch {
                 print("⚠️ PersistenceController: failed to process history for \(store): \(error)")
             }
         }
 
-        guard didFindForeignTransaction else { return }
+        guard !foreignTransactions.isEmpty else { return }
+        // Order matters: announce against the role that was current when the changes landed
+        // (a join in progress suppresses the bulk import), then let the role rule catch up.
+        RemoteActivityNotifier.announce(foreignTransactions, persistence: persistence)
         persistence.refreshRoleAfterRemoteChange()
         scheduleRemoteChangeBump()
     }
@@ -637,20 +660,22 @@ private final class RemoteChangeObserver {
 
     /// Fetches persistent history for `store` since the last stored token, merges any foreign
     /// (non-"app") transactions into the view context, and advances the stored token to the most
-    /// recent transaction regardless of author. Returns whether any foreign transaction was found.
-    private func processHistory(for store: NSPersistentStore) throws -> Bool {
+    /// recent transaction regardless of author. Returns the foreign transactions, with their
+    /// changes, so they can be announced.
+    private func processHistory(for store: NSPersistentStore) throws -> [NSPersistentHistoryTransaction] {
         let context = persistence.viewContext
         let lastToken = loadToken(for: store)
 
         let historyRequest = NSPersistentHistoryChangeRequest.fetchHistory(after: lastToken)
         historyRequest.affectedStores = [store]
+        historyRequest.resultType = .transactionsAndChanges
 
         guard
             let result = try context.execute(historyRequest) as? NSPersistentHistoryResult,
             let allTransactions = result.result as? [NSPersistentHistoryTransaction],
             !allTransactions.isEmpty
         else {
-            return false
+            return []
         }
 
         let foreignTransactions = allTransactions.filter { $0.author != PersistenceController.transactionAuthor }
@@ -664,6 +689,6 @@ private final class RemoteChangeObserver {
             storeToken(latestToken, for: store)
         }
 
-        return !foreignTransactions.isEmpty
+        return foreignTransactions
     }
 }

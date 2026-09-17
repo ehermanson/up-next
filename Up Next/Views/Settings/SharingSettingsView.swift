@@ -239,6 +239,11 @@ struct SharingSection: View {
 
     private func refresh() {
         share = persistence.existingShare()
+        // The owner's side of "sharing is live": ask for notification permission the first time
+        // a share exists (participants are asked when their join completes).
+        if share != nil, persistence.role == .owner {
+            RemoteActivityNotifier.requestPermissionIfNeeded()
+        }
     }
 
     private func leaveShare() async {

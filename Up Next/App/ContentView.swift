@@ -10,6 +10,7 @@ struct ContentView: View {
     }
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(ToastState.self) private var toast
     @State private var viewModel = MediaLibraryViewModel()
     @State private var customListViewModel = CustomListViewModel()
 
@@ -100,6 +101,15 @@ struct ContentView: View {
         }
         .onChange(of: persistence.pendingShareInvitation == nil) { _, decided in
             if decided { presentOnboardingIfNeeded() }
+        }
+        // The partner's edits landing while the app is on screen: toast rather than banner.
+        .onChange(of: persistence.recentRemoteActivity) { _, lines in
+            guard let first = lines.first else { return }
+            toast.show(
+                lines.count > 1 ? "\(first) and \(lines.count - 1) more" : first,
+                icon: "person.2.fill"
+            )
+            persistence.recentRemoteActivity = []
         }
         // A tapped share link waits here: joining replaces this device's own library, so say so
         // before doing it. Dismissing any other way (swipe, Cancel) declines.

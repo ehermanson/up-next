@@ -233,3 +233,8 @@ Also: accept the share link with the partner's app **terminated** (cold launch p
 running; edit rating/notes in a detail sheet, background the app without closing the sheet, force-quit,
 relaunch → edits present; install on a second device of the owner's account *before* it has synced and
 confirm one root + one "TV Shows"/"Movies" list afterwards (Settings → Share still shares everything).
+
+Notifications: with B's app in the background, A adds a title / marks one watched / adds to a collection →
+B gets a banner naming A and the title within a minute; with B's app open → a toast instead; A's own
+iPad edits must NOT notify A's phone; B force-quit → no banner, but a toast on next launch; join
+import must not produce a burst of "added" notifications.

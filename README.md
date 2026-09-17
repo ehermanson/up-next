@@ -10,6 +10,7 @@ Just a fun personal project to replace the running list of movies and TV shows m
 - **Discover**: Browse trending titles, what's airing this week, and get personalized recommendations
 - **Provider filtering**: See only titles available on your streaming services, by region
 - **Shared library**: Share your entire library with one partner (Apple Account) — changes sync across devices
+- **Partner notifications**: "Sarah added Elf to Movies" as a notification when the app is closed, or a toast while it's open — only for the other person's edits, never your own devices
 - **Metadata**: Ratings, cast, descriptions, and where to watch pulled from The Movie Database (TMDB)
 
 ## Tech
@@ -63,7 +64,7 @@ Then select the Up Next scheme and run on an iOS 26.1+ simulator or device.
 2. The app opens and asks you to confirm — joining replaces anything already in your own library on that device (it tells you exactly how many titles and collections)
 3. Once you tap Join, your partner's library syncs down
 4. You can add, edit, and remove titles just like the owner
-5. Changes sync within seconds to minutes
+5. Changes sync within seconds to minutes; the app asks for notification permission once sharing is live so you hear about each other's edits (deletions aren't announced)
 
 ### Leaving or stopping
 
