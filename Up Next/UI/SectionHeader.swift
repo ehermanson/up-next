@@ -141,6 +141,9 @@ struct SectionHeader: View {
                     .frame(minHeight: 44)
                     .contentShape(.rect)
                 }
+                // A Menu tints its label with the accent color, so the chip's `.secondary` text
+                // would resolve to "secondary purple"; pin the tint so it reads like every other chip.
+                .tint(.primary)
                 .accessibilityLabel("Filter")
             }
         }

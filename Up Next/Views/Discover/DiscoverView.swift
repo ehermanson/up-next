@@ -371,6 +371,8 @@ struct DiscoverView: View {
                             isEmphasized: viewModel.selectedGenre != nil
                         )
                     }
+                    // Same as `SectionHeader`'s filter: keep the Menu from tinting the chip purple.
+                    .tint(.primary)
 
                     ForEach(DiscoverViewModel.SortOption.allCases, id: \.self) { option in
                         Button {
