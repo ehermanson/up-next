@@ -3,7 +3,7 @@ import SwiftUI
 /// One-time pitch for sharing, shown at the top of the TV Shows tab only (see
 /// `TVShowsTabView`'s visibility rule — sharing is the 2.0 headline feature but nothing else in
 /// the main UI ever states it). Dismissing is permanent, via `ProviderSettings.hasDismissedSharePitch`
-/// — either the close button, or tapping through to the share sheet counts as "handled".
+/// — the close button sets it; the card also retires itself once a partner has joined.
 struct SharePitchCard: View {
     private let settings = ProviderSettings.shared
 
@@ -47,10 +47,9 @@ struct SharePitchCard: View {
                     .padding(.vertical, 10)
             }
             .buttonStyle(.borderedProminent)
-            // Tapping through to the share sheet is enough to consider the pitch handled — the
-            // card shouldn't reappear once the user has engaged with it, whether or not they
-            // complete the share.
-            .simultaneousGesture(TapGesture().onEnded { dismiss() })
+            // Deliberately not dismissed on tap: the share sheet is presented *from* this link,
+            // so removing the card here would tear down the presenter mid-presentation. The card
+            // goes away by itself once a partner joins (see `TVShowsTabView.showsSharePitch`).
         }
         .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
