@@ -53,6 +53,13 @@ final class ProviderSettings {
         }
     }
 
+    private static let hasDismissedSharePitchKey = "sharing.pitchDismissed"
+    var hasDismissedSharePitch: Bool {
+        didSet {
+            UserDefaults.standard.set(hasDismissedSharePitch, forKey: Self.hasDismissedSharePitchKey)
+        }
+    }
+
     var hasSelectedProviders: Bool {
         !selectedProviderIDs.isEmpty
     }
@@ -83,6 +90,8 @@ final class ProviderSettings {
         regionOverride = (storedRegion?.isEmpty == false) ? storedRegion : nil
 
         hasCompletedProviderOnboarding = UserDefaults.standard.bool(forKey: Self.hasCompletedProviderOnboardingKey)
+
+        hasDismissedSharePitch = UserDefaults.standard.bool(forKey: Self.hasDismissedSharePitchKey)
     }
 
     /// Returns true if provider should be shown.

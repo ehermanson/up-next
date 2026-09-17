@@ -217,6 +217,7 @@ struct SettingsView: View {
                 settings.hasCompletedProviderOnboarding = false
                 settings.onlyMyServicesInDiscover = true
                 settings.regionOverride = nil
+                settings.hasDismissedSharePitch = false
                 dismiss()
             } label: {
                 Label("Reset Providers & Onboarding", systemImage: "arrow.counterclockwise")

@@ -35,6 +35,12 @@ struct MediaListView: View {
     var isLoaded: Bool = true
     /// Pull-to-refresh. Awaited by the refresh control, so it must not return early.
     var onRefresh: (() async -> Void)?
+    /// Optional content rendered above the upcoming strip (e.g. `SharePitchCard` on the TV Shows
+    /// tab only). `AnyView` rather than a generic parameter so `MediaListView` stays a plain,
+    /// easily-instantiated type at every other call site; `nil` (the default) renders nothing, so
+    /// `MoviesTabView` doesn't have to opt out explicitly. Hidden automatically while the list is
+    /// empty (the empty state has its own CTA) or while reordering.
+    var topContent: (() -> AnyView)? = nil
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -165,6 +171,13 @@ struct MediaListView: View {
     @ViewBuilder
     private var listLayout: some View {
         let list = List {
+            if let topContent, !isEditingOrder {
+                topContent()
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+
             if !upcomingItems.isEmpty && !isEditingOrder {
                 upcomingStrip
             }
@@ -229,6 +242,11 @@ struct MediaListView: View {
     private var gridLayout: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
+                if let topContent {
+                    topContent()
+                        .padding(.horizontal, 16)
+                }
+
                 if !upcomingItems.isEmpty {
                     upcomingStrip
                 }
