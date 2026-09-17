@@ -96,8 +96,8 @@ Up Next/
 │   ├── Discover/
 │   │   └── DiscoverView.swift           # Browse/discover tab with carousels and filters
 │   ├── Lists/
-│   │   ├── MyListsView.swift            # Custom lists overview
-│   │   ├── CustomListDetailView.swift   # Unwatched/Watched sections, per-collection watched toggle + detail sheet wrapper
+│   │   ├── MyListsView.swift            # Custom lists overview; rows show a poster mosaic (PosterMosaicView) of the first 4 items
+│   │   ├── CustomListDetailView.swift   # Icon/name/count header, Unwatched/Watched sections, per-collection watched toggle + detail sheet wrapper
 │   │   ├── CreateListView.swift         # Create/edit list dialog with icon picker
 │   │   └── AddToListSheet.swift         # Add item to a custom list
 │   └── Settings/
@@ -121,7 +121,8 @@ Up Next/
 │   ├── SafariView.swift                 # In-app Safari (UIViewControllerRepresentable)
 │   ├── TMDBAttributionView.swift        # TMDB attribution footer
 │   ├── SFSymbolPickerGrid.swift         # SF Symbol picker for custom list icons
-│   └── CloudSharingView.swift           # UIViewControllerRepresentable over UICloudSharingController
+│   ├── CloudSharingView.swift           # UIViewControllerRepresentable over UICloudSharingController
+│   └── PosterMosaicView.swift           # 2×2 poster mosaic (Apple Music playlist style) for a collection row's icon
 │
 ├── Up Next.xcdatamodeld/                # Core Data model: 8 entities, CloudKit-safe (all optional/defaulted, relationships optional with inverses)
 ├── AppIcon.icon/                        # Icon Composer (Liquid Glass) app icon: icon.json + Assets/{Ring,Core}.png layers; wins over the appiconset on iOS 26
@@ -239,6 +240,7 @@ The code says `CustomList`/"list"; every user-facing string says "collection" �
 - **Two sections**: unwatched (by `addedAt`) first, then a "Watched" section (most-recently-watched first) with a `SectionHeader`-style title + count chip, shown only when something is watched. Leading full-swipe and the context menu offer "Mark Watched"/"Mark Unwatched"; the toolbar's ellipsis menu offers "Mark All Unwatched" (confirmation dialog) whenever anything is watched. The row's corner chip reads "Watched Sep 2026" from `watchedAt` (`MediaCardView.watchedLabel`). No rating or season-progress on collection rows — those are library concepts.
 - **Detail sheet** is the real `MediaDetailView`, but *always* bound to a transient `ListItem` wrapping the shared media row (like Discover) — inserted into the view context with `list == nil`, deleted on `.onDisappear`. The library fetches filter `list != nil` so collections never leak stray items to the Movies/TV tabs. `collectionWatched:`/`collectionName:` swap the watchlist cards (seasons, watched toggle, rating) for a single `CollectionWatchedCard` scoped to the collection. `onAdd` is nil — there is intentionally no "Add to Up Next" for the collection entry itself — but `onTVShowAdded`/`onMovieAdded` add to *that collection* (`CustomListViewModel.addItem`), `existingIDs` is the collection's membership, and `addTargetName` relabels the Add button/toasts ("Add to Christmas", "Elf added to Christmas"). Browsing similar titles from inside a collection grows the collection, never Up Next. `MediaDetailView.canAddToLibrary` hides those buttons (and the nested sheet's Add) whenever a presenter passes no add hooks, so a "+" can never toast without doing anything. `onRemove` there means remove from the collection (`removeLabel`/`removeMessage`).
 - Removal is deferred 5 s with an Undo toast (`commitPendingRemoval` flushed on `scenePhase == .background`). `refreshAllItems` also refreshes rows referenced only by lists.
+- **Overview + detail visuals**: `MyListsRow` (`MyListsView.swift`) shows a `PosterMosaicView` (2×2, first 4 items by `addedAt`) instead of a plain icon tile once a collection has items, with the collection's icon shrunk into a small badge next to the name; empty collections keep the SF-symbol tile. `CustomListDetailView` shows an icon/name/"N titles · M watched" header above the sections. Both read `viewModel.changeToken` (via `visibleItems(in:)`) so a sibling row's add/remove keeps them in sync.
 
 ### Upcoming Strip
 

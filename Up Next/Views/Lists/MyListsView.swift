@@ -35,7 +35,7 @@ struct MyListsView: View {
                 } else {
                     List {
                         ForEach(viewModel.customLists, id: \.id) { list in
-                            MyListsRow(list: list) {
+                            MyListsRow(viewModel: viewModel, list: list) {
                                 viewModel.activeListID = list.id
                                 navigationPath.append(list.id)
                             }
@@ -132,25 +132,36 @@ struct MyListsView: View {
     #endif
 }
 
-/// One row in the collections overview. `@ObservedObject` so a rename or item-count change
-/// (`list.items`) on this `NSManagedObject` re-renders the row — unlike SwiftData's `@Model`,
-/// Core Data objects don't republish view updates unless something observes them.
+/// One row in the collections overview. `@ObservedObject` so a rename on this `NSManagedObject`
+/// re-renders the row — unlike SwiftData's `@Model`, Core Data objects don't republish view
+/// updates unless something observes them. A child `CustomListItem` changing (add/remove) doesn't
+/// republish `list` either, so the mosaic reads `viewModel.changeToken` to stay in sync.
 private struct MyListsRow: View {
+    let viewModel: CustomListViewModel
     @ObservedObject var list: CustomList
     let action: () -> Void
+
+    /// First four items, ordered like the detail view's unwatched section (oldest add first).
+    /// Touching `viewModel.changeToken` (bumped on every mutation) is what makes this recompute
+    /// when a sibling row's `CustomListItem` is added/removed — see CLAUDE.md's Collections UI note.
+    private var mosaicItems: [CustomListItem] {
+        viewModel.visibleItems(in: list).sorted { $0.addedAt < $1.addedAt }.prefix(4).map { $0 }
+    }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                Image(systemName: list.iconName)
-                    .font(.title2)
-                    .frame(width: 48, height: 48)
-                    .cellSurface(tint: .accentColor)
+                icon
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(list.name)
-                        .font(.body)
-                        .fontWeight(.medium)
+                    HStack(spacing: 4) {
+                        Image(systemName: list.iconName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(list.name)
+                            .font(.body)
+                            .fontWeight(.medium)
+                    }
                     Text("\(list.items?.count ?? 0) item\((list.items?.count ?? 0) == 1 ? "" : "s")")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -168,5 +179,20 @@ private struct MyListsRow: View {
             .padding(.horizontal, 14)
         }
         .buttonStyle(.plain)
+    }
+
+    /// Empty collection keeps the original SF-symbol tile so it still has an identity; the
+    /// collection's own icon only moves into the small inline badge once a mosaic replaces it.
+    @ViewBuilder
+    private var icon: some View {
+        let posterURLs = mosaicItems.map { $0.media?.thumbnailURL }
+        if posterURLs.isEmpty {
+            Image(systemName: list.iconName)
+                .font(.title2)
+                .frame(width: 64, height: 64)
+                .cellSurface(tint: .accentColor)
+        } else {
+            PosterMosaicView(posterURLs: posterURLs, size: 64)
+        }
     }
 }

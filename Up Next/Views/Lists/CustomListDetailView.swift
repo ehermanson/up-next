@@ -32,14 +32,17 @@ struct CustomListDetailView: View {
     var body: some View {
         Group {
             if viewModel.visibleItems(in: list).isEmpty {
-                EmptyStateView(icon: list.iconName, title: "No items yet") {
-                    Button {
-                        showingAddItems = true
-                    } label: {
-                        Label("Add Items", systemImage: "plus")
+                VStack(spacing: 0) {
+                    header
+                    EmptyStateView(icon: list.iconName, title: "No items yet") {
+                        Button {
+                            showingAddItems = true
+                        } label: {
+                            Label("Add Items", systemImage: "plus")
+                        }
+                        .buttonStyle(.glassProminent)
+                        .controlSize(.large)
                     }
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.large)
                 }
                 .background(AppBackground())
             } else if horizontalSizeClass == .regular {
@@ -48,7 +51,9 @@ struct CustomListDetailView: View {
                 listLayout
             }
         }
-        .navigationTitle(list.name)
+        // The header already shows the name at full size, so the nav bar just keeps a back
+        // button — an inline title here would repeat it.
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -112,11 +117,52 @@ struct CustomListDetailView: View {
         return "Mark all \(count) \(count == 1 ? "title" : "titles") unwatched?"
     }
 
+    // MARK: - Header
+
+    /// Replaces the nav-bar title: the collection's icon, its name at full size, and a
+    /// "N titles · M watched" caption. Shown once above the sections (or above the empty state).
+    private var header: some View {
+        HStack(spacing: 14) {
+            Image(systemName: list.iconName)
+                .font(.title2)
+                .frame(width: 56, height: 56)
+                .cellSurface(tint: .accentColor)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(list.name)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Text(itemSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
+    private var itemSummary: String {
+        let total = unwatchedItems.count + watchedItems.count
+        guard total > 0 else { return "No titles yet" }
+        let titlesPart = "\(total) title\(total == 1 ? "" : "s")"
+        let watchedCount = watchedItems.count
+        guard watchedCount > 0 else { return titlesPart }
+        return "\(titlesPart) \u{00b7} \(watchedCount) watched"
+    }
+
     // MARK: - Layouts
 
     /// The phone layout: one column of rows with swipe actions.
     private var listLayout: some View {
         List {
+            header
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+
             ForEach(unwatchedItems, id: \.objectID) { item in
                 row(for: item)
             }
@@ -140,6 +186,8 @@ struct CustomListDetailView: View {
     private var gridLayout: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
+                header
+
                 LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
                     ForEach(unwatchedItems, id: \.objectID) { item in
                         row(for: item)
