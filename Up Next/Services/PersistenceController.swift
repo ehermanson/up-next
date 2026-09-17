@@ -235,6 +235,9 @@ final class PersistenceController {
             group = existing
             isJoiningSharedLibrary = false
             settleInitialImport()
+            // Sharing is live on this device (including participants who joined before the
+            // app could notify, or whose library arrived via account sync) — worth a ping.
+            RemoteActivityNotifier.requestPermissionIfNeeded()
             return
         }
 

@@ -239,9 +239,9 @@ struct SharingSection: View {
 
     private func refresh() {
         share = persistence.existingShare()
-        // The owner's side of "sharing is live": ask for notification permission the first time
-        // a share exists (participants are asked when their join completes).
-        if share != nil, persistence.role == .owner {
+        // Sharing is live on this device, whichever side it's on: ask for notification
+        // permission (the system only ever prompts once).
+        if share != nil {
             RemoteActivityNotifier.requestPermissionIfNeeded()
         }
     }

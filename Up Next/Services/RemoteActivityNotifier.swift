@@ -42,13 +42,19 @@ enum RemoteActivityNotifier {
         guard persistence.role == .participant || persistence.existingShare() != nil else { return }
 
         let actor = persistence.partnerDisplayName()
+        let isActive = UIApplication.shared.applicationState == .active
         var messages: [String] = []
         for transaction in transactions {
             for change in transaction.changes ?? [] {
-                guard let message = message(for: change, actor: actor, persistence: persistence),
-                      !messages.contains(message)
+                guard let activity = activity(for: change, actor: actor, persistence: persistence),
+                      !messages.contains(activity.message)
                 else { continue }
-                messages.append(message)
+                // In the background, only announce edits the partner made recently. History
+                // timestamps say when the import ran, not when the edit happened, so the
+                // record's own modification date is the one that matters — a day-old edit that
+                // only synced now shouldn't buzz the phone. On screen, catching up is fine.
+                if !isActive, Date.now.timeIntervalSince(activity.modifiedAt) > staleAfter { continue }
+                messages.append(activity.message)
             }
         }
         guard !messages.isEmpty else { return }
@@ -60,13 +66,11 @@ enum RemoteActivityNotifier {
             lines = messages
         }
 
-        if UIApplication.shared.applicationState == .active {
+        if isActive {
             persistence.recentRemoteActivity = lines
             return
         }
 
-        let newest = transactions.map(\.timestamp).max() ?? .distantPast
-        guard Date.now.timeIntervalSince(newest) < staleAfter else { return }
         for line in lines {
             let content = UNMutableNotificationContent()
             content.title = "Up Next"
@@ -80,38 +84,55 @@ enum RemoteActivityNotifier {
 
     // MARK: - Messages
 
-    private static func message(
+    private struct Activity {
+        let message: String
+        /// When the partner actually made the edit (the CloudKit record's modification date).
+        let modifiedAt: Date
+    }
+
+    private static func activity(
         for change: NSPersistentHistoryChange,
         actor: String,
         persistence: PersistenceController
-    ) -> String? {
+    ) -> Activity? {
         let objectID = change.changedObjectID
         guard change.changeType != .delete else { return nil }
         guard let object = try? persistence.viewContext.existingObject(with: objectID),
               !object.isDeleted,
-              isModifiedBySomeoneElse(objectID, persistence: persistence)
+              let record = recordModifiedBySomeoneElse(objectID, persistence: persistence),
+              let message = message(for: change, object: object, actor: actor)
         else { return nil }
+        return Activity(message: message, modifiedAt: record.modificationDate ?? .now)
+    }
 
+    private static func message(
+        for change: NSPersistentHistoryChange,
+        object: NSManagedObject,
+        actor: String
+    ) -> String? {
         let updated = Set((change.updatedProperties ?? []).map(\.name))
 
         switch object {
         case let item as ListItem:
-            guard let title = item.media?.title else { return nil }
+            // `list == nil` is a detail-sheet wrapper (see `CustomListItemDetailSheet`), which a
+            // background save can briefly sync — it's not a title anyone added.
+            guard let list = item.list, let title = item.media?.title else { return nil }
             if change.changeType == .insert {
-                if let list = item.list?.name, !list.isEmpty {
-                    return "\(actor) added \(title) to \(list)"
-                }
-                return "\(actor) added \(title)"
+                return list.name.isEmpty
+                    ? "\(actor) added \(title)"
+                    : "\(actor) added \(title) to \(list.name)"
+            }
+            // `dropShow()` / `resumeShow()` also touch the watched fields, so the drop check
+            // has to come first or a drop reads as "watched".
+            if updated.contains("droppedAt") {
+                return item.isDropped
+                    ? "\(actor) stopped watching \(title)"
+                    : "\(actor) picked \(title) back up"
             }
             if updated.contains("isWatched") || updated.contains("watchedAt") {
                 return item.isWatched
                     ? "\(actor) marked \(title) watched"
                     : "\(actor) marked \(title) unwatched"
-            }
-            if updated.contains("droppedAt") {
-                return item.isDropped
-                    ? "\(actor) stopped watching \(title)"
-                    : "\(actor) picked \(title) back up"
             }
             if updated.contains("watchedSeasonsRaw") {
                 if let next = item.nextSeasonToWatch {
@@ -154,13 +175,15 @@ enum RemoteActivityNotifier {
         }
     }
 
-    /// True when the CloudKit record behind `objectID` was last written by another Apple Account.
-    /// The current account is always reported as `CKCurrentUserDefaultName`, whichever device it
-    /// used. Unknown (no record yet) counts as "mine" — better to miss a ping than to misattribute.
-    private static func isModifiedBySomeoneElse(_ objectID: NSManagedObjectID, persistence: PersistenceController) -> Bool {
+    /// The CloudKit record behind `objectID` when it was last written by another Apple Account,
+    /// else nil. The current account is always reported as `CKCurrentUserDefaultName`, whichever
+    /// device it used. Unknown (no record yet) counts as "mine" — better to miss a ping than to
+    /// misattribute.
+    private static func recordModifiedBySomeoneElse(_ objectID: NSManagedObjectID, persistence: PersistenceController) -> CKRecord? {
         guard let record = persistence.container.record(for: objectID),
-              let modifier = record.lastModifiedUserRecordID
-        else { return false }
-        return modifier.recordName != CKCurrentUserDefaultName
+              let modifier = record.lastModifiedUserRecordID,
+              modifier.recordName != CKCurrentUserDefaultName
+        else { return nil }
+        return record
     }
 }
