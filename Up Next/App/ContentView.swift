@@ -60,10 +60,11 @@ struct ContentView: View {
             #endif
             // First launch: prompt for streaming services once, and never again even if the
             // sheet is dismissed without choosing any. Presented before the (possibly slow)
-            // library load so the user isn't staring at an empty list first.
-            if !settings.hasSelectedProviders && !settings.hasCompletedProviderOnboarding {
-                showingSettings = true
-                settings.hasCompletedProviderOnboarding = true
+            // library load so the user isn't staring at an empty list first. Skipped while a
+            // share invitation is waiting for an answer — the app was launched from a link and
+            // that alert comes first; `presentOnboardingIfNeeded` runs once it's decided.
+            if persistence.pendingShareInvitation == nil {
+                presentOnboardingIfNeeded()
             }
             await viewModel.configure()
             customListViewModel.configure()
@@ -96,6 +97,9 @@ struct ContentView: View {
         .onChange(of: persistence.remoteChangeCount) {
             viewModel.reloadFromStore()
             customListViewModel.reloadFromStore()
+        }
+        .onChange(of: persistence.pendingShareInvitation == nil) { _, decided in
+            if decided { presentOnboardingIfNeeded() }
         }
         // A tapped share link waits here: joining replaces this device's own library, so say so
         // before doing it. Dismissing any other way (swipe, Cancel) declines.
@@ -132,6 +136,12 @@ struct ContentView: View {
         } message: {
             Text(joinErrorMessage ?? "")
         }
+    }
+
+    private func presentOnboardingIfNeeded() {
+        guard !settings.hasSelectedProviders && !settings.hasCompletedProviderOnboarding else { return }
+        showingSettings = true
+        settings.hasCompletedProviderOnboarding = true
     }
 
     // MARK: - Join confirmation

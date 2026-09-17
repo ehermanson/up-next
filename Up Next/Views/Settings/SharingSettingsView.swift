@@ -10,9 +10,13 @@ struct LibraryShareItem: Transferable {
         CKShareTransferRepresentation { _ in
             .prepareShare(
                 container: PersistenceController.ckContainer,
+                // Read/write only (a read-only partner defeats the point). Access defaults to
+                // "only people you invite" in the share sheet, but "anyone with the link" stays
+                // selectable: invite-only requires the number/email the link is sent to be on
+                // the recipient's Apple Account, and when it isn't the link is a dead end.
                 allowedSharingOptions: CKAllowedSharingOptions(
                     allowedParticipantPermissionOptions: .readWrite,
-                    allowedParticipantAccessOptions: .specifiedRecipientsOnly
+                    allowedParticipantAccessOptions: .any
                 )
             ) {
                 try await PersistenceController.shared.createShare()
