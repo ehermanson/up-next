@@ -176,23 +176,26 @@ struct MediaDetailView: View {
                 }
             }
             .ignoresSafeArea(.container, edges: .top)
-            .background(AppBackground())
             .background {
                 // Per-title wash over the top of the sheet, echoing the header artwork's
                 // dominant color (Apple Music album-view style). The rest of the design system
-                // stays purple — this is scoped to this one sheet.
-                if let heroTint {
-                    GeometryReader { proxy in
-                        LinearGradient(
-                            colors: [heroTint.opacity(0.35), .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: proxy.size.height * 0.45)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // stays purple — this is scoped to this one sheet. Layered *over* `AppBackground`
+                // (backgrounds stack outward, so this one must come first) — the mesh is opaque.
+                ZStack(alignment: .top) {
+                    AppBackground()
+                    if let heroTint {
+                        GeometryReader { proxy in
+                            LinearGradient(
+                                colors: [heroTint.opacity(0.35), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: proxy.size.height * 0.45)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        }
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
                     }
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
                 }
             }
             .navigationTitle("")
