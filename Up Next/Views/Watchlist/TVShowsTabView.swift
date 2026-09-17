@@ -159,7 +159,7 @@ struct TVShowsTabView: View {
         if item.isDropped {
             let count = item.watchedSeasons.count
             let total = tvShow.numberOfSeasons ?? 0
-            return total > 0 ? "Dropped \u{2022} \(count) of \(total) seasons" : "Dropped"
+            return total > 0 ? "Dropped \u{00B7} \(count) of \(total) seasons" : "Dropped"
         }
 
         // Caught up, with the next season only announced: say so rather than falling through to a

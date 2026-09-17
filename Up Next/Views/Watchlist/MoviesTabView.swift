@@ -161,6 +161,6 @@ struct MoviesTabView: View {
             meta.append("\(runtime) min")
         }
 
-        return meta.isEmpty ? nil : meta.joined(separator: " \u{2022} ")
+        return meta.isEmpty ? nil : meta.joined(separator: " \u{00B7} ")
     }
 }

@@ -62,7 +62,7 @@ struct MediaCardView: View {
     }
 
     private var posterSize: CGSize {
-        isCompact ? CGSize(width: 60, height: 90) : CGSize(width: 82, height: 123)
+        isCompact ? CGSize(width: 60, height: 90) : CGSize(width: 72, height: 108)
     }
 
     private var cardCornerRadius: CGFloat {
@@ -71,6 +71,22 @@ struct MediaCardView: View {
 
     private var posterCornerRadius: CGFloat {
         isCompact ? DesignTokens.Radius.posterSmall : DesignTokens.Radius.poster
+    }
+
+    /// Second line of metadata: subtitle plus the first genre folded in (e.g. "2024 · 167 min ·
+    /// Sci-Fi"), so genres no longer need their own line. Falls back to whichever half is present.
+    private var subtitleLine: String? {
+        let genre = genres.first
+        switch (subtitle, genre) {
+        case let (subtitle?, genre?) where !subtitle.isEmpty:
+            return "\(subtitle) \u{00B7} \(genre)"
+        case let (subtitle?, _) where !subtitle.isEmpty:
+            return subtitle
+        case (_, let genre?):
+            return genre
+        default:
+            return nil
+        }
     }
 
     /// Spoken description of the watched badge, including the thumbs rating when present.
@@ -99,8 +115,8 @@ struct MediaCardView: View {
                 }
                 if !isCompact {
                     HStack(spacing: 6) {
-                        if let subtitle = subtitle {
-                            Text(subtitle)
+                        if let subtitleLine {
+                            Text(subtitleLine)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -108,12 +124,6 @@ struct MediaCardView: View {
                         if let vote = voteAverage, vote > 0 {
                             StarRatingLabel(vote: vote)
                         }
-                    }
-                    if !genres.isEmpty {
-                        Text(genres.prefix(3).joined(separator: ", "))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
                     }
                 } else if let subtitle = subtitle {
                     Text(subtitle)

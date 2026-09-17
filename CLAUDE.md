@@ -114,7 +114,8 @@ Up Next/
 │
 ├── UI/                                  # Shared/reusable UI components
 │   ├── DesignTokens.swift               # Radius/spacing/color tokens, cardSurface/cellSurface/chipSurface, Chip
-│   ├── MediaCardView.swift              # Media item card (poster, title, metadata, networks)
+│   ├── SectionHeader.swift              # Shared section header (title, optional icon, optional count chip, optional filter Menu) — watchlist sections, upcoming strip, collection "Watched" header
+│   ├── MediaCardView.swift              # Media item card (72×108 poster, title, subtitle folded with first genre, networks)
 │   ├── NetworkLogosView.swift           # Inline streaming provider logos with overflow badge
 │   ├── CachedAsyncImage.swift           # AsyncImage wrapper with NSCache (200 items, 100 MB); optional onLoad hands back the decoded UIImage
 │   ├── ImageColor.swift                 # UIImage.dominantColor() (CIAreaAverage, HSB-clamped for dark UI) + Color.mixed(with:amount:)
@@ -216,6 +217,7 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 
 - `.preferredColorScheme(.dark)` and `.fontDesign(.rounded)` are set once on the root in `Watch_ListApp.swift` — don't repeat them per view.
 - Glass (`.glassEffect`, `.buttonStyle(.glass/.glassProminent)`) is reserved for the floating control layer: toolbar/tab bar, the toast, the detail sheet's action row, and empty-state CTAs. Content (rows, cards, pills, badges, logos, fields) uses `cardSurface` / `cellSurface` / `chipSurface` / `Chip` from `DesignTokens.swift`. No glass on glass.
+- Metadata joiner is always `" \u{00B7} "` (middle dot with spaces) — never `•` or `" - "`. `Chip`'s text carries `.contentTransition(.numericText())` so count chips tick instead of blinking when their value changes inside an animated transaction.
 - Use `Color.accentColor` for tints (asset `AccentColor`), `DesignTokens.Radius.*` for corner radii, and `DesignTokens.Colors.backgroundBase` when blending into `AppBackground`.
 - Reorder in the watchlist is native `List` + `.onMove` driven by `editMode`.
 - **Per-title hero tint**: `MediaDetailView`'s `HeaderImageView` derives a dominant color from the backdrop (or poster, in the poster-only fallback) via `UIImage.dominantColor()` and blends it into its `bottomFade` and a top-anchored wash over the sheet's `AppBackground()`; everywhere else in the design system stays purple.

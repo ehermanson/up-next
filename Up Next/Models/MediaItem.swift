@@ -739,6 +739,6 @@ extension TVShow {
         guard let episodes = numberOfEpisodes else { return seasonsLabel }
 
         let episodesLabel = episodes == 1 ? "1 Episode" : "\(episodes) Episodes"
-        return "\(seasonsLabel) - \(episodesLabel)"
+        return "\(seasonsLabel) \u{00B7} \(episodesLabel)"
     }
 }

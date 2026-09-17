@@ -99,6 +99,7 @@ struct Chip: View {
                     .foregroundStyle(iconColor ?? (isEmphasized ? Color.primary : Color.secondary))
             }
             Text(text)
+                .contentTransition(.numericText())
         }
         .font(.caption)
         .fontWeight(.medium)

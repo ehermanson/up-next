@@ -135,6 +135,7 @@ struct CustomListDetailView: View {
                 Text(itemSummary)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
             }
 
             Spacer()
@@ -217,22 +218,8 @@ struct CustomListDetailView: View {
 
     // MARK: - Rows
 
-    /// Matches the watchlist's section header: bold title plus a count chip.
     private var watchedHeader: some View {
-        HStack(spacing: 8) {
-            Text("Watched")
-                .font(.title3)
-                .fontWeight(.bold)
-            Chip(text: "\(watchedItems.count)")
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(watchedItems.count) items")
-            Spacer()
-        }
-        .padding(.vertical, 4)
-        .textCase(nil)
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
+        SectionHeader(title: "Watched", count: watchedItems.count, showsFilter: false)
     }
 
     private func row(for item: CustomListItem) -> some View {
