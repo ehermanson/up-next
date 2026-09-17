@@ -7,9 +7,9 @@ Just a fun personal project to replace the running list of movies and TV shows m
 - **Manage your watchlist**: Track movies and TV shows you want to watch, mark them as watched, and leave notes
 - **Season tracking**: For TV shows, track which seasons you've watched
 - **Collections**: Create custom collections (Christmas movies, kid-friendly, guilty pleasures, etc.)
-- **Discover**: Browse trending titles, what's airing this week, and get personalized recommendations
+- **Discover**: Search, browse trending titles, see what's airing this week (with the exact episode and day), and get personalized recommendations
 - **Provider filtering**: See only titles available on your streaming services, by region
-- **Shared library**: Share your entire library with one partner (Apple Account) — changes sync across devices
+- **Shared library**: Share your entire library with one partner (Apple Account) — changes sync across devices. Settings is reachable from every tab; once a partner joins, the toolbar button becomes your two avatars, and each title's detail shows who added it and when
 - **Partner notifications**: "Sarah added Elf to Movies" as a notification when the app is closed, or a toast while it's open — only for the other person's edits, never your own devices
 - **Metadata**: Ratings, cast, descriptions, and where to watch pulled from The Movie Database (TMDB)
 
