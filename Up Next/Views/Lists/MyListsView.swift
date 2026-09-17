@@ -155,14 +155,16 @@ private struct MyListsRow: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 4) {
-                        Image(systemName: list.iconName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if !mosaicItems.isEmpty {
+                            Image(systemName: list.iconName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Text(list.name)
                             .font(.body)
                             .fontWeight(.medium)
                     }
-                    Text("\(list.items?.count ?? 0) item\((list.items?.count ?? 0) == 1 ? "" : "s")")
+                    Text("\(list.items?.count ?? 0) title\((list.items?.count ?? 0) == 1 ? "" : "s")")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
