@@ -41,6 +41,10 @@ private actor ImageDownloader {
 
 struct CachedAsyncImage<Content: View>: View {
     let url: URL?
+    /// Optional hook handed the decoded `UIImage` whenever one loads (cache hit or fresh
+    /// download) — lets a caller derive something from the pixels (e.g. a dominant-color tint)
+    /// without re-fetching. Existing call sites stay source-compatible since this defaults to nil.
+    var onLoad: ((UIImage) -> Void)? = nil
     @ViewBuilder let content: (AsyncImagePhase) -> Content
 
     @State private var phase: AsyncImagePhase = .empty
@@ -60,6 +64,7 @@ struct CachedAsyncImage<Content: View>: View {
 
         if let cached = ImageCache.shared.image(for: url) {
             phase = .success(Image(uiImage: cached))
+            onLoad?(cached)
             return
         }
 
@@ -73,6 +78,7 @@ struct CachedAsyncImage<Content: View>: View {
             }
             ImageCache.shared.store(uiImage, for: url)
             phase = .success(Image(uiImage: uiImage))
+            onLoad?(uiImage)
         } catch {
             phase = .failure(error)
         }

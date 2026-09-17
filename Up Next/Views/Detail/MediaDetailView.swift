@@ -43,6 +43,9 @@ struct MediaDetailView: View {
     /// Collections tab; named apart from the `collectionName` input above.
     @State private var tmdbCollectionName: String?
     @State private var collectionParts: [TMDBCollectionPart] = []
+    /// Dominant color of the header artwork, reported up by `HeaderImageView` so the sheet
+    /// background can wash the same tint over the top — see `HeaderImageView.onTintChange`.
+    @State private var heroTint: Color?
 
     private let service = TMDBService.shared
 
@@ -90,7 +93,8 @@ struct MediaDetailView: View {
                     HeaderImageView(
                         backdropPath: backdropPath,
                         posterURL: listItem.media?.thumbnailURL,
-                        title: listItem.media?.title ?? ""
+                        title: listItem.media?.title ?? "",
+                        onTintChange: { heroTint = $0 }
                     )
 
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.section) {
@@ -102,6 +106,7 @@ struct MediaDetailView: View {
                             networks: allNetworks,
                             providerCategories: listItem.media?.providerCategories ?? [:]
                         )
+                        AddedByCaption(listItem: listItem)
 
                         // Tracking controls live above the fold, right after the metadata — this
                         // is what the user opened the sheet to act on.
@@ -172,6 +177,24 @@ struct MediaDetailView: View {
             }
             .ignoresSafeArea(.container, edges: .top)
             .background(AppBackground())
+            .background {
+                // Per-title wash over the top of the sheet, echoing the header artwork's
+                // dominant color (Apple Music album-view style). The rest of the design system
+                // stays purple — this is scoped to this one sheet.
+                if let heroTint {
+                    GeometryReader { proxy in
+                        LinearGradient(
+                            colors: [heroTint.opacity(0.35), .clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: proxy.size.height * 0.45)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    }
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                }
+            }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
@@ -542,12 +565,18 @@ struct HeaderImageView: View {
     let backdropPath: String?
     let posterURL: URL?
     let title: String
+    /// Reports the artwork's dominant color upward whenever it's computed, so the presenting
+    /// sheet can wash the same tint over its own background. Nil until the first image loads.
+    var onTintChange: ((Color?) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Width of the view itself — only consulted at regular width, to scale the backdrop.
     @State private var availableWidth: CGFloat = 0
+    /// Dominant color of whichever image is showing (backdrop, or poster in the fallback
+    /// header) — drives `bottomFade` here and is mirrored to `onTintChange`.
+    @State private var tint: Color?
 
     private let compactBackdropHeight: CGFloat = 260
     /// Ceiling for the backdrop at regular width. Letting 16:9 run free in a 1000pt-wide page
@@ -638,7 +667,7 @@ struct HeaderImageView: View {
 
     @ViewBuilder
     private func parallaxImage(url: URL, height: CGFloat) -> some View {
-        CachedAsyncImage(url: url) { phase in
+        CachedAsyncImage(url: url, onLoad: applyTint) { phase in
             switch phase {
             case .empty:
                 ProgressView()
@@ -712,14 +741,37 @@ struct HeaderImageView: View {
             }
     }
 
-    /// Fades the artwork into the app background so the header has no hard edge.
+    /// Runs off the main actor (dominant-color extraction renders through a `CIContext`), then
+    /// applies the result to `tint` and reports it to the presenting sheet. Animated unless
+    /// Reduce Motion is on — the tint value itself is unaffected, only how it arrives.
+    private func applyTint(from image: UIImage) {
+        let animated = !reduceMotion
+        Task.detached(priority: .utility) {
+            let color = image.dominantColor()
+            await MainActor.run {
+                if animated {
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        tint = color
+                    }
+                } else {
+                    tint = color
+                }
+                onTintChange?(color)
+            }
+        }
+    }
+
+    /// Fades the artwork into the app background so the header has no hard edge. The middle
+    /// stops blend toward the artwork's dominant color when known; the final stop is always the
+    /// exact sheet background so the fade never shows a seam against it.
     private func bottomFade(height: CGFloat) -> some View {
         let base = DesignTokens.Colors.backgroundBase
+        let mid = tint.map { base.mixed(with: $0, amount: 0.6) } ?? base
         return LinearGradient(
             stops: [
                 .init(color: base.opacity(0), location: 0.0),
-                .init(color: base.opacity(0.45), location: 0.4),
-                .init(color: base.opacity(0.88), location: 0.75),
+                .init(color: mid.opacity(0.45), location: 0.4),
+                .init(color: mid.opacity(0.88), location: 0.75),
                 .init(color: base, location: 1.0),
             ],
             startPoint: .top,
