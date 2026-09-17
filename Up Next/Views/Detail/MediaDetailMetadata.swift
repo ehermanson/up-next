@@ -141,7 +141,7 @@ struct MetadataRow: View {
     var body: some View {
         FlowLayout(spacing: 8) {
             if let rating = contentRating, !rating.isEmpty {
-                Chip(text: rating, isEmphasized: true)
+                Chip(text: rating)
             }
             if let tvShow = listItem.tvShow {
                 if let summary = tvShow.seasonsEpisodesSummary {

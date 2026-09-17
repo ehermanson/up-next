@@ -93,7 +93,7 @@ struct MediaDetailView: View {
                         title: listItem.media?.title ?? ""
                     )
 
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.section) {
                         MetadataRow(listItem: listItem)
 
                         GenreSection(genres: listItem.media?.genres ?? [])
@@ -103,53 +103,40 @@ struct MediaDetailView: View {
                             providerCategories: listItem.media?.providerCategories ?? [:]
                         )
 
-                        Divider().padding(.vertical, 4)
-
-                        DescriptionSection(
-                            isLoading: isLoadingDetails,
-                            descriptionText: listItem.media?.descriptionText,
-                            errorMessage: detailError)
-
-                        Divider().padding(.vertical, 4)
-
-                        CastSection(
-                            cast: listItem.media?.cast ?? [],
-                            castImagePaths: listItem.media?.castImagePaths ?? [],
-                            castCharacters: listItem.media?.castCharacters ?? []
-                        )
-
+                        // Tracking controls live above the fold, right after the metadata — this
+                        // is what the user opened the sheet to act on.
                         if let collectionWatched {
-                            Divider().padding(.vertical, 4)
-
                             CollectionWatchedCard(
                                 collectionName: collectionName,
                                 isWatched: collectionWatched
                             )
                         } else if onAdd == nil {
                             if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
-                                Divider().padding(.vertical, 4)
                                 SeasonChecklistCard(listItem: listItem)
-
-                                Divider().padding(.vertical, 4)
                                 DoneWatchingCard(listItem: listItem)
                             }
 
                             let hasSeasonChecklist = listItem.tvShow != nil && (listItem.tvShow?.numberOfSeasons ?? 0) > 1
                             if !listItem.isDropped && !hasSeasonChecklist {
-                                Divider().padding(.vertical, 4)
-
                                 WatchedToggleCard(listItem: listItem)
                             }
 
                             if listItem.isWatched {
-                                Divider().padding(.vertical, 4)
-
                                 UserRatingCard(listItem: listItem)
                                     .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                         }
 
-                        Divider().padding(.vertical, 4)
+                        DescriptionSection(
+                            isLoading: isLoadingDetails,
+                            descriptionText: listItem.media?.descriptionText,
+                            errorMessage: detailError)
+
+                        CastSection(
+                            cast: listItem.media?.cast ?? [],
+                            castImagePaths: listItem.media?.castImagePaths ?? [],
+                            castCharacters: listItem.media?.castCharacters ?? []
+                        )
 
                         actionButtonRow
 
@@ -169,6 +156,10 @@ struct MediaDetailView: View {
                             onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
                             onTap: { openSimilarDetail($0) }
                         )
+
+                        if let tmdbURL {
+                            tmdbFooterLink(url: tmdbURL)
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -273,19 +264,33 @@ struct MediaDetailView: View {
                 }
 
                 if let tmdbURL {
-                    Button { showingTMDBPage = true } label: {
-                        Label("TMDB", systemImage: "film")
+                    ShareLink(item: tmdbURL, preview: SharePreview(listItem.media?.title ?? "Up Next")) {
+                        Label("Share", systemImage: "square.and.arrow.up")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glass)
-                    .sheet(isPresented: $showingTMDBPage) {
-                        SafariView(url: tmdbURL)
-                            .ignoresSafeArea()
-                    }
                 }
             }
             .labelStyle(StackedLabelStyle())
             .controlSize(.large)
+        }
+    }
+
+    /// Small caption-style link at the very bottom of the content column — the TMDB page is a
+    /// reference, not an action, so it doesn't belong in the glass control row.
+    private func tmdbFooterLink(url: URL) -> some View {
+        Button {
+            showingTMDBPage = true
+        } label: {
+            Text("View on TMDB")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .sheet(isPresented: $showingTMDBPage) {
+            SafariView(url: url)
+                .ignoresSafeArea()
         }
     }
 
@@ -732,8 +737,6 @@ struct DescriptionSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Description")
-                .font(.headline)
             if isLoading {
                 HStack {
                     ProgressView()
@@ -751,15 +754,71 @@ struct DescriptionSection: View {
                         .foregroundStyle(.secondary)
                 }
             } else if let descriptionText, !descriptionText.isEmpty {
-                Text(descriptionText)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                ClampedDescriptionText(text: descriptionText)
             } else {
                 Text("No description available.")
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+/// Overview text clamped to 4 lines with a "more"/"less" toggle, shown only when the text
+/// actually overflows. Measures by laying out the full text off-screen (`.hidden()`, `.fixedSize`
+/// so it reports its natural height) alongside the clamped copy and comparing heights — no line
+/// count is ever exposed by `Text` itself.
+private struct ClampedDescriptionText: View {
+    let text: String
+
+    @State private var isExpanded = false
+    @State private var isTruncated = false
+    @State private var fullHeight: CGFloat = 0
+    @State private var clampedHeight: CGFloat = 0
+
+    private let lineLimit = 4
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(text)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .lineLimit(isExpanded ? nil : lineLimit)
+                .background {
+                    ZStack(alignment: .topLeading) {
+                        // Full, unclamped copy — invisible, used only to measure natural height.
+                        Text(text)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .hidden()
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+
+                        // Clamped copy at the same width, measured the same way so the two
+                        // heights are directly comparable regardless of `isExpanded`.
+                        Text(text)
+                            .font(.body)
+                            .lineLimit(lineLimit)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .hidden()
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { clampedHeight = $0 }
+                    }
+                }
+                .onChange(of: fullHeight) { _, _ in updateTruncation() }
+                .onChange(of: clampedHeight) { _, _ in updateTruncation() }
+
+            if isTruncated {
+                Button(isExpanded ? "less" : "more") {
+                    isExpanded.toggle()
+                }
+                .buttonStyle(.plain)
+                .font(.subheadline)
+                .foregroundStyle(Color.accentColor)
+            }
+        }
+    }
+
+    private func updateTruncation() {
+        isTruncated = fullHeight > clampedHeight + 1
     }
 }
 
