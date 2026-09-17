@@ -436,6 +436,51 @@ final class PersistenceController {
         return share
     }
 
+    /// A share link that was opened but not yet accepted. Joining replaces this device's own
+    /// library, so `ContentView` asks first and then calls `acceptPendingShareInvitation()`.
+    private(set) var pendingShareInvitation: CKShare.Metadata?
+
+    /// Entry point for share links (both the running-app and cold-launch paths). Owners are asked
+    /// before their library is replaced; a device that's already a participant has nothing to
+    /// lose (re-tapping the same link), so it accepts straight away.
+    func receiveShareInvitation(_ metadata: CKShare.Metadata) {
+        guard role == .owner else {
+            Task { @MainActor in
+                do {
+                    try await acceptShare(metadata: metadata)
+                } catch {
+                    print("⚠️ PersistenceController: failed to accept CloudKit share: \(error)")
+                }
+            }
+            return
+        }
+        pendingShareInvitation = metadata
+    }
+
+    func acceptPendingShareInvitation() async throws {
+        guard let metadata = pendingShareInvitation else { return }
+        pendingShareInvitation = nil
+        try await acceptShare(metadata: metadata)
+    }
+
+    func declinePendingShareInvitation() {
+        pendingShareInvitation = nil
+    }
+
+    /// What this device's own library holds — shown in the join confirmation so the user knows
+    /// exactly what accepting replaces.
+    func ownedLibraryCounts() -> (titles: Int, collections: Int) {
+        let items = NSFetchRequest<ListItem>(entityName: "ListItem")
+        items.predicate = NSPredicate(format: "list != nil")
+        items.affectedStores = [privateStore]
+        let lists = NSFetchRequest<CustomList>(entityName: "CustomList")
+        lists.affectedStores = [privateStore]
+        return (
+            (try? viewContext.count(for: items)) ?? 0,
+            (try? viewContext.count(for: lists)) ?? 0
+        )
+    }
+
     /// Accepts an incoming share invitation, discards this device's private data and switches
     /// role to participant. The shared zone is imported asynchronously afterwards, so `group`
     /// stays nil (and `isJoiningSharedLibrary` true) until `RemoteChangeObserver` sees it land.

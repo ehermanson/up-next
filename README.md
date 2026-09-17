@@ -60,9 +60,10 @@ Then select the Up Next scheme and run on an iOS 26.1+ simulator or device.
 ### As a partner (accepting the share)
 
 1. Tap the share link from Messages, Mail, etc.
-2. The app opens and syncs your partner's library
-3. You can add, edit, and remove titles just like the owner
-4. Changes sync within seconds to minutes
+2. The app opens and asks you to confirm — joining replaces anything already in your own library on that device (it tells you exactly how many titles and collections)
+3. Once you tap Join, your partner's library syncs down
+4. You can add, edit, and remove titles just like the owner
+5. Changes sync within seconds to minutes
 
 ### Leaving or stopping
 

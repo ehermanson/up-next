@@ -1,3 +1,4 @@
+import CloudKit
 import SwiftUI
 
 struct ContentView: View {
@@ -96,6 +97,73 @@ struct ContentView: View {
             viewModel.reloadFromStore()
             customListViewModel.reloadFromStore()
         }
+        // A tapped share link waits here: joining replaces this device's own library, so say so
+        // before doing it. Dismissing any other way (swipe, Cancel) declines.
+        .alert(
+            joinInvitationTitle,
+            isPresented: Binding(
+                get: { persistence.pendingShareInvitation != nil },
+                set: { if !$0 { persistence.declinePendingShareInvitation() } }
+            )
+        ) {
+            Button("Join", role: .destructive) {
+                Task {
+                    do {
+                        try await persistence.acceptPendingShareInvitation()
+                    } catch {
+                        joinErrorMessage = error.localizedDescription
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                persistence.declinePendingShareInvitation()
+            }
+        } message: {
+            Text(joinInvitationMessage)
+        }
+        .alert(
+            "Couldn't Join Shared Library",
+            isPresented: Binding(
+                get: { joinErrorMessage != nil },
+                set: { if !$0 { joinErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(joinErrorMessage ?? "")
+        }
+    }
+
+    // MARK: - Join confirmation
+
+    @State private var joinErrorMessage: String?
+
+    private var invitationOwnerName: String? {
+        guard let components = persistence.pendingShareInvitation?.ownerIdentity.nameComponents else { return nil }
+        let name = PersonNameComponentsFormatter().string(from: components)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
+
+    private var joinInvitationTitle: String {
+        if let name = invitationOwnerName {
+            return "Join \(name)'s library?"
+        }
+        return "Join this shared library?"
+    }
+
+    private var joinInvitationMessage: String {
+        let counts = persistence.ownedLibraryCounts()
+        let shared = "You'll both see and edit the same watchlist and collections."
+        guard counts.titles > 0 || counts.collections > 0 else { return shared }
+        var parts: [String] = []
+        if counts.titles > 0 {
+            parts.append("\(counts.titles) \(counts.titles == 1 ? "title" : "titles")")
+        }
+        if counts.collections > 0 {
+            parts.append("\(counts.collections) \(counts.collections == 1 ? "collection" : "collections")")
+        }
+        return "Your own \(parts.joined(separator: " and ")) on this device will be removed and replaced by the shared library. \(shared)"
     }
 
     private var joiningPlaceholder: some View {
