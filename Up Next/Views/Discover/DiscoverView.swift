@@ -8,6 +8,7 @@ struct DiscoverView: View {
 
     @Environment(ToastState.self) private var toast
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = DiscoverViewModel()
     /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
@@ -19,20 +20,27 @@ struct DiscoverView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    mediaTypePicker
-                    providerFilterRow
-                    carouselSections
-                    browseAllSection
+            Group {
+                if viewModel.isSearchActive {
+                    searchResultsView
+                } else {
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            mediaTypePicker
+                            providerFilterRow
+                            carouselSections
+                            browseAllSection
+                        }
+                        .padding(.bottom, 20)
+                    }
+                    .refreshable {
+                        await viewModel.refresh()
+                    }
                 }
-                .padding(.bottom, 20)
-            }
-            .refreshable {
-                await viewModel.refresh()
             }
             .background(AppBackground())
             .navigationTitle("Discover")
+            .searchable(text: $viewModel.searchQuery, prompt: "Search movies & TV shows")
         }
         .task {
             await viewModel.initialLoad()
@@ -47,6 +55,9 @@ struct DiscoverView: View {
             // `watch_region` / `region` are baked into every URL, so the cache keys already
             // differ — reissuing under the new region is enough, no invalidation needed.
             viewModel.providerFilterChanged()
+        }
+        .onDisappear {
+            viewModel.cancelSearch()
         }
         .sheet(isPresented: $showingProviderSettings) {
             ProviderSettingsView()
@@ -92,27 +103,33 @@ struct DiscoverView: View {
 
     // MARK: - Provider Filter Row
 
+    /// Compact chip directly under the media-type picker — a full-width toggle card was too
+    /// heavy for what's a single on/off filter.
     private var providerFilterRow: some View {
-        Group {
+        HStack {
             if settings.hasSelectedProviders {
-                Toggle(isOn: Bindable(settings).onlyMyServicesInDiscover) {
-                    Label("On my services", systemImage: "checkmark.seal")
+                Button {
+                    settings.onlyMyServicesInDiscover.toggle()
+                } label: {
+                    Chip(
+                        icon: settings.onlyMyServicesInDiscover ? "checkmark.seal.fill" : "checkmark.seal",
+                        text: "On my services",
+                        isEmphasized: settings.onlyMyServicesInDiscover
+                    )
                 }
-                .tint(Color.accentColor)
+                .buttonStyle(.plain)
             } else {
                 Button {
                     showingProviderSettings = true
                 } label: {
-                    Label("Choose your streaming services", systemImage: "play.tv")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Chip(icon: "play.tv", text: "Choose your services")
                 }
                 .buttonStyle(.plain)
             }
+            Spacer()
         }
-        .padding(12)
-        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
         .padding(.horizontal, 16)
-        .frame(maxWidth: horizontalSizeClass == .regular ? 640 : .infinity)
+        .frame(maxWidth: horizontalSizeClass == .regular ? 480 : .infinity)
     }
 
     /// True when Discover results are currently narrowed to the user's selected services.
@@ -141,7 +158,7 @@ struct DiscoverView: View {
                 .padding(.vertical, 40)
             } else {
                 carouselRow("Trending", items: viewModel.trendingItems)
-                carouselRow("Airing This Week", items: viewModel.airingThisWeekItems)
+                carouselRow("Airing This Week", items: viewModel.airingThisWeekItems, showsAirDate: true)
                 carouselRow("In Theaters", items: viewModel.inTheatersItems)
                 carouselRow("Top Rated", items: viewModel.topRatedItems)
                 carouselRow("New Releases", items: viewModel.newReleasesItems)
@@ -152,14 +169,16 @@ struct DiscoverView: View {
     /// Renders nothing when the carousel has no items — "Airing This Week" and "In Theaters"
     /// only apply to one media type each.
     @ViewBuilder
-    private func carouselRow(_ title: String, items: [DiscoverViewModel.DiscoverItem]) -> some View {
+    private func carouselRow(
+        _ title: String, items: [DiscoverViewModel.DiscoverItem], showsAirDate: Bool = false
+    ) -> some View {
         if !items.isEmpty {
-            carouselRowContent(title, items: items)
+            carouselRowContent(title, items: items, showsAirDate: showsAirDate)
         }
     }
 
     private func carouselRowContent(
-        _ title: String, items: [DiscoverViewModel.DiscoverItem]
+        _ title: String, items: [DiscoverViewModel.DiscoverItem], showsAirDate: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -170,7 +189,7 @@ struct DiscoverView: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 12) {
                     ForEach(items) { item in
-                        carouselCard(item)
+                        carouselCard(item, showsAirDate: showsAirDate)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -184,7 +203,7 @@ struct DiscoverView: View {
         horizontalSizeClass == .regular ? CGSize(width: 170, height: 255) : CGSize(width: 140, height: 210)
     }
 
-    private func carouselCard(_ item: DiscoverViewModel.DiscoverItem) -> some View {
+    private func carouselCard(_ item: DiscoverViewModel.DiscoverItem, showsAirDate: Bool = false) -> some View {
         let added = isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType)
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -221,6 +240,14 @@ struct DiscoverView: View {
                 .shadow(color: .black.opacity(0.5), radius: 4)
                 .padding(6)
                 .buttonStyle(.plain)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: reduceMotion ? false : added)
+            }
+            .overlay(alignment: .bottomLeading) {
+                if showsAirDate, let label = airDateLabel(for: item) {
+                    Chip(icon: "calendar", text: label)
+                        .padding(6)
+                }
             }
 
             Button { openDetail(for: item) } label: {
@@ -242,6 +269,17 @@ struct DiscoverView: View {
         Rectangle()
             .fill(.fill.tertiary)
             .frame(width: posterCardSize.width, height: posterCardSize.height)
+    }
+
+    /// Relative air-day label for the "Airing This Week" chip, or `nil` when no usable date
+    /// exists. TMDB's `/discover/tv` and `/search/tv` payloads (`TMDBTVShowSearchResult`) only
+    /// carry `firstAirDate` — the show's original premiere — not the specific upcoming episode
+    /// date that actually placed it in this carousel's air-date window. Showing the premiere
+    /// date instead would misrepresent when the show airs next, so the chip is skipped rather
+    /// than rendering the wrong day; it would need `next_episode_to_air` (only present on the
+    /// TV show detail endpoint) to be shown correctly.
+    private func airDateLabel(for item: DiscoverViewModel.DiscoverItem) -> String? {
+        nil
     }
 
     private var carouselShimmer: some View {
@@ -392,6 +430,69 @@ struct DiscoverView: View {
             voteAverage: item.voteAverage,
             year: item.year
         )
+    }
+
+    // MARK: - Search Results
+
+    /// Shown in place of the carousels + Browse All while `viewModel.searchQuery` is non-empty.
+    /// Reuses `SearchResultRowWithImage`/`ShimmerRows` from `SearchComponents.swift` and the same
+    /// `openDetail`/`addItem`/`isAlreadyAdded` plumbing the carousels and Browse All already use,
+    /// rather than duplicating the recommendation/search engine from `WatchlistSearchView`.
+    private var searchResultsView: some View {
+        VStack(spacing: 0) {
+            mediaTypePicker
+                .padding(.vertical, 8)
+
+            List {
+                searchResultRows
+            }
+            .scrollContentBackground(.hidden)
+            .listStyle(.plain)
+        }
+    }
+
+    /// Wraps a non-row state view so it behaves like a normal `List` row: no separator/background,
+    /// centered, with breathing room. Mirrors `WatchlistSearchView.emptyStateRow`.
+    private func searchEmptyStateRow(id: String, @ViewBuilder content: () -> some View) -> some View {
+        content()
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 60)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+            .id(id)
+    }
+
+    @ViewBuilder
+    private var searchResultRows: some View {
+        if viewModel.isSearching && !viewModel.hasSearchResults {
+            // Only shimmer on a cold search — otherwise keystrokes would blank the previous
+            // results while the debounced request is still in flight.
+            ShimmerRows()
+        } else if let error = viewModel.searchError {
+            searchEmptyStateRow(id: "searchError") {
+                EmptyStateView(icon: "exclamationmark.triangle", title: error)
+            }
+        } else if viewModel.hasSearchResults {
+            ForEach(viewModel.searchResultItems) { item in
+                browseRow(item)
+            }
+        } else {
+            searchEmptyStateRow(id: "searchNoResults") {
+                EmptyStateView(
+                    icon: "magnifyingglass.circle",
+                    title: "No Results Found",
+                    subtitle: viewModel.crossTypeSearchResultCount > 0 ? nil : "Try adjusting your search"
+                ) {
+                    if viewModel.crossTypeSearchResultCount > 0 {
+                        Button(viewModel.searchCrossTypeHintTitle) {
+                            viewModel.showOtherSearchMediaType()
+                        }
+                        .buttonStyle(.glass)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Detail Sheet

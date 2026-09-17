@@ -75,7 +75,7 @@ Up Next/
 │
 ├── ViewModels/
 │   ├── MediaLibraryViewModel.swift      # Main watchlist state, add/remove, refresh, reorder, reloadFromStore
-│   ├── DiscoverViewModel.swift          # Carousels (trending, airing this week / in theaters, top rated, new), browse, provider filter, error state
+│   ├── DiscoverViewModel.swift          # Carousels (trending, airing this week / in theaters, top rated, new), browse, provider filter, error state, in-tab search (query, results, isSearching, error)
 │   └── CustomListViewModel.swift        # Custom list CRUD, per-collection watched state, undo-able removal
 │
 ├── Views/
@@ -94,7 +94,7 @@ Up Next/
 │   │   ├── RecommendationEngine.swift   # Weighted seeds, genre affinity, discover pool + unified scoring; collection-mode thematic scoring; GenreCatalog
 │   │   └── SearchComponents.swift       # MediaType, ShimmerRow/ShimmerRows (List-row placeholders), ShimmerLoadingView, result row
 │   ├── Discover/
-│   │   └── DiscoverView.swift           # Browse/discover tab with carousels and filters
+│   │   └── DiscoverView.swift           # Browse/discover tab with carousels, filters, and in-tab search
 │   ├── Lists/
 │   │   ├── MyListsView.swift            # Custom lists overview; rows show a poster mosaic (PosterMosaicView) of the first 4 items
 │   │   ├── CustomListDetailView.swift   # Icon/name/count header, Unwatched/Watched sections, per-collection watched toggle + detail sheet wrapper
@@ -178,7 +178,7 @@ All attributes optional or defaulted; all relationships optional with inverses (
 ### "On My Services" (ProviderSettings)
 
 `ProviderSettings` (UserDefaults-backed, `@Observable` singleton) drives three things:
-- **Discover**: `onlyMyServicesInDiscover` (key `discover.onlyMyServices`, default on) sends `with_watch_providers` + `watch_region` on every carousel/browse request via `DiscoverViewModel.providerFilter`. The toggle row under the media-type picker becomes a "Choose your streaming services" button when nothing is selected.
+- **Discover**: `onlyMyServicesInDiscover` (key `discover.onlyMyServices`, default on) sends `with_watch_providers` + `watch_region` on every carousel/browse request via `DiscoverViewModel.providerFilter`. A compact `Chip` directly under the media-type picker ("On my services", `checkmark.seal`/`checkmark.seal.fill`, emphasized when on) toggles it; it becomes a "Choose your services" chip (`play.tv`) that opens `ProviderSettingsView` when nothing is selected.
 - **Watchlist filter**: per-tab `@AppStorage` flags `tvShows.onlyMyServices` / `movies.onlyMyServices`, applied by `filterItems(...)` in `MediaListHelpers.swift` (`isOnSelectedServices` = any network with category `stream`/`ads` whose id is selected). Auto-cleared if the user deselects all providers.
 - **First launch**: `ContentView` presents `ProviderSettingsView` once when no providers are selected and `hasCompletedProviderOnboarding` is false; the flag is set on presentation so it never re-prompts. The DEBUG "Reset Providers & Onboarding" button clears it (and the region override).
 - **Region override**: the "Region" row in `ProviderSettingsView` pushes `RegionPickerView`, a searchable list of `/watch/providers/regions` (Automatic stays selectable if the fetch fails). Never a menu-style `Picker` — ~100 entries, and its label wrapped over the subtitle. "Automatic" = `nil`; picking the device's own region still stores it. Changing it reloads the provider grid, re-issues Discover (`DiscoverView` observes `regionOverride`; the carousel guard and `BrowseRequest` carry the region so a superseded region can't land), and `ContentView` kicks `MediaLibraryViewModel.refreshNow()` so stored networks re-resolve. Selections are never pruned — an off-region provider id just matches nothing.
@@ -192,6 +192,7 @@ All attributes optional or defaulted; all relationships optional with inverses (
 - `initialLoad()` / `refresh()` run the reload on a view-model-owned task (`runOwnedReload`) and await its value. The loaders bail on cancellation and leave `isCarouselLoading` / `isBrowseLoading` for the replacement load to clear, so a load must never run directly on a SwiftUI-owned task (`.task`, `.refreshable`) — SwiftUI cancels those with no replacement and the shimmer never ends.
 - Search runs `/search/tv` and `/search/movie` concurrently; when the selected segment has no results but the other does, the empty state offers "Show N movies instead". Rows show the release/premiere year.
 - The search sheet keeps exactly one `List` mounted under `.searchable` — shimmer (`ShimmerRows`), error, empty-prompt, no-results and no-collection states are all rows in it (`emptyStateRow`). Swapping the scroll container under the search bar made it jump and drop focus.
+- **Discover's own search** (`.searchable` on the Discover `NavigationStack`, ~300ms debounced): reuses `SearchResultRowWithImage`/`ShimmerRows` from `SearchComponents.swift` and the same `openDetail`/`addItem`/`isAlreadyAdded` plumbing the carousels already use — no separate recommendation engine. While `DiscoverViewModel.searchQuery` is non-empty, the carousels and Browse All are replaced by a `List` of results for the selected media-type segment (both types are always searched, so flipping the segment is instant and the "Show N movies instead" hint stays accurate); flipping the segment while searching skips the carousel/browse reload since nothing needs refetching.
 
 ### Recommendations (`RecommendationEngine`)
 

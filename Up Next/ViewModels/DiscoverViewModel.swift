@@ -125,6 +125,9 @@ final class DiscoverViewModel {
     var selectedMediaType: DiscoverMediaType = .tvShows {
         didSet {
             guard oldValue != selectedMediaType else { return }
+            // While searching, both types are already fetched — flipping the segment just
+            // changes which results are displayed, no refetch needed.
+            guard !isSearchActive else { return }
             reloadTask?.cancel()
             reloadTask = Task { await reload() }
         }
@@ -490,5 +493,126 @@ final class DiscoverViewModel {
         if error is CancellationError { return nil }
         if let urlError = error as? URLError, urlError.code == .cancelled { return nil }
         return error.localizedDescription
+    }
+
+    // MARK: - Search
+
+    /// One search type's outcome. Failures are kept per-type so a movie outage can't blank the
+    /// TV results the user is actually looking at (mirrors `WatchlistSearchView`).
+    private struct SearchOutcome<Element> {
+        var results: [Element] = []
+        var error: String?
+    }
+
+    private var searchTask: Task<Void, Never>?
+
+    var searchQuery: String = "" {
+        didSet {
+            guard oldValue != searchQuery else { return }
+            scheduleSearch(for: searchQuery)
+        }
+    }
+
+    var searchTVResults: [TMDBTVShowSearchResult] = []
+    var searchMovieResults: [TMDBMovieSearchResult] = []
+    var isSearching = false
+    /// Set when the type currently on screen failed to load. A failed type keeps its previous
+    /// results rather than blanking, mirroring `WatchlistSearchView`.
+    var searchError: String?
+
+    /// True once the user has typed something — the view swaps carousels/Browse All for results.
+    var isSearchActive: Bool {
+        !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var hasSearchResults: Bool {
+        selectedMediaType == .tvShows ? !searchTVResults.isEmpty : !searchMovieResults.isEmpty
+    }
+
+    /// The current search results as `DiscoverItem`s for the selected media type, so the view can
+    /// reuse the same row builder as Browse All.
+    var searchResultItems: [DiscoverItem] {
+        selectedMediaType == .tvShows
+            ? searchTVResults.map { .tvShow($0) }
+            : searchMovieResults.map { .movie($0) }
+    }
+
+    /// How many results the *unselected* type has, for the "Show N movies instead" hint.
+    var crossTypeSearchResultCount: Int {
+        selectedMediaType == .tvShows ? searchMovieResults.count : searchTVResults.count
+    }
+
+    var searchCrossTypeHintTitle: String {
+        let count = crossTypeSearchResultCount
+        if selectedMediaType == .tvShows {
+            return "Show \(count) movie\(count == 1 ? "" : "s") instead"
+        }
+        return "Show \(count) TV show\(count == 1 ? "" : "s") instead"
+    }
+
+    /// Flips to the other media type — used by the "Show N movies instead" hint.
+    func showOtherSearchMediaType() {
+        selectedMediaType = selectedMediaType == .tvShows ? .movies : .tvShows
+    }
+
+    func cancelSearch() {
+        searchTask?.cancel()
+    }
+
+    /// Debounces ~300ms and cancels the previous search, mirroring `WatchlistSearchView`.
+    private func scheduleSearch(for query: String) {
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            searchTask = nil
+            isSearching = false
+            searchError = nil
+            searchTVResults = []
+            searchMovieResults = []
+            return
+        }
+
+        isSearching = true
+        searchError = nil
+
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            await performSearch(query: trimmed)
+        }
+    }
+
+    /// Both types are searched every time so the cross-type hint is accurate and flipping the
+    /// segment is instant — the second request is served from the response cache.
+    private func performSearch(query: String) async {
+        async let tvFetch = fetchTVSearch(query: query)
+        async let movieFetch = fetchMovieSearch(query: query)
+        let (tv, movie) = await (tvFetch, movieFetch)
+
+        // The shared request task isn't cancelled by us, so check explicitly — a superseded
+        // keystroke's response must not overwrite the current one.
+        guard !Task.isCancelled else { return }
+
+        if tv.error == nil { searchTVResults = tv.results }
+        if movie.error == nil { searchMovieResults = movie.results }
+        // Only the type on screen gets to raise the error banner.
+        searchError = selectedMediaType == .tvShows ? tv.error : movie.error
+        isSearching = false
+    }
+
+    private func fetchTVSearch(query: String) async -> SearchOutcome<TMDBTVShowSearchResult> {
+        do {
+            return SearchOutcome(results: try await service.searchTVShows(query: query))
+        } catch {
+            return SearchOutcome(error: Self.errorText(error))
+        }
+    }
+
+    private func fetchMovieSearch(query: String) async -> SearchOutcome<TMDBMovieSearchResult> {
+        do {
+            return SearchOutcome(results: try await service.searchMovies(query: query))
+        } catch {
+            return SearchOutcome(error: Self.errorText(error))
+        }
     }
 }
