@@ -138,6 +138,7 @@ struct CustomListDetailView: View {
                     .fontWeight(.bold)
                 Text(itemSummary)
                     .font(.subheadline)
+                    .fontDesign(.rounded)
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
             }

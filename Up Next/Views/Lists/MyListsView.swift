@@ -171,6 +171,7 @@ private struct MyListsRow: View {
                     }
                     Text("\(list.items?.count ?? 0) title\((list.items?.count ?? 0) == 1 ? "" : "s")")
                         .font(.caption)
+                        .fontDesign(.rounded)
                         .foregroundStyle(.secondary)
                 }
 

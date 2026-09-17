@@ -217,7 +217,7 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 
 ### Design System (iOS 26 Liquid Glass)
 
-- `.preferredColorScheme(.dark)` and `.fontDesign(.rounded)` are set once on the root in `Watch_ListApp.swift` — don't repeat them per view.
+- `.preferredColorScheme(.dark)` is set once on the root in `Watch_ListApp.swift` — don't repeat it per view. Font design is the system default app-wide (titles, body, cards, section headers); `.fontDesign(.rounded)` is opted into per-component only for chips, badges, counts and small metadata captions — `Chip` (`DesignTokens.swift`), `StarRatingLabel` and the toast text (`SharedViews.swift`), the network overflow "+N" badge (`NetworkLogosView.swift`), `SettingsToolbarButton`'s initials, the collection count captions in `MyListsView.swift`/`CustomListDetailView.swift`, and `UpcomingCard`'s detail caption in `MediaListView.swift`.
 - Glass (`.glassEffect`, `.buttonStyle(.glass/.glassProminent)`) is reserved for the floating control layer: toolbar/tab bar, the toast, the detail sheet's action row, and empty-state CTAs. Content (rows, cards, pills, badges, logos, fields) uses `cardSurface` / `cellSurface` / `chipSurface` / `Chip` from `DesignTokens.swift`. No glass on glass.
 - Metadata joiner is always `" \u{00B7} "` (middle dot with spaces) — never `•` or `" - "`. `Chip`'s text carries `.contentTransition(.numericText())` so count chips tick instead of blinking when their value changes inside an animated transaction.
 - Use `Color.accentColor` for tints (asset `AccentColor`), `DesignTokens.Radius.*` for corner radii, and `DesignTokens.Colors.backgroundBase` when blending into `AppBackground`.

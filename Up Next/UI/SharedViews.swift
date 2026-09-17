@@ -99,6 +99,7 @@ struct StarRatingLabel: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+        .fontDesign(.rounded)
     }
 }
 
@@ -282,6 +283,7 @@ struct ToastOverlayModifier: ViewModifier {
                         Text(item.message)
                             .font(.callout)
                             .fontWeight(.semibold)
+                            .fontDesign(.rounded)
                         if let actionLabel = item.actionLabel {
                             Button(actionLabel) {
                                 toast.performAction()

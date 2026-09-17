@@ -476,6 +476,7 @@ private struct UpcomingCard: View {
             if let detail {
                 Text(detail)
                     .font(.caption2)
+                    .fontDesign(.rounded)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

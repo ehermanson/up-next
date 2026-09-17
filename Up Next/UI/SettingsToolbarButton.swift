@@ -71,6 +71,7 @@ struct SettingsToolbarButton: View {
             if let initials = initials(for: participant) {
                 Text(initials)
                     .font(.caption2.weight(.bold))
+                    .fontDesign(.rounded)
                     .foregroundStyle(.primary)
             } else {
                 Image(systemName: "person.fill")

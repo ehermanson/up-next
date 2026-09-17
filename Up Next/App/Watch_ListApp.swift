@@ -31,7 +31,8 @@ struct Watch_ListApp: App {
                 .environment(toastState)
                 .environment(\.managedObjectContext, PersistenceController.shared.viewContext)
                 .preferredColorScheme(.dark)
-                .fontDesign(.rounded)
+                // Default font design app-wide; .fontDesign(.rounded) is opted into
+                // per-component for chips, badges, counts and small metadata captions.
         }
     }
 }

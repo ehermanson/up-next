@@ -56,6 +56,7 @@ struct NetworkLogosView: View {
                     Text("+\(overflow)")
                         .font(.caption)
                         .fontWeight(.medium)
+                        .fontDesign(.rounded)
                         .foregroundStyle(.secondary)
                         .frame(width: logoSize, height: logoSize)
                         .cellSurface(cornerRadius: logoSize * 0.22)

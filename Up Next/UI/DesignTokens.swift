@@ -103,6 +103,7 @@ struct Chip: View {
         }
         .font(.caption)
         .fontWeight(.medium)
+        .fontDesign(.rounded)
         .foregroundStyle(isEmphasized ? .primary : .secondary)
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
