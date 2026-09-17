@@ -16,6 +16,10 @@ struct ContentView: View {
 
     @State private var selectedTab: MediaTab = ContentView.initialTab
     @State private var showingSettings = false
+    /// First-launch provider onboarding presents `ProviderSettingsView` directly (its own
+    /// `NavigationStack` + Done) rather than the full `SettingsView` — a single, focused choice
+    /// before the library loads, not a tour of every settings row.
+    @State private var showingOnboarding = false
     @State private var showingSearch = false
 
     #if DEBUG
@@ -51,6 +55,9 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showingSettings) {
+            SettingsView()
+        }
+        .sheet(isPresented: $showingOnboarding) {
             ProviderSettingsView()
         }
         .task {
@@ -150,7 +157,7 @@ struct ContentView: View {
 
     private func presentOnboardingIfNeeded() {
         guard !settings.hasSelectedProviders && !settings.hasCompletedProviderOnboarding else { return }
-        showingSettings = true
+        showingOnboarding = true
         settings.hasCompletedProviderOnboarding = true
     }
 
@@ -216,7 +223,7 @@ struct ContentView: View {
                 .toastOverlay(bottomPadding: 12)
             }
             Tab("Collections", systemImage: "tray.full", value: .myLists) {
-                MyListsView(viewModel: customListViewModel)
+                MyListsView(viewModel: customListViewModel, onSettingsTapped: { showingSettings = true })
                     // List rows derive watched state / rating / season progress from the library.
                     .environment(viewModel)
                     .toastOverlay(bottomPadding: 12)
@@ -226,7 +233,8 @@ struct ContentView: View {
                     existingTVShowIDs: viewModel.existingTVShowIDs,
                     existingMovieIDs: viewModel.existingMovieIDs,
                     onTVShowAdded: { viewModel.addTVShow($0) },
-                    onMovieAdded: { viewModel.addMovie($0) }
+                    onMovieAdded: { viewModel.addMovie($0) },
+                    onSettingsTapped: { showingSettings = true }
                 )
                 .toastOverlay(bottomPadding: 12)
             }

@@ -5,6 +5,7 @@ struct DiscoverView: View {
     let existingMovieIDs: Set<String>
     let onTVShowAdded: (TVShow) -> Void
     let onMovieAdded: (Movie) -> Void
+    var onSettingsTapped: () -> Void
 
     @Environment(ToastState.self) private var toast
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -42,6 +43,11 @@ struct DiscoverView: View {
             .background(AppBackground())
             .navigationTitle("Discover")
             .searchable(text: $viewModel.searchQuery, prompt: "Search movies & TV shows")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    SettingsToolbarButton(action: onSettingsTapped)
+                }
+            }
         }
         .task {
             await viewModel.initialLoad()

@@ -109,12 +109,6 @@ struct MediaListView: View {
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                if let onSettingsTapped {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Settings", systemImage: "gearshape", action: onSettingsTapped)
-                    }
-                }
-
                 if isEditingOrder {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") {
@@ -136,6 +130,14 @@ struct MediaListView: View {
                                     isEditingOrder = true
                                 }
                             }
+                        }
+                    }
+                    // Outermost (rightmost) of the trailing group, set off with a spacer so it
+                    // reads as its own glass pill — Add/Edit are list actions, Settings isn't.
+                    if let onSettingsTapped {
+                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                        ToolbarItem(placement: .topBarTrailing) {
+                            SettingsToolbarButton(action: onSettingsTapped)
                         }
                     }
                 }

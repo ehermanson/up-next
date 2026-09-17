@@ -62,7 +62,7 @@ Up Next/
 ├── App/
 │   ├── Watch_ListApp.swift              # @main entry; bootstraps PersistenceController, sets up environment
 │   ├── AppDelegate.swift                # UIApplicationDelegate + SceneDelegate for CloudKit share acceptance
-│   ├── ContentView.swift                # Tab navigation (TV Shows, Movies, Collections, Discover)
+│   ├── ContentView.swift                # Tab navigation (TV Shows, Movies, Collections, Discover); owns the single SettingsView sheet + the onboarding ProviderSettingsView sheet
 │   └── ScreenshotMode.swift             # DEBUG-only: --screenshots seeds a curated demo library for App Store captures
 │
 ├── Models/                              # Core Data NSManagedObject subclasses (@objc(Name))
@@ -101,8 +101,9 @@ Up Next/
 │   │   ├── CreateListView.swift         # Create/edit list dialog with icon picker
 │   │   └── AddToListSheet.swift         # Add item to a custom list
 │   └── Settings/
-│       ├── ProviderSettingsView.swift   # Region override picker + streaming service selection
-│       └── SharingSettingsView.swift    # Sharing UI: owner unshared → share link; owner shared → participants + manage; participant → leave
+│       ├── SettingsView.swift           # Settings root (sheet from every tab): Sharing / Streaming Services / Region rows + About; hosts the Sharing push screen
+│       ├── ProviderSettingsView.swift   # Streaming service grid; isRoot owns its own NavigationStack+Done (first-launch onboarding), else pushed from SettingsView. Also hosts RegionPickerView (internal)
+│       └── SharingSettingsView.swift    # SharingSection: owner unshared → share link; owner shared → participants + manage; participant → leave. Pushed from SettingsView's Sharing row
 │
 ├── Services/
 │   ├── PersistenceController.swift      # Core Data + CloudKit container, role rule, remote change tracking, sharing API
@@ -123,7 +124,8 @@ Up Next/
 │   ├── TMDBAttributionView.swift        # TMDB attribution footer
 │   ├── SFSymbolPickerGrid.swift         # SF Symbol picker for custom list icons
 │   ├── CloudSharingView.swift           # UIViewControllerRepresentable over UICloudSharingController
-│   └── PosterMosaicView.swift           # 2×2 poster mosaic (Apple Music playlist style) for a collection row's icon
+│   ├── PosterMosaicView.swift           # 2×2 poster mosaic (Apple Music playlist style) for a collection row's icon
+│   └── SettingsToolbarButton.swift      # Trailing toolbar entry into SettingsView on all four tabs; overlapping initials avatars once a share is live, else a gearshape
 │
 ├── Up Next.xcdatamodeld/                # Core Data model: 8 entities, CloudKit-safe (all optional/defaulted, relationships optional with inverses)
 ├── AppIcon.icon/                        # Icon Composer (Liquid Glass) app icon: icon.json + Assets/{Ring,Core}.png layers; wins over the appiconset on iOS 26
@@ -169,6 +171,7 @@ All attributes optional or defaulted; all relationships optional with inverses (
 - **Stopping sharing** (owner via `UICloudSharingController`): deletes only the `CKShare`; the owner's data stays. Participant via `PersistenceController.leaveShare()`: purges the shared zone and re-bootstraps as a fresh owner.
 - Not real-time: shared zone imports happen on a seconds–minutes delay; there is no API to force an import.
 - **"Added by" attribution** (detail sheet, library rows only — `listItem.list != nil`): read-only, no schema change. `PersistenceController.attribution(for:)` reads the mirrored `CKRecord`'s `creatorUserRecordID`/`creationDate` (`container.record(for:)`); `CKCurrentUserDefaultName` renders as "you", another id is matched against `existingShare()?.participants` for a display name (falls back to "your partner"). Nil when no share is live or the record hasn't mirrored down yet. `AddedByCaption` (`MediaDetailMetadata.swift`) fetches it in a `.task` and caches it in `@State` since `record(for:)` is slow-ish.
+- **Settings entry point**: `SettingsView` (`Views/Settings/SettingsView.swift`) is the sheet every tab's trailing toolbar button opens (`ContentView.showingSettings`) — Sharing is the first, most prominent row (pushes a screen hosting `SharingSection`), then Streaming Services (pushes `ProviderSettingsView(isRoot: false)`), Region (pushes `RegionPickerView`), and About. `SettingsToolbarButton` (`UI/SettingsToolbarButton.swift`) is a plain gear normally; once a share is live on the device (owner with ≥1 non-owner participant, or `role == .participant`) it swaps to two overlapping initials avatars (from `CKShare.currentUserParticipant` / the first non-owner participant's `nameComponents`) so sharing status is visible without opening Settings. It refreshes on appear, on `scenePhase == .active`, and on `remoteChangeCount` changes, matching `SharingSection`'s own refresh triggers.
 
 ### Provider Logic (TMDBService)
 
@@ -182,8 +185,8 @@ All attributes optional or defaulted; all relationships optional with inverses (
 `ProviderSettings` (UserDefaults-backed, `@Observable` singleton) drives three things:
 - **Discover**: `onlyMyServicesInDiscover` (key `discover.onlyMyServices`, default on) sends `with_watch_providers` + `watch_region` on every carousel/browse request via `DiscoverViewModel.providerFilter`. A compact `Chip` directly under the media-type picker ("On my services", `checkmark.seal`/`checkmark.seal.fill`, emphasized when on) toggles it; it becomes a "Choose your services" chip (`play.tv`) that opens `ProviderSettingsView` when nothing is selected.
 - **Watchlist filter**: per-tab `@AppStorage` flags `tvShows.onlyMyServices` / `movies.onlyMyServices`, applied by `filterItems(...)` in `MediaListHelpers.swift` (`isOnSelectedServices` = any network with category `stream`/`ads` whose id is selected). Auto-cleared if the user deselects all providers.
-- **First launch**: `ContentView` presents `ProviderSettingsView` once when no providers are selected and `hasCompletedProviderOnboarding` is false; the flag is set on presentation so it never re-prompts. The DEBUG "Reset Providers & Onboarding" button clears it (and the region override).
-- **Region override**: the "Region" row in `ProviderSettingsView` pushes `RegionPickerView`, a searchable list of `/watch/providers/regions` (Automatic stays selectable if the fetch fails). Never a menu-style `Picker` — ~100 entries, and its label wrapped over the subtitle. "Automatic" = `nil`; picking the device's own region still stores it. Changing it reloads the provider grid, re-issues Discover (`DiscoverView` observes `regionOverride`; the carousel guard and `BrowseRequest` carry the region so a superseded region can't land), and `ContentView` kicks `MediaLibraryViewModel.refreshNow()` so stored networks re-resolve. Selections are never pruned — an off-region provider id just matches nothing.
+- **First launch**: `ContentView` presents `ProviderSettingsView` (as its own root sheet, `isRoot` default `true`) once when no providers are selected and `hasCompletedProviderOnboarding` is false; the flag is set on presentation so it never re-prompts. The same view is pushed (`isRoot: false`) from `SettingsView`'s "Streaming Services" row the rest of the time. The DEBUG "Reset Providers & Onboarding" button (now on `SettingsView`) clears it (and the region override).
+- **Region override**: the "Region" row lives on `SettingsView` (not `ProviderSettingsView`) and pushes `RegionPickerView` (internal, defined in `ProviderSettingsView.swift`), a searchable list of `/watch/providers/regions` (Automatic stays selectable if the fetch fails). Never a menu-style `Picker` — ~100 entries, and its label wrapped over the subtitle. "Automatic" = `nil`; picking the device's own region still stores it. Changing it re-issues Discover (`DiscoverView` observes `regionOverride`; the carousel guard and `BrowseRequest` carry the region so a superseded region can't land) and `ContentView` kicks `MediaLibraryViewModel.refreshNow()` so stored networks re-resolve; the provider grid itself reloads next time `ProviderSettingsView` is opened. Selections are never pruned — an off-region provider id just matches nothing.
 
 ### Discover Data Sources
 

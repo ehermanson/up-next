@@ -1,12 +1,16 @@
 import SwiftUI
 
+/// Streaming-service picker. Presented two ways: as the sheet's own root during first-launch
+/// onboarding (`isRoot == true`, owns its `NavigationStack` + Done button) and pushed from
+/// `SettingsView`'s "Streaming Services" row or Discover's "Choose your services" chip
+/// (`isRoot == false`, the presenter already supplies navigation chrome).
 struct ProviderSettingsView: View {
+    var isRoot: Bool = true
+
     @Environment(\.dismiss) private var dismiss
     @State private var providers: [TMDBWatchProviderInfo] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
-    @State private var regions: [TMDBWatchProviderRegion] = []
-    @State private var isLoadingRegions = true
 
     private let settings = ProviderSettings.shared
 
@@ -17,44 +21,41 @@ struct ProviderSettingsView: View {
     @ScaledMetric private var errorIconSize: CGFloat = 36
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    SharingSection()
-                    descriptionSection
-                    regionSection
-
-                    if isLoading {
-                        loadingView
-                    } else if let error = errorMessage {
-                        errorView(message: error)
-                    } else {
-                        providerGrid
+        if isRoot {
+            NavigationStack {
+                content
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { dismiss() }
+                        }
                     }
-
-                    TMDBAttributionView()
-                        .padding(.top, 16)
-
-                    #if DEBUG
-                    debugSection
-                    #endif
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
             }
-            .background(AppBackground())
-            .navigationTitle("Your Streaming Services")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
+        } else {
+            content
         }
+    }
+
+    private var content: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                descriptionSection
+
+                if isLoading {
+                    loadingView
+                } else if let error = errorMessage {
+                    errorView(message: error)
+                } else {
+                    providerGrid
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
+        .background(AppBackground())
+        .navigationTitle("Streaming Services")
+        .navigationBarTitleDisplayMode(.inline)
         .task {
-            async let providerLoad: Void = loadProviders()
-            async let regionLoad: Void = loadRegions()
-            _ = await (providerLoad, regionLoad)
+            await loadProviders()
         }
     }
 
@@ -69,70 +70,6 @@ struct ProviderSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
-    }
-
-    // MARK: - Region
-
-    private var regionSection: some View {
-        NavigationLink {
-            RegionPickerView(regions: regions, isLoading: isLoadingRegions, selection: regionSelection)
-        } label: {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Region")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-
-                    Text("Streaming availability and provider logos are looked up for this region.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer()
-
-                HStack(spacing: 4) {
-                    Text(currentRegionLabel)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .layoutPriority(1)
-            }
-        }
-        .buttonStyle(.plain)
-        .padding(16)
-        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
-    }
-
-    /// Writes through to the override and reloads the grid, since the available providers are
-    /// region-specific. Existing selections are kept as-is — an off-region provider id simply
-    /// matches nothing, and survives a trip back.
-    private var regionSelection: Binding<String?> {
-        Binding(
-            get: { settings.regionOverride },
-            set: { newValue in
-                guard newValue != settings.regionOverride else { return }
-                settings.regionOverride = newValue
-                Task { await loadProviders() }
-            }
-        )
-    }
-
-    /// Short trailing label for the row: "Automatic" or the selected region's English name.
-    private var currentRegionLabel: String {
-        guard let code = settings.regionOverride else { return "Automatic" }
-        return regions.first { $0.iso31661 == code }?.englishName ?? Self.regionName(code)
-    }
-
-    /// Localized country name for a region code, falling back to the raw code.
-    private static func regionName(_ code: String) -> String {
-        Locale.current.localizedString(forRegionCode: code) ?? code
     }
 
     // MARK: - Loading
@@ -203,52 +140,13 @@ struct ProviderSettingsView: View {
             isLoading = false
         }
     }
-
-    /// A failure here is non-fatal: the row still shows the current pick (via `Locale` for the
-    /// name) and `RegionPickerView` keeps Automatic selectable under a "couldn't load" state.
-    private func loadRegions() async {
-        isLoadingRegions = true
-        regions = (try? await TMDBService.shared.fetchWatchProviderRegions()) ?? []
-        isLoadingRegions = false
-    }
-
-    // MARK: - Debug
-
-    #if DEBUG
-    private var debugSection: some View {
-        VStack(spacing: 12) {
-            Divider()
-                .padding(.vertical, 8)
-
-            Text("Debug Options")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Button {
-                settings.selectedProviderIDs = []
-                settings.hasCompletedProviderOnboarding = false
-                settings.onlyMyServicesInDiscover = true
-                settings.regionOverride = nil
-                dismiss()
-            } label: {
-                Label("Reset Providers & Onboarding", systemImage: "arrow.counterclockwise")
-                    .font(.subheadline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.bordered)
-            .tint(.orange)
-        }
-        .padding(.top, 24)
-    }
-    #endif
 }
 
 // MARK: - Region Picker
 
-/// Dedicated region list pushed from `regionSection`. A menu can't hold ~100 regions
+/// Dedicated region list pushed from `SettingsView`'s Region row. A menu can't hold ~100 regions
 /// legibly, so this gives the picker its own searchable screen instead.
-private struct RegionPickerView: View {
+struct RegionPickerView: View {
     let regions: [TMDBWatchProviderRegion]
     let isLoading: Bool
     @Binding var selection: String?

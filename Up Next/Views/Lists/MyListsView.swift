@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MyListsView: View {
     let viewModel: CustomListViewModel
+    var onSettingsTapped: () -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -74,6 +75,10 @@ struct MyListsView: View {
                     Button("New Collection", systemImage: "plus") {
                         showingCreateList = true
                     }
+                }
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+                ToolbarItem(placement: .primaryAction) {
+                    SettingsToolbarButton(action: onSettingsTapped)
                 }
             }
             #if DEBUG
