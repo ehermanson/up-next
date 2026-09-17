@@ -555,10 +555,6 @@ final class DiscoverViewModel {
         selectedMediaType = selectedMediaType == .tvShows ? .movies : .tvShows
     }
 
-    func cancelSearch() {
-        searchTask?.cancel()
-    }
-
     /// Debounces ~300ms and cancels the previous search, mirroring `WatchlistSearchView`.
     private func scheduleSearch(for query: String) {
         searchTask?.cancel()
@@ -613,6 +609,35 @@ final class DiscoverViewModel {
             return SearchOutcome(results: try await service.searchMovies(query: query))
         } catch {
             return SearchOutcome(error: Self.errorText(error))
+        }
+    }
+
+    // MARK: - Airing This Week: per-card air date
+
+    /// TMDB `air_date` string for the show's next episode, keyed by TMDB show id. Populated
+    /// lazily by `loadAiringDate(for:)` — `/discover/tv` and `/search/tv` only carry
+    /// `firstAirDate` (the premiere), not the specific episode that placed the show in the
+    /// "Airing This Week" window, so each visible card fetches its own show detail.
+    var airingDates: [Int: String] = [:]
+    /// "S3E2" companion to `airingDates`, when TMDB gave us both numbers.
+    var airingEpisodeCodes: [Int: String] = [:]
+
+    private var airingDateRequestedIDs: Set<Int> = []
+
+    /// Fetches `next_episode_to_air` for one show and stores its air date (and episode code, if
+    /// available) for the "Airing This Week" chip. Called from each card's `.task(id:)` — the
+    /// `LazyHStack` only mounts visible cards, and `getTVShowDetails` is the same call the detail
+    /// sheet makes, deduped/cached by `RequestDeduplicator`, so this isn't wasted work.
+    func loadAiringDate(for tmdbId: Int) async {
+        guard !airingDateRequestedIDs.contains(tmdbId) else { return }
+        airingDateRequestedIDs.insert(tmdbId)
+        do {
+            let detail = try await service.getTVShowDetails(id: tmdbId)
+            guard let episode = detail.nextEpisodeToAir, let airDate = episode.airDate else { return }
+            airingDates[tmdbId] = airDate
+            airingEpisodeCodes[tmdbId] = episodeCode(season: episode.seasonNumber, episode: episode.episodeNumber)
+        } catch {
+            // Silent — the chip just doesn't show for this card.
         }
     }
 }

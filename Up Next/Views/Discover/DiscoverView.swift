@@ -20,23 +20,24 @@ struct DiscoverView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if viewModel.isSearchActive {
-                    searchResultsView
-                } else {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            mediaTypePicker
-                            providerFilterRow
-                            carouselSections
-                            browseAllSection
-                        }
-                        .padding(.bottom, 20)
-                    }
-                    .refreshable {
-                        await viewModel.refresh()
+            // Exactly one `ScrollView` stays mounted under `.searchable` at all times — swapping
+            // the scroll container under the search bar makes the field jump and drop focus
+            // (see `WatchlistSearchView`'s equivalent note for its `List`).
+            ScrollView {
+                VStack(spacing: 20) {
+                    mediaTypePicker
+                    if viewModel.isSearchActive {
+                        searchResultsSection
+                    } else {
+                        providerFilterRow
+                        carouselSections
+                        browseAllSection
                     }
                 }
+                .padding(.bottom, 20)
+            }
+            .refreshable {
+                await viewModel.refresh()
             }
             .background(AppBackground())
             .navigationTitle("Discover")
@@ -55,9 +56,6 @@ struct DiscoverView: View {
             // `watch_region` / `region` are baked into every URL, so the cache keys already
             // differ — reissuing under the new region is enough, no invalidation needed.
             viewModel.providerFilterChanged()
-        }
-        .onDisappear {
-            viewModel.cancelSearch()
         }
         .sheet(isPresented: $showingProviderSettings) {
             ProviderSettingsView()
@@ -249,6 +247,10 @@ struct DiscoverView: View {
                         .padding(6)
                 }
             }
+            .task(id: item.tmdbId) {
+                guard showsAirDate, item.mediaType == .tvShow else { return }
+                await viewModel.loadAiringDate(for: item.tmdbId)
+            }
 
             Button { openDetail(for: item) } label: {
                 Text(item.title)
@@ -271,15 +273,19 @@ struct DiscoverView: View {
             .frame(width: posterCardSize.width, height: posterCardSize.height)
     }
 
-    /// Relative air-day label for the "Airing This Week" chip, or `nil` when no usable date
-    /// exists. TMDB's `/discover/tv` and `/search/tv` payloads (`TMDBTVShowSearchResult`) only
-    /// carry `firstAirDate` — the show's original premiere — not the specific upcoming episode
-    /// date that actually placed it in this carousel's air-date window. Showing the premiere
-    /// date instead would misrepresent when the show airs next, so the chip is skipped rather
-    /// than rendering the wrong day; it would need `next_episode_to_air` (only present on the
-    /// TV show detail endpoint) to be shown correctly.
+    /// "S3E2 · Tuesday" label for the "Airing This Week" chip, or `nil` until the per-card fetch
+    /// (`.task(id:)` below, via `viewModel.loadAiringDate(for:)`) lands. `/discover/tv` and
+    /// `/search/tv` payloads (`TMDBTVShowSearchResult`) only carry `firstAirDate` — the show's
+    /// original premiere — not the specific upcoming episode that actually placed it in this
+    /// carousel's air-date window, so the label comes from a lazily-fetched `next_episode_to_air`
+    /// instead of that field.
     private func airDateLabel(for item: DiscoverViewModel.DiscoverItem) -> String? {
-        nil
+        guard let dateString = viewModel.airingDates[item.tmdbId],
+              let date = AirDateFormat.date(from: dateString)
+        else { return nil }
+        let relative = AirDateFormat.relativeLabel(for: date)
+        guard let code = viewModel.airingEpisodeCodes[item.tmdbId] else { return relative }
+        return "\(code) · \(relative)"
     }
 
     private var carouselShimmer: some View {
@@ -434,64 +440,46 @@ struct DiscoverView: View {
 
     // MARK: - Search Results
 
-    /// Shown in place of the carousels + Browse All while `viewModel.searchQuery` is non-empty.
-    /// Reuses `SearchResultRowWithImage`/`ShimmerRows` from `SearchComponents.swift` and the same
+    /// Shown in place of the provider chip, carousels and Browse All while
+    /// `viewModel.searchQuery` is non-empty — rendered as plain views inside the same `ScrollView`
+    /// (mirroring `browseList`'s `LazyVStack` path) rather than swapping in a `List`, which would
+    /// make the search field under `.searchable` jump and drop focus. Reuses
+    /// `SearchResultRowWithImage`/`ShimmerRows` from `SearchComponents.swift` and the same
     /// `openDetail`/`addItem`/`isAlreadyAdded` plumbing the carousels and Browse All already use,
     /// rather than duplicating the recommendation/search engine from `WatchlistSearchView`.
-    private var searchResultsView: some View {
-        VStack(spacing: 0) {
-            mediaTypePicker
-                .padding(.vertical, 8)
-
-            List {
-                searchResultRows
-            }
-            .scrollContentBackground(.hidden)
-            .listStyle(.plain)
-        }
-    }
-
-    /// Wraps a non-row state view so it behaves like a normal `List` row: no separator/background,
-    /// centered, with breathing room. Mirrors `WatchlistSearchView.emptyStateRow`.
-    private func searchEmptyStateRow(id: String, @ViewBuilder content: () -> some View) -> some View {
-        content()
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 60)
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
-            .id(id)
-    }
-
     @ViewBuilder
-    private var searchResultRows: some View {
+    private var searchResultsSection: some View {
         if viewModel.isSearching && !viewModel.hasSearchResults {
             // Only shimmer on a cold search — otherwise keystrokes would blank the previous
             // results while the debounced request is still in flight.
-            ShimmerRows()
+            VStack(spacing: 8) {
+                ShimmerRows()
+            }
+            .padding(.horizontal, 16)
         } else if let error = viewModel.searchError {
-            searchEmptyStateRow(id: "searchError") {
-                EmptyStateView(icon: "exclamationmark.triangle", title: error)
-            }
+            EmptyStateView(icon: "exclamationmark.triangle", title: error)
+                .padding(.vertical, 40)
         } else if viewModel.hasSearchResults {
-            ForEach(viewModel.searchResultItems) { item in
-                browseRow(item)
-            }
-        } else {
-            searchEmptyStateRow(id: "searchNoResults") {
-                EmptyStateView(
-                    icon: "magnifyingglass.circle",
-                    title: "No Results Found",
-                    subtitle: viewModel.crossTypeSearchResultCount > 0 ? nil : "Try adjusting your search"
-                ) {
-                    if viewModel.crossTypeSearchResultCount > 0 {
-                        Button(viewModel.searchCrossTypeHintTitle) {
-                            viewModel.showOtherSearchMediaType()
-                        }
-                        .buttonStyle(.glass)
-                    }
+            LazyVStack(spacing: 8) {
+                ForEach(viewModel.searchResultItems) { item in
+                    browseRow(item)
                 }
             }
+            .padding(.horizontal, 16)
+        } else {
+            EmptyStateView(
+                icon: "magnifyingglass.circle",
+                title: "No Results Found",
+                subtitle: viewModel.crossTypeSearchResultCount > 0 ? nil : "Try adjusting your search"
+            ) {
+                if viewModel.crossTypeSearchResultCount > 0 {
+                    Button(viewModel.searchCrossTypeHintTitle) {
+                        viewModel.showOtherSearchMediaType()
+                    }
+                    .buttonStyle(.glass)
+                }
+            }
+            .padding(.vertical, 40)
         }
     }
 
