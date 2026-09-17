@@ -82,6 +82,32 @@ struct TMDBSeason: Codable {
     let overview: String?
 }
 
+// MARK: - Season Detail (episode list)
+
+/// `/tv/{id}/season/{season_number}` — read-only episode list for `SeasonEpisodesView`.
+/// No episode-level watched state exists or is planned; this is display-only.
+struct TMDBSeasonDetail: Codable {
+    let id: Int?
+    let name: String?
+    let overview: String?
+    let airDate: String?
+    let seasonNumber: Int
+    let episodes: [TMDBSeasonEpisode]?
+}
+
+struct TMDBSeasonEpisode: Codable, Identifiable {
+    let id: Int
+    let episodeNumber: Int
+    let seasonNumber: Int?
+    let name: String?
+    let overview: String?
+    let airDate: String?
+    let voteAverage: Double?
+    let voteCount: Int?
+    let runtime: Int?
+    let stillPath: String?
+}
+
 // MARK: - Movie Models
 
 struct TMDBMovieSearchResult: Codable, Identifiable {

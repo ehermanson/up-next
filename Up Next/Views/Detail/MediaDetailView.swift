@@ -71,6 +71,12 @@ struct MediaDetailView: View {
         listItem.tvShow?.backdropPath ?? listItem.movie?.backdropPath
     }
 
+    /// nil when the show's id isn't a TMDB int (shouldn't happen for a persisted row) — every
+    /// `EpisodesLinkCard` placement just doesn't render.
+    private var tvShowID: Int? {
+        listItem.tvShow.flatMap { Int($0.id) }
+    }
+
     private var needsFullDetails: Bool {
         guard let media = listItem.media, Int(media.id) != nil else { return false }
 
@@ -123,6 +129,15 @@ struct MediaDetailView: View {
                                 collectionName: collectionName,
                                 isWatched: collectionWatched
                             )
+                            // Collections never show the season checklist, so this is the only
+                            // route to episode info here.
+                            if let tvShowID {
+                                EpisodesLinkCard(
+                                    tvID: tvShowID,
+                                    showTitle: listItem.media?.title ?? "",
+                                    episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
+                                )
+                            }
                         } else if onAdd == nil {
                             if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
                                 SeasonChecklistCard(listItem: listItem)
@@ -132,12 +147,27 @@ struct MediaDetailView: View {
                             let hasSeasonChecklist = listItem.tvShow != nil && (listItem.tvShow?.numberOfSeasons ?? 0) > 1
                             if !listItem.isDropped && !hasSeasonChecklist {
                                 WatchedToggleCard(listItem: listItem)
+                                if let tvShowID {
+                                    EpisodesLinkCard(
+                                        tvID: tvShowID,
+                                        showTitle: listItem.media?.title ?? "",
+                                        episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
+                                    )
+                                }
                             }
 
                             if listItem.isWatched {
                                 UserRatingCard(listItem: listItem)
                                     .transition(.opacity.combined(with: .move(edge: .top)))
                             }
+                        } else if let tvShowID {
+                            // Discover / "add" context: no watched controls (there's nothing to
+                            // add to yet), but people browsing still want episode info.
+                            EpisodesLinkCard(
+                                tvID: tvShowID,
+                                showTitle: listItem.media?.title ?? "",
+                                episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
+                            )
                         }
 
                         DescriptionSection(
@@ -838,15 +868,14 @@ struct DescriptionSection: View {
 /// actually overflows. Measures by laying out the full text off-screen (`.hidden()`, `.fixedSize`
 /// so it reports its natural height) alongside the clamped copy and comparing heights — no line
 /// count is ever exposed by `Text` itself.
-private struct ClampedDescriptionText: View {
+struct ClampedDescriptionText: View {
     let text: String
+    var lineLimit: Int = 4
 
     @State private var isExpanded = false
     @State private var isTruncated = false
     @State private var fullHeight: CGFloat = 0
     @State private var clampedHeight: CGFloat = 0
-
-    private let lineLimit = 4
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {

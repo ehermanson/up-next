@@ -149,6 +149,16 @@ struct SeasonChecklistCard: View {
         listItem.tvShow?.seasonDescriptions ?? []
     }
 
+    /// nil when the show's id isn't a TMDB int (shouldn't happen for a persisted row) — the
+    /// episodes chevron just doesn't render.
+    private var tvID: Int? {
+        listItem.tvShow.flatMap { Int($0.id) }
+    }
+
+    private var showTitle: String {
+        listItem.tvShow?.title ?? ""
+    }
+
     @State private var expandedSeasons: Set<Int> = []
 
     private let circleSize: CGFloat = 28
@@ -196,47 +206,66 @@ struct SeasonChecklistCard: View {
         // unavailable rather than as something the user is behind on.
         let isAnnounced = season > (listItem.tvShow?.availableSeasonCount ?? 0) && season <= totalSeasons
 
-        return VStack(alignment: .leading, spacing: 2) {
-            Button {
-                listItem.toggleSeason(season)
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Season \(season)")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(isAnnounced ? .secondary : .primary)
+        return HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Button {
+                    listItem.toggleSeason(season)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Season \(season)")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundStyle(isAnnounced ? .secondary : .primary)
 
-                    if isAnnounced {
-                        Text(announcedCaption(season: season))
+                        if isAnnounced {
+                            Text(announcedCaption(season: season))
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        } else if let count = episodeCount, count > 0 {
+                            Text("\(count) episode\(count == 1 ? "" : "s")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Season \(season)")
+                .accessibilityValue(isWatched ? "Watched" : (isAnnounced ? "Announced" : "Not watched"))
+                .accessibilityAddTraits(.isToggle)
+
+                if let description, !description.isEmpty {
+                    Button {
+                        toggleDescription(season)
+                    } label: {
+                        Text(description)
                             .font(.caption)
                             .foregroundStyle(.tertiary)
-                    } else if let count = episodeCount, count > 0 {
-                        Text("\(count) episode\(count == 1 ? "" : "s")")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .lineLimit(isExpanded ? nil : 2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(.rect)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isExpanded ? "Collapse season description" : "Expand season description")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Season \(season)")
-            .accessibilityValue(isWatched ? "Watched" : (isAnnounced ? "Announced" : "Not watched"))
-            .accessibilityAddTraits(.isToggle)
 
-            if let description, !description.isEmpty {
-                Button {
-                    toggleDescription(season)
+            // Separate from the season-toggle button above — tapping it opens the episode list
+            // instead of marking the season watched. Announced/unaired seasons stay tappable;
+            // TMDB often lists their upcoming episodes.
+            if let tvID {
+                NavigationLink {
+                    SeasonEpisodesView(tvID: tvID, showTitle: showTitle, season: season)
                 } label: {
-                    Text(description)
-                        .font(.caption)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(.tertiary)
-                        .lineLimit(isExpanded ? nil : 2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(width: 44, height: 44)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isExpanded ? "Collapse season description" : "Expand season description")
+                .accessibilityLabel("View Season \(season) episodes")
             }
         }
         .padding(.top, 4)
@@ -287,6 +316,49 @@ struct SeasonChecklistCard: View {
         }
         .frame(width: circleSize)
         .contentShape(.rect)
+    }
+}
+
+/// Compact link to the read-only episode list, for shows that don't get a `SeasonChecklistCard`
+/// (single-season shows, or the Discover/collection "add" context, where the checklist itself
+/// doesn't apply but people browsing still want episode info).
+struct EpisodesLinkCard: View {
+    let tvID: Int
+    let showTitle: String
+    /// From `TVShow.seasonEpisodeCounts`; omitted from the caption when TMDB hasn't reported it.
+    var episodeCount: Int?
+
+    private var caption: String {
+        guard let episodeCount, episodeCount > 0 else { return "Season 1" }
+        return "Season 1 \u{00B7} \(episodeCount) episode\(episodeCount == 1 ? "" : "s")"
+    }
+
+    var body: some View {
+        NavigationLink {
+            SeasonEpisodesView(tvID: tvID, showTitle: showTitle, season: 1)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "list.number")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Episodes")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.primary)
+                    Text(caption)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+        }
+        .buttonStyle(.plain)
     }
 }
 

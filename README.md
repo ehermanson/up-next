@@ -5,7 +5,7 @@ Just a fun personal project to replace the running list of movies and TV shows m
 ## Features
 
 - **Manage your watchlist**: Track movies and TV shows you want to watch, mark them as watched, and leave notes
-- **Season tracking**: For TV shows, track which seasons you've watched
+- **Season tracking**: For TV shows, track which seasons you've watched, and browse every episode's title, description, air date and rating
 - **Collections**: Create custom collections (Christmas movies, kid-friendly, guilty pleasures, etc.)
 - **Discover**: Search, browse trending titles, see what's airing this week (with the exact episode and day), and get personalized recommendations
 - **Provider filtering**: See only titles available on your streaming services, by region

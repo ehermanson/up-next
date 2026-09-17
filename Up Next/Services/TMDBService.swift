@@ -125,6 +125,12 @@ final class TMDBService: @unchecked Sendable {
         )
     }
 
+    /// Get the episode list for a single season (read-only; no episode-level watched state).
+    func getSeasonDetails(tvID: Int, season: Int) async throws -> TMDBSeasonDetail {
+        let endpoint = "/tv/\(tvID)/season/\(season)"
+        return try await performRequest(endpoint: endpoint, queryItems: [])
+    }
+
     // MARK: - Recommendations
 
     /// Get recommended TV shows based on a specific TV show
@@ -304,6 +310,7 @@ final class TMDBService: @unchecked Sendable {
         case w92 = "w92"
         case w154 = "w154"
         case w185 = "w185"
+        case w300 = "w300"
         case w342 = "w342"
         case w500 = "w500"
         case w780 = "w780"

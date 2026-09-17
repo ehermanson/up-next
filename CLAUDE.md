@@ -87,9 +87,10 @@ Up Next/
 │   │   └── SharePitchCard.swift         # Dismissable "share with a partner" pitch card, TV Shows tab only
 │   ├── Detail/
 │   │   ├── MediaDetailView.swift        # Detail sheet: edit watched state, rating, notes, seasons
-│   │   ├── MediaDetailCards.swift       # Interactive cards: watched toggle, rating, season checklist
+│   │   ├── MediaDetailCards.swift       # Interactive cards: watched toggle, rating, season checklist, episodes link
 │   │   ├── MediaDetailMetadata.swift    # Metadata row, provider row, pills, flow layout
-│   │   └── MediaDetailSimilar.swift     # "More Like This" row (recs + similar merged), TMDB collection section, MediaIDKey
+│   │   ├── MediaDetailSimilar.swift     # "More Like This" row (recs + similar merged), TMDB collection section, MediaIDKey
+│   │   └── SeasonEpisodesView.swift     # Read-only episode list for one season (number, title, description, rating, air date, runtime, still)
 │   ├── Search/
 │   │   ├── WatchlistSearchView.swift    # Context-aware search (all, TV, movies, specific lists); one stable List under .searchable
 │   │   ├── RecommendationEngine.swift   # Weighted seeds, genre affinity, discover pool + unified scoring; collection-mode thematic scoring; GenreCatalog
@@ -244,6 +245,7 @@ The target is universal (`TARGETED_DEVICE_FAMILY = 1,2`, resizable windows on iP
 - Shows remain in unwatched list when partially watched
 - Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — the transition lives on `ListItem.toggleWatched()` (all seasons for TV). This is the *library's* watched state only; custom-list rows have their own, unrelated toggle (see "Custom Lists")
 - Watched section is sorted most-recently-watched first
+- **Episode lists are read-only**: `SeasonEpisodesView` fetches `/tv/{id}/season/{n}` (`TMDBService.getSeasonDetails`) on demand — number, title, description, air date, runtime, rating, still image. Reachable from each season row's chevron in `SeasonChecklistCard` (multi-season shows) or `EpisodesLinkCard` for single-season shows / the Discover "add" context / collections. No episode-level watched state exists or is planned; nothing here is persisted.
 
 ### Custom Lists (user-facing name: "Collections")
 
