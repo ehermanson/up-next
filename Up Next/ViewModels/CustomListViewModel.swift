@@ -7,6 +7,12 @@ final class CustomListViewModel {
     var customLists: [CustomList] = []
     var activeListID: UUID?
 
+    /// Bumped on every mutation. Views derive their rows from `visibleItems(in:)` /
+    /// `containsItem(mediaID:in:)`, which read this — a child `CustomListItem` changing its
+    /// `watchedAt` doesn't republish the parent `CustomList`, so without it a toggled row would
+    /// update its badge but never move between the Unwatched / Watched sections.
+    private(set) var changeToken = 0
+
     private var persistence: PersistenceController?
 
     /// An item removed from a list's visible contents but not yet deleted from the store, so it can
@@ -32,6 +38,7 @@ final class CustomListViewModel {
     /// `PersistenceController.remoteChangeCount` changes (a remote peer's edit landed).
     func reloadFromStore() {
         loadLists()
+        changeToken += 1
     }
 
     func createList(name: String, iconName: String) {
@@ -45,6 +52,7 @@ final class CustomListViewModel {
         persistence.insert(list)
         persistence.save()
         customLists.append(list)
+        changeToken += 1
     }
 
     func deleteList(_ list: CustomList) {
@@ -54,12 +62,14 @@ final class CustomListViewModel {
         customLists.removeAll { $0 === list }
         persistence.viewContext.delete(list)
         persistence.save()
+        changeToken += 1
     }
 
     func updateList(_ list: CustomList, name: String, iconName: String) {
         list.name = name
         list.iconName = iconName
         persistence?.save()
+        changeToken += 1
     }
 
     /// Adds a title to a list. `movie`/`tvShow` may be a freshly-mapped TMDB instance — when the
@@ -82,6 +92,7 @@ final class CustomListViewModel {
         let item = CustomListItem(movie: canonicalMovie, tvShow: canonicalTVShow, customList: list, addedAt: .now)
         persistence.insert(item)
         persistence.save()
+        changeToken += 1
     }
 
     /// Removes an item from the list's visible contents immediately but defers the Core Data delete
@@ -96,6 +107,7 @@ final class CustomListViewModel {
 
         let title = item.media?.title
         pendingRemoval = PendingRemoval(item: item, list: list)
+        changeToken += 1
 
         // Commit the delete once the undo window passes (outlasts the 4.5s toast).
         pendingRemovalCommit?.cancel()
@@ -118,6 +130,7 @@ final class CustomListViewModel {
         // window (only `visibleItems(in:)` hides it), but this keeps undo correct even if
         // something else (a remote merge) touched it in the meantime.
         pending.item.customList = pending.list
+        changeToken += 1
     }
 
     /// Finalizes a pending removal by deleting it from the store. No-op if nothing is pending.
@@ -135,6 +148,7 @@ final class CustomListViewModel {
         context.delete(pending.item)
         deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: context)
         persistence.save()
+        changeToken += 1
     }
 
     /// Commits a pending removal only when it targets the same title in the same list; adding
@@ -151,6 +165,8 @@ final class CustomListViewModel {
     /// of `list.items` directly so a swiped-away row disappears immediately without the relationship
     /// actually being broken until the removal commits.
     func visibleItems(in list: CustomList) -> [CustomListItem] {
+        // Read (not used) so any view body calling this re-renders on the next mutation.
+        _ = changeToken
         let all = list.items ?? []
         guard let pending = pendingRemoval, pending.list === list else { return all }
         return all.filter { $0 !== pending.item }
@@ -167,6 +183,7 @@ final class CustomListViewModel {
     func toggleWatched(_ item: CustomListItem) {
         item.toggleWatched()
         persistence?.save()
+        changeToken += 1
     }
 
     /// Clears the watched stamp on every entry in a collection — the "start the season over" reset.
@@ -175,6 +192,7 @@ final class CustomListViewModel {
             item.watchedAt = nil
         }
         persistence?.save()
+        changeToken += 1
     }
 
     // MARK: - Private

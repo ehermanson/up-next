@@ -10,15 +10,31 @@ final class MediaList: NSManagedObject {
     /// The date the list was created
     @NSManaged var createdAtRaw: Date?
 
+    /// Stable identity — when two devices each seeded a "TV Shows" list before syncing, the lowest
+    /// id keeps the name and the other's items are folded into it (`mergeDuplicateLists`).
+    @NSManaged var idRaw: UUID?
+
     /// The list items (TV shows/movies) in this list
     @NSManaged var itemSet: NSSet?
 
     // MARK: - Inverse relationships for CloudKit
     @NSManaged var group: WatchListGroup?
 
+    var id: UUID {
+        get { idRaw ?? UUID() }
+        set { idRaw = newValue }
+    }
+
     var createdAt: Date {
         get { createdAtRaw ?? .distantPast }
         set { createdAtRaw = newValue }
+    }
+
+    override func awakeFromInsert() {
+        super.awakeFromInsert()
+        if idRaw == nil {
+            idRaw = UUID()
+        }
     }
 
     var items: [ListItem]? {

@@ -30,6 +30,7 @@
     </entity>
     <entity name="MediaList" representedClassName=".MediaList" syncable="YES">
         <attribute name="createdAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="idRaw" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="name" attributeType="String" defaultValueString=""/>
         <relationship name="group" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="WatchListGroup" inverseName="listSet" inverseEntity="WatchListGroup"/>
         <relationship name="itemSet" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ListItem" inverseName="list" inverseEntity="ListItem"/>
@@ -90,6 +91,7 @@
     </entity>
     <entity name="WatchListGroup" representedClassName=".WatchListGroup" syncable="YES">
         <attribute name="createdAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="idRaw" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <relationship name="customListSet" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CustomList" inverseName="group" inverseEntity="CustomList"/>
         <relationship name="listSet" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="MediaList" inverseName="group" inverseEntity="MediaList"/>
     </entity>

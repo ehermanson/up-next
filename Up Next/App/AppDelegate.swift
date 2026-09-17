@@ -21,12 +21,29 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 /// Accepts CloudKit share invitations the user opens (e.g. from Messages/Mail) into the shared
-/// store, then re-runs the persistence role rule so this device becomes a participant.
+/// store, then re-runs the persistence role rule so this device becomes a participant. Two entry
+/// points: a link tapped while the app is running arrives through
+/// `windowScene(_:userDidAcceptCloudKitShareWith:)`; a link that *launches* the app arrives in
+/// the scene's connection options instead, and would be silently dropped without the first method.
 final class SceneDelegate: NSObject, UIWindowSceneDelegate {
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        if let metadata = connectionOptions.cloudKitShareMetadata {
+            accept(metadata)
+        }
+    }
+
     func windowScene(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata) {
+        accept(cloudKitShareMetadata)
+    }
+
+    private func accept(_ metadata: CKShare.Metadata) {
         Task { @MainActor in
             do {
-                try await PersistenceController.shared.acceptShare(metadata: cloudKitShareMetadata)
+                try await PersistenceController.shared.acceptShare(metadata: metadata)
             } catch {
                 print("⚠️ SceneDelegate: failed to accept CloudKit share: \(error)")
             }

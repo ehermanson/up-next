@@ -25,6 +25,19 @@ final class PersistenceController {
     }
 
     let container: NSPersistentCloudKitContainer
+    /// False in screenshot mode or with `--no-cloudkit`; the stores are then local-only.
+    let isCloudKitEnabled: Bool
+
+    private static let initialImportSettledKey = "sync.initialImportSettled"
+    /// True once the first CloudKit import has finished (either way) or timed out. Seeding a root
+    /// waits for this: a fresh device on an account that already has a library would otherwise
+    /// create a second root before the real one arrives. Persisted so later launches don't wait.
+    private var initialImportSettled: Bool {
+        get { !isCloudKitEnabled || UserDefaults.standard.bool(forKey: Self.initialImportSettledKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.initialImportSettledKey) }
+    }
+    private var initialImportWaiter: Task<Void, Never>?
+    private var importEventToken: NSObjectProtocol?
 
     private(set) var privateStore: NSPersistentStore!
     private(set) var sharedStore: NSPersistentStore!
@@ -129,6 +142,7 @@ final class PersistenceController {
         Self.loadStores(container: container, screenshotMode: screenshotMode)
 
         self.container = container
+        self.isCloudKitEnabled = cloudKitEnabled
 
         let coordinator = container.persistentStoreCoordinator
         self.privateStore = coordinator.persistentStore(for: privateDescription.url!)
@@ -216,12 +230,11 @@ final class PersistenceController {
     }
 
     private func applyRoleRule() throws {
-        let sharedRequest = NSFetchRequest<WatchListGroup>(entityName: "WatchListGroup")
-        sharedRequest.affectedStores = [sharedStore]
-        if let existing = try viewContext.fetch(sharedRequest).first {
+        if let existing = try reconciledRoot(in: sharedStore) {
             role = .participant
             group = existing
             isJoiningSharedLibrary = false
+            settleInitialImport()
             return
         }
 
@@ -233,17 +246,25 @@ final class PersistenceController {
             return
         }
 
-        let privateRequest = NSFetchRequest<WatchListGroup>(entityName: "WatchListGroup")
-        privateRequest.affectedStores = [privateStore]
-        if let existing = try viewContext.fetch(privateRequest).first {
-            role = .owner
+        role = .owner
+        if let existing = try reconciledRoot(in: privateStore) {
             group = existing
+            settleInitialImport()
             return
         }
 
-        // Nothing found in either store: seed a fresh group + default lists into the private
-        // store and become the owner.
-        role = .owner
+        // Nothing anywhere. On a CloudKit-backed first launch the account may already hold a
+        // library that simply hasn't imported yet — wait for that before seeding.
+        guard initialImportSettled else {
+            group = nil
+            awaitInitialImportThenRetry()
+            return
+        }
+        try seedOwnerRoot()
+    }
+
+    /// Seeds a fresh group + default lists into the private store.
+    private func seedOwnerRoot() throws {
         let newGroup = WatchListGroup(context: viewContext)
         viewContext.assign(newGroup, to: privateStore)
 
@@ -257,6 +278,109 @@ final class PersistenceController {
 
         try viewContext.save()
         group = newGroup
+    }
+
+    /// The single root in `store`, merging duplicates first. Two devices on one account can each
+    /// seed a root before the other's synced down; when that happens every extra root's lists and
+    /// collections are moved onto one winner and the extras deleted. Winner: a root that already
+    /// carries a `CKShare` (moving anything *out* of a share zone would break the share), else the
+    /// lowest id — deterministic, so every device converges on the same root.
+    private func reconciledRoot(in store: NSPersistentStore) throws -> WatchListGroup? {
+        let request = NSFetchRequest<WatchListGroup>(entityName: "WatchListGroup")
+        request.affectedStores = [store]
+        let roots = try viewContext.fetch(request)
+        // Rows created before ids existed get one now, so `id` is stable from here on.
+        for root in roots where root.idRaw == nil { root.idRaw = UUID() }
+        for list in roots.flatMap({ $0.lists ?? [] }) where list.idRaw == nil { list.idRaw = UUID() }
+        if viewContext.hasChanges { try viewContext.save() }
+        guard roots.count > 1 else { return roots.first }
+
+        let shares = (try? container.fetchShares(matching: roots.map(\.objectID))) ?? [:]
+        let sorted = roots.sorted { $0.id.uuidString < $1.id.uuidString }
+        let winner = sorted.first { shares[$0.objectID] != nil } ?? sorted[0]
+
+        for loser in sorted where loser !== winner {
+            for list in loser.lists ?? [] { list.group = winner }
+            for list in loser.customLists ?? [] { list.group = winner }
+            // Let the inverses update before the cascade delete, so nothing moved gets deleted.
+            viewContext.processPendingChanges()
+            viewContext.delete(loser)
+        }
+        mergeDuplicateLists(in: winner)
+        try viewContext.save()
+        return winner
+    }
+
+    /// Folds same-named `MediaList`s (two seeded "TV Shows" lists) into one — lowest id keeps the
+    /// name, the others' items are appended after its own in their existing order, and the
+    /// emptied lists are deleted.
+    private func mergeDuplicateLists(in root: WatchListGroup) {
+        let byName = Dictionary(grouping: root.lists ?? [], by: \.name)
+        for lists in byName.values where lists.count > 1 {
+            let sorted = lists.sorted { $0.id.uuidString < $1.id.uuidString }
+            let keep = sorted[0]
+            var nextOrder = ((keep.items ?? []).map(\.order).max() ?? -1) + 1
+            for extra in sorted.dropFirst() {
+                for item in (extra.items ?? []).sorted(by: { $0.order < $1.order }) {
+                    item.list = keep
+                    item.order = nextOrder
+                    nextOrder += 1
+                }
+                viewContext.processPendingChanges()
+                viewContext.delete(extra)
+            }
+        }
+    }
+
+    // MARK: Initial import wait
+
+    /// Marks the first import as done (a root exists, so there's nothing to wait for) and stops
+    /// any pending wait.
+    private func settleInitialImport() {
+        guard !initialImportSettled else { return }
+        initialImportSettled = true
+        cancelInitialImportWait()
+    }
+
+    private func cancelInitialImportWait() {
+        initialImportWaiter?.cancel()
+        initialImportWaiter = nil
+        if let importEventToken {
+            NotificationCenter.default.removeObserver(importEventToken)
+            self.importEventToken = nil
+        }
+    }
+
+    /// Re-runs the role rule once the container reports its first finished import event (success
+    /// or failure — no account is a failure) or after a 10 s timeout, whichever comes first.
+    private func awaitInitialImportThenRetry() {
+        guard initialImportWaiter == nil else { return }
+
+        importEventToken = NotificationCenter.default.addObserver(
+            forName: NSPersistentCloudKitContainer.eventChangedNotification,
+            object: container,
+            queue: nil
+        ) { [weak self] note in
+            guard let event = note.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
+                    as? NSPersistentCloudKitContainer.Event,
+                  event.type == .import, event.endDate != nil
+            else { return }
+            Task { @MainActor in self?.finishInitialImportWait() }
+        }
+
+        initialImportWaiter = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            self?.finishInitialImportWait()
+        }
+    }
+
+    private func finishInitialImportWait() {
+        guard !initialImportSettled else { return }
+        initialImportSettled = true
+        cancelInitialImportWait()
+        try? applyRoleRule()
+        remoteChangeCount += 1
     }
 
     func list(named name: String) -> MediaList? {
@@ -328,9 +452,21 @@ final class PersistenceController {
         remoteChangeCount += 1
     }
 
-    /// Re-applies the role rule after the shared store changed — used to finish a pending join.
+    /// Re-applies the role rule after a remote change when the current root can no longer be
+    /// trusted: a join is pending, the root is gone (the owner stopped sharing, which deletes the
+    /// whole graph from a participant's store), or a second root arrived from another device.
     fileprivate func refreshRoleAfterRemoteChange() {
-        guard isJoiningSharedLibrary else { return }
+        var needsRerun = isJoiningSharedLibrary || group == nil
+        if let group, group.isDeleted || group.managedObjectContext == nil {
+            needsRerun = true
+        }
+        if !needsRerun, let store = role == .participant ? sharedStore : privateStore {
+            let request = NSFetchRequest<WatchListGroup>(entityName: "WatchListGroup")
+            request.affectedStores = [store]
+            let count = (try? viewContext.count(for: request)) ?? 1
+            needsRerun = count != 1
+        }
+        guard needsRerun else { return }
         try? applyRoleRule()
     }
 
@@ -338,13 +474,18 @@ final class PersistenceController {
     /// re-bootstraps so this device becomes the owner of a fresh, empty library. Owners stop
     /// sharing through `UICloudSharingController` ("Stop Sharing" deletes only the `CKShare`,
     /// keeping the owner's data); purging the zone as the owner would delete their library.
+    /// If the owner already stopped sharing there's no zone left to purge — just drop whatever
+    /// is still local and start over.
     func leaveShare() async throws {
         guard role == .participant else { throw PersistenceError.notParticipant }
-        guard let zoneID = existingShare()?.recordID.zoneID else {
-            throw PersistenceError.noShare
+        if let zoneID = existingShare()?.recordID.zoneID {
+            try await container.purgeObjectsAndRecordsInZone(with: zoneID, in: sharedStore)
+        } else {
+            try purgeAllObjects(in: sharedStore)
+            save()
         }
-        try await container.purgeObjectsAndRecordsInZone(with: zoneID, in: sharedStore)
         isJoiningSharedLibrary = false
+        group = nil
         try bootstrap()
         remoteChangeCount += 1
     }

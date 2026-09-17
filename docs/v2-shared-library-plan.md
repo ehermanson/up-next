@@ -228,3 +228,8 @@ watched / season toggles / drop / pick back up, rating + notes, reorder, create/
 add/remove collection item, collection watched toggle, mark-all-unwatched. Then: offline edits on both →
 reconnect; owner stops sharing → partner sees an empty library and becomes an owner of a fresh one;
 re-share → re-accept.
+
+Also: accept the share link with the partner's app **terminated** (cold launch path) and with it already
+running; edit rating/notes in a detail sheet, background the app without closing the sheet, force-quit,
+relaunch → edits present; install on a second device of the owner's account *before* it has synced and
+confirm one root + one "TV Shows"/"Movies" list afterwards (Settings → Share still shares everything).

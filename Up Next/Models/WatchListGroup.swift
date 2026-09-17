@@ -8,15 +8,31 @@ final class WatchListGroup: NSManagedObject {
     /// The date the group was created
     @NSManaged var createdAtRaw: Date?
 
+    /// Stable identity used to pick a deterministic winner when two devices on one account each
+    /// seeded a root before the other's synced down (`PersistenceController.reconciledRoot`).
+    @NSManaged var idRaw: UUID?
+
     /// All media lists (e.g., TV and Movie lists) in this group
     @NSManaged var listSet: NSSet?
 
     /// All custom lists (collections) in this group
     @NSManaged var customListSet: NSSet?
 
+    var id: UUID {
+        get { idRaw ?? UUID() }
+        set { idRaw = newValue }
+    }
+
     var createdAt: Date {
         get { createdAtRaw ?? .distantPast }
         set { createdAtRaw = newValue }
+    }
+
+    override func awakeFromInsert() {
+        super.awakeFromInsert()
+        if idRaw == nil {
+            idRaw = UUID()
+        }
     }
 
     var lists: [MediaList]? {

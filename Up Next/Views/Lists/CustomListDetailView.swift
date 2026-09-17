@@ -338,33 +338,34 @@ private struct CustomListItemDetailSheet: View {
     /// cast, backdrop) is stored once and shows up everywhere else the title appears. The init
     /// automatically joins the persisted `tvShow`/`movie`'s context and store (see
     /// `inferredContext`/`assignToStore` in `MediaItem.swift`) — it must, since it's related to a
-    /// stored row and Core Data forbids relating objects across contexts.
-    @State private var detailItem: ListItem
-
-    init(
-        item: CustomListItem,
-        list: CustomList,
-        listViewModel: CustomListViewModel,
-        onRemove: @escaping () -> Void,
-        dismiss: @escaping () -> Void
-    ) {
-        self.item = item
-        self.list = list
-        self.listViewModel = listViewModel
-        self.onRemove = onRemove
-        self.dismiss = dismiss
-        let placeholder: ListItem
-        if let tvShow = item.tvShow {
-            placeholder = ListItem(tvShow: tvShow)
-        } else if let movie = item.movie {
-            placeholder = ListItem(movie: movie)
-        } else {
-            placeholder = ListItem()
-        }
-        _detailItem = State(initialValue: placeholder)
-    }
+    /// stored row and Core Data forbids relating objects across contexts. Created once per
+    /// presentation in `.task`, never in `init`: SwiftUI re-runs the presenting sheet closure (and
+    /// so this init) whenever the presenter re-renders, and a wrapper built there is inserted into
+    /// the context each time while only the one kept in `@State` would ever be cleaned up.
+    @State private var detailItem: ListItem?
 
     var body: some View {
+        Group {
+            if let detailItem {
+                detailSheet(for: detailItem)
+            } else {
+                Color.clear
+            }
+        }
+        .task {
+            guard detailItem == nil else { return }
+            if let tvShow = item.tvShow {
+                detailItem = ListItem(tvShow: tvShow)
+            } else if let movie = item.movie {
+                detailItem = ListItem(movie: movie)
+            } else {
+                detailItem = ListItem()
+            }
+        }
+        .onDisappear { discardTransientItem() }
+    }
+
+    private func detailSheet(for detailItem: ListItem) -> some View {
         // Hoisted into typed locals — the type-checker has choked on this call site before.
         let removeMessage: String = "This only removes it from \u{201C}\(list.name)\u{201D}."
         let collectionName: String = list.name
@@ -402,18 +403,22 @@ private struct CustomListItemDetailSheet: View {
             removeLabel: "Remove from collection",
             removeMessage: removeMessage
         )
-        .onDisappear { discardTransientItem() }
     }
 
-    /// The wrapper points at a *persisted* media row, so Core Data's autosave can cascade-insert it
-    /// as a real watchlist entry. Tear it down when the sheet closes — a collection must never leave
-    /// a `ListItem` behind in the Movies / TV Shows tabs. `list` stays nil on this wrapper the whole
-    /// time, so `MediaLibraryViewModel`'s `list != nil` fetch filter never picks it up in between.
+    /// The wrapper points at a *persisted* media row, so it lives in the view context and any save
+    /// would persist it as a real watchlist entry. Tear it down when the sheet closes — a collection
+    /// must never leave a `ListItem` behind in the Movies / TV Shows tabs. `list` stays nil on this
+    /// wrapper the whole time, so `MediaLibraryViewModel`'s `list != nil` fetch filter never picks
+    /// it up in between.
     private func discardTransientItem() {
+        guard let detailItem else { return }
         let persistence = PersistenceController.shared
         detailItem.movie = nil
         detailItem.tvShow = nil
-        persistence.viewContext.delete(detailItem)
-        persistence.save()
+        if detailItem.managedObjectContext != nil {
+            persistence.viewContext.delete(detailItem)
+            persistence.save()
+        }
+        self.detailItem = nil
     }
 }

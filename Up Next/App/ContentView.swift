@@ -86,6 +86,10 @@ struct ContentView: View {
             if newPhase == .background {
                 viewModel.commitPendingDeletion()
                 customListViewModel.commitPendingRemoval()
+                // Detail-sheet edits (rating, notes, seasons) are only saved when the sheet closes
+                // and Core Data has no autosave, so flush whatever is dirty before the app can be
+                // terminated in the background.
+                persistence.save()
             }
         }
         .onChange(of: persistence.remoteChangeCount) {
