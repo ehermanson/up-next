@@ -463,6 +463,32 @@ final class PersistenceController {
         return name.isEmpty ? fallback : name
     }
 
+    /// "Added by" attribution for the detail sheet, sourced entirely from the CloudKit record
+    /// mirror (`creatorUserRecordID` / `creationDate`) — no Core Data attribute backs this, so a
+    /// missing record just means nothing renders. Mirrors `RemoteActivityNotifier`'s
+    /// `CKCurrentUserDefaultName` convention: that value means "you". Returns nil when no share
+    /// is live (nothing to attribute) — matches an unshared owner, which is the "no change from
+    /// today" case.
+    func attribution(for object: NSManagedObject) -> (name: String, date: Date?)? {
+        let share = existingShare()
+        guard role == .participant || share != nil else { return nil }
+        guard let record = container.record(for: object.objectID),
+              let creator = record.creatorUserRecordID
+        else { return nil }
+
+        if creator.recordName == CKCurrentUserDefaultName {
+            return ("you", record.creationDate)
+        }
+
+        let identity = share?.participants
+            .first { $0.userIdentity.userRecordID?.recordName == creator.recordName }?
+            .userIdentity
+        let name = identity?.nameComponents
+            .map { PersonNameComponentsFormatter().string(from: $0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        return (name ?? "your partner", record.creationDate)
+    }
+
     /// Entry point for share links (both the running-app and cold-launch paths). Owners are asked
     /// before their library is replaced; a device that's already a participant has nothing to
     /// lose (re-tapping the same link), so it accepts straight away.

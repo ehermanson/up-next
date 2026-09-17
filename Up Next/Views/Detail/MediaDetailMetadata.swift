@@ -1,3 +1,4 @@
+import CoreData
 import SwiftUI
 
 struct DetailProviderRow: View {
@@ -181,6 +182,43 @@ struct MetadataRow: View {
                 )
             }
         }
+    }
+}
+
+/// "Added by Sarah · Sep 12" (or "Added by you · Sep 12") under the provider row — read-only
+/// CloudKit record metadata (`PersistenceController.attribution(for:)`), no Core Data attribute.
+/// Only for a real library row (`listItem.list != nil`; Discover/collection sheets bind a
+/// transient wrapper) and only once a share is actually live, else nothing renders. `record(for:)`
+/// is slow-ish, so it's fetched once in `.task` rather than on every render.
+struct AddedByCaption: View {
+    @ObservedObject var listItem: ListItem
+
+    @State private var attribution: (name: String, date: Date?)?
+
+    var body: some View {
+        Group {
+            if listItem.list != nil, let attribution {
+                Label(caption(for: attribution), systemImage: "person.crop.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task(id: listItem.objectID) {
+            guard listItem.list != nil else { return }
+            attribution = PersistenceController.shared.attribution(for: listItem)
+        }
+    }
+
+    private func caption(for attribution: (name: String, date: Date?)) -> String {
+        guard let date = attribution.date else { return "Added by \(attribution.name)" }
+        return "Added by \(attribution.name) \u{00B7} \(formattedDate(date))"
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let sameYear = Calendar.current.isDate(date, equalTo: .now, toGranularity: .year)
+        return sameYear
+            ? date.formatted(.dateTime.month(.abbreviated).day())
+            : date.formatted(.dateTime.month(.abbreviated).day().year())
     }
 }
 
