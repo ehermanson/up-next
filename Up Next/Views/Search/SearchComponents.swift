@@ -1,5 +1,21 @@
 import SwiftUI
 
+/// Applies `.matchedTransitionSource` only when the presenter actually handed down a namespace —
+/// `matchedTransitionSource(id:in:)` takes a non-optional `Namespace.ID`, so an optional
+/// `(id, namespace)` pair needs a conditional modifier rather than an inline call. Shared by every
+/// poster/row that can be a detail-sheet zoom source (see `MediaDetailSimilar.swift`).
+struct TransitionSourceModifier: ViewModifier {
+    let source: (id: String, namespace: Namespace.ID)?
+
+    func body(content: Content) -> some View {
+        if let source {
+            content.matchedTransitionSource(id: source.id, in: source.namespace)
+        } else {
+            content
+        }
+    }
+}
+
 enum MediaType: Identifiable {
     case tvShow
     case movie
@@ -136,6 +152,10 @@ struct SearchResultRowWithImage: View {
     var voteAverage: Double?
     /// Release/premiere year, e.g. "2021".
     var year: String?
+    /// When set, the tappable row is a zoom-transition source for the detail sheet it opens —
+    /// see `MediaIDKey` for the id format. `nil` when the presenter doesn't own a namespace
+    /// (e.g. this row is only ever a plain "add" affordance).
+    var transitionSource: (id: String, namespace: Namespace.ID)?
 
     @State private var imageURL: URL?
     private let service = TMDBService.shared
@@ -149,7 +169,8 @@ struct SearchResultRowWithImage: View {
             onAdd: onAdd,
             onTap: onTap,
             voteAverage: voteAverage,
-            year: year
+            year: year,
+            transitionSource: transitionSource
         )
         .task {
             if let path = posterPath {
@@ -170,6 +191,7 @@ struct SearchResultRow: View {
     var voteAverage: Double?
     /// Release/premiere year, e.g. "2021".
     var year: String?
+    var transitionSource: (id: String, namespace: Namespace.ID)?
 
     var body: some View {
         Group {
@@ -179,6 +201,7 @@ struct SearchResultRow: View {
                         rowContent
                     }
                     .buttonStyle(.plain)
+                    .modifier(TransitionSourceModifier(source: transitionSource))
 
                     addButton
                 }

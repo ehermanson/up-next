@@ -69,6 +69,8 @@ private struct PosterCard: View {
     var isAdded: Bool = false
     var onTap: (() -> Void)?
     var onAdd: (() -> Void)?
+    /// Zoom-transition source for the nested detail sheet `onTap` opens.
+    var transitionSource: (id: String, namespace: Namespace.ID)?
 
     private let cardWidth: CGFloat = 120
     private let posterHeight: CGFloat = 170
@@ -93,6 +95,7 @@ private struct PosterCard: View {
                 .buttonStyle(.plain)
                 .disabled(isCurrent || onTap == nil)
                 .accessibilityLabel(title)
+                .modifier(TransitionSourceModifier(source: isCurrent ? nil : transitionSource))
 
                 if let onAdd {
                     Button {
@@ -173,6 +176,10 @@ struct CollectionSection: View {
     var existingIDs: Set<String> = []
     var onAdd: ((TMDBCollectionPart) -> Void)?
     var onTap: ((TMDBCollectionPart) -> Void)?
+    /// Zoom-transition namespace/id-prefix for the nested detail sheet `onTap` opens — see
+    /// `MediaDetailView`'s `selectedSimilarSourceID`.
+    var transitionNamespace: Namespace.ID?
+    var transitionIDPrefix: String = ""
 
     var body: some View {
         if let name = collectionName, !parts.isEmpty {
@@ -192,7 +199,10 @@ struct CollectionSection: View {
                                 isCurrent: isCurrent(part),
                                 isAdded: isAdded(part),
                                 onTap: onTap.map { tap in { tap(part) } },
-                                onAdd: isCurrent(part) ? nil : onAdd.map { add in { add(part) } }
+                                onAdd: isCurrent(part) ? nil : onAdd.map { add in { add(part) } },
+                                transitionSource: transitionNamespace.map {
+                                    (id: "\(transitionIDPrefix):" + MediaIDKey.make(.movie, part.id), namespace: $0)
+                                }
                             )
                         }
                     }
@@ -219,6 +229,10 @@ struct SimilarSection: View {
     var existingIDs: Set<String> = []
     var onAdd: ((SimilarMediaItem) -> Void)?
     var onTap: ((SimilarMediaItem) -> Void)?
+    /// Zoom-transition namespace/id-prefix for the nested detail sheet `onTap` opens — see
+    /// `MediaDetailView`'s `selectedSimilarSourceID`.
+    var transitionNamespace: Namespace.ID?
+    var transitionIDPrefix: String = ""
 
     var body: some View {
         if !items.isEmpty {
@@ -236,7 +250,10 @@ struct SimilarSection: View {
                                 title: item.title,
                                 isAdded: isAdded(item),
                                 onTap: onTap.map { tap in { tap(item) } },
-                                onAdd: onAdd.map { add in { add(item) } }
+                                onAdd: onAdd.map { add in { add(item) } },
+                                transitionSource: transitionNamespace.map {
+                                    (id: "\(transitionIDPrefix):" + MediaIDKey.make(item.mediaType, item.id), namespace: $0)
+                                }
                             )
                         }
                     }

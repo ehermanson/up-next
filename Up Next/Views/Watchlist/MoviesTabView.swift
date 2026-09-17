@@ -13,6 +13,9 @@ struct MoviesTabView: View {
     @State private var selectedGenre: String? = nil
     @State private var selectedProviderCategory: String? = nil
     @AppStorage("movies.onlyMyServices") private var onlyMyServices = false
+    /// Detail sheet zooms in/out of the tapped poster — see `MediaListRow`'s
+    /// `matchedTransitionSource` and `detailView(for:)` below.
+    @Namespace private var detailNamespace
 
     /// Held (not read through the singleton inline) so `@Observable` tracks provider changes.
     private let settings = ProviderSettings.shared
@@ -75,6 +78,8 @@ struct MoviesTabView: View {
             filteredUnwatchedItems: filteredUnwatchedItems,
             watchedItems: $viewModel.watchedMovies,
             expandedItemID: $expandedItemID,
+            mediaType: .movie,
+            detailNamespace: detailNamespace,
             availableGenres: viewModel.availableMovieGenres,
             selectedGenre: $selectedGenre,
             availableProviderCategories: viewModel.availableMovieProviderCategories,
@@ -129,6 +134,10 @@ struct MoviesTabView: View {
             onTVShowAdded: { viewModel.addTVShow($0) },
             onMovieAdded: { viewModel.addMovie($0) }
         )
+        .navigationTransition(.zoom(
+            sourceID: MediaIDKey.make(.movie, item.media?.id ?? ""),
+            in: detailNamespace
+        ))
 
         if horizontalSizeClass == .regular {
             detail.presentationSizing(.page)

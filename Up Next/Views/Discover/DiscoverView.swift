@@ -14,7 +14,12 @@ struct DiscoverView: View {
     /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
     @State private var detailListItem: ListItem?
+    /// The tapped card's zoom-transition source id, captured alongside `detailListItem` — a title
+    /// can appear in more than one carousel (or a carousel and Browse All) at once, so each card's
+    /// source id is prefixed by its section (see `openDetail(for:sourceID:)`).
+    @State private var detailSourceID: String = ""
     @State private var showingProviderSettings = false
+    @Namespace private var detailNamespace
 
     private let service = TMDBService.shared
     private let settings = ProviderSettings.shared
@@ -90,6 +95,7 @@ struct DiscoverView: View {
             onTVShowAdded: { onTVShowAdded($0) },
             onMovieAdded: { onMovieAdded($0) }
         )
+        .navigationTransition(.zoom(sourceID: detailSourceID, in: detailNamespace))
     }
 
     // MARK: - Media Type Picker
@@ -193,7 +199,7 @@ struct DiscoverView: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 12) {
                     ForEach(items) { item in
-                        carouselCard(item, showsAirDate: showsAirDate)
+                        carouselCard(item, carouselTitle: title, showsAirDate: showsAirDate)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -202,17 +208,27 @@ struct DiscoverView: View {
         }
     }
 
+    /// A title can appear in more than one carousel (or a carousel and Browse All) at once, so
+    /// every card's zoom-transition source id is namespaced by where it's rendered, on top of
+    /// `MediaIDKey`'s movie/TV namespacing.
+    private func transitionSourceID(_ sectionPrefix: String, _ item: DiscoverViewModel.DiscoverItem) -> String {
+        "\(sectionPrefix):" + MediaIDKey.make(item.mediaType, item.tmdbId)
+    }
+
     /// Carousel poster size — larger on regular width (iPad) to use the extra space, same 2:3 ratio.
     private var posterCardSize: CGSize {
         horizontalSizeClass == .regular ? CGSize(width: 170, height: 255) : CGSize(width: 140, height: 210)
     }
 
-    private func carouselCard(_ item: DiscoverViewModel.DiscoverItem, showsAirDate: Bool = false) -> some View {
+    private func carouselCard(
+        _ item: DiscoverViewModel.DiscoverItem, carouselTitle: String, showsAirDate: Bool = false
+    ) -> some View {
         let added = isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType)
+        let sourceID = transitionSourceID(carouselTitle, item)
 
         return VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .topTrailing) {
-                Button { openDetail(for: item) } label: {
+                Button { openDetail(for: item, sourceID: sourceID) } label: {
                     CachedAsyncImage(url: service.imageURL(path: item.posterPath)) { phase in
                         switch phase {
                         case .success(let image):
@@ -233,6 +249,7 @@ struct DiscoverView: View {
                     .clipShape(.rect(cornerRadius: DesignTokens.Radius.posterCard))
                 }
                 .buttonStyle(.plain)
+                .matchedTransitionSource(id: sourceID, in: detailNamespace)
 
                 Button(added ? "Added" : "Add", systemImage: added ? "checkmark.circle.fill" : "plus.circle.fill") {
                     if !added { addItem(item) }
@@ -258,7 +275,7 @@ struct DiscoverView: View {
                 await viewModel.loadAiringDate(for: item.tmdbId)
             }
 
-            Button { openDetail(for: item) } label: {
+            Button { openDetail(for: item, sourceID: sourceID) } label: {
                 Text(item.title)
                     .font(.caption)
                     .fontWeight(.medium)
@@ -430,7 +447,8 @@ struct DiscoverView: View {
     }
 
     private func browseRow(_ item: DiscoverViewModel.DiscoverItem) -> some View {
-        SearchResultRowWithImage(
+        let sourceID = transitionSourceID("browse", item)
+        return SearchResultRowWithImage(
             title: item.title,
             overview: item.overview,
             posterPath: item.posterPath,
@@ -438,9 +456,10 @@ struct DiscoverView: View {
             mediaType: item.mediaType,
             isAdded: isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType),
             onAdd: { addItem(item) },
-            onTap: { openDetail(for: item) },
+            onTap: { openDetail(for: item, sourceID: sourceID) },
             voteAverage: item.voteAverage,
-            year: item.year
+            year: item.year,
+            transitionSource: (id: sourceID, namespace: detailNamespace)
         )
     }
 
@@ -491,7 +510,8 @@ struct DiscoverView: View {
 
     // MARK: - Detail Sheet
 
-    private func openDetail(for item: DiscoverViewModel.DiscoverItem) {
+    private func openDetail(for item: DiscoverViewModel.DiscoverItem, sourceID: String) {
+        detailSourceID = sourceID
         switch item {
         case .tvShow(let result):
             let tvShow = service.mapToTVShow(result)

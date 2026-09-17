@@ -13,6 +13,9 @@ struct CustomListDetailView: View {
     @State private var showingAddItems = false
     @State private var isConfirmingMarkAllUnwatched = false
     @State private var selectedItem: CustomListItem?
+    /// Detail sheet zooms in/out of the tapped row — see `CustomListRow`'s
+    /// `matchedTransitionSource` and the sheet's `.navigationTransition` below.
+    @Namespace private var detailNamespace
 
     /// Collections keep their own watched state (`CustomListItem.watchedAt`) — nothing here reads
     /// or writes the Movies / TV Shows tabs. Reads through `viewModel.visibleItems(in:)` rather than
@@ -103,6 +106,7 @@ struct CustomListDetailView: View {
                 onRemove: { removeWithUndo(item) },
                 dismiss: { selectedItem = nil }
             )
+            .navigationTransition(.zoom(sourceID: transitionID(for: item), in: detailNamespace))
             // A roomy page sheet on iPad; compact keeps the standard full-height sheet.
             if horizontalSizeClass == .regular {
                 sheet.presentationSizing(.page)
@@ -225,10 +229,18 @@ struct CustomListDetailView: View {
     private func row(for item: CustomListItem) -> some View {
         CustomListRow(
             item: item,
+            transitionID: transitionID(for: item),
+            detailNamespace: detailNamespace,
             onSelect: { selectedItem = item },
             onToggleWatched: { toggleWatched(item) },
             onRemove: { removeWithUndo(item) }
         )
+    }
+
+    /// Type-namespaced id (see `MediaIDKey`) the detail sheet zooms from/to for one entry.
+    private func transitionID(for item: CustomListItem) -> String {
+        guard let media = item.media else { return "" }
+        return MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
     }
 
     /// Flips the entry between the two sections, animating the move.
@@ -250,6 +262,8 @@ struct CustomListDetailView: View {
 /// republish view updates on its own the way SwiftData's `@Model` did.
 private struct CustomListRow: View {
     @ObservedObject var item: CustomListItem
+    let transitionID: String
+    let detailNamespace: Namespace.ID
     let onSelect: () -> Void
     let onToggleWatched: () -> Void
     let onRemove: () -> Void
@@ -273,6 +287,7 @@ private struct CustomListRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .matchedTransitionSource(id: transitionID, in: detailNamespace)
         .padding(.horizontal, 6)
         .padding(.vertical, 5)
         .listRowInsets(EdgeInsets())

@@ -38,7 +38,15 @@ struct MediaDetailView: View {
     @State private var trailerKey: String?
     @State private var showingTrailer = false
     @State private var selectedSimilarItem: ListItem?
+    /// The tapped poster card's zoom-transition source id, captured alongside `selectedSimilarItem`
+    /// — `moreLikeThisItems`/`collectionParts` can carry the same title in both rows, so the id also
+    /// carries which row it came from (see `CollectionSection`/`SimilarSection`).
+    @State private var selectedSimilarSourceID: String = ""
     @State private var addedSimilarIDs: Set<String> = []
+    /// Namespace for the nested "similar title" detail sheet's zoom transition — separate from any
+    /// namespace the presenter handed this sheet, since this one is scoped to this view's own
+    /// poster carousels.
+    @Namespace private var similarNamespace
     /// TMDB's movie collection (e.g. "The Dark Knight Collection") — unrelated to the user's
     /// Collections tab; named apart from the `collectionName` input above.
     @State private var tmdbCollectionName: String?
@@ -151,7 +159,9 @@ struct MediaDetailView: View {
                             currentMovieID: listItem.movie.map { Int($0.id) ?? 0 },
                             existingIDs: existingIDs.union(addedSimilarIDs),
                             onAdd: canAddToLibrary ? { addCollectionItem($0) } : nil,
-                            onTap: { openCollectionDetail($0) }
+                            onTap: { openCollectionDetail($0) },
+                            transitionNamespace: similarNamespace,
+                            transitionIDPrefix: "collection"
                         )
 
                         SimilarSection(
@@ -159,7 +169,9 @@ struct MediaDetailView: View {
                             items: moreLikeThisItems,
                             existingIDs: existingIDs.union(addedSimilarIDs),
                             onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
-                            onTap: { openSimilarDetail($0) }
+                            onTap: { openSimilarDetail($0) },
+                            transitionNamespace: similarNamespace,
+                            transitionIDPrefix: "similar"
                         )
 
                         if let tmdbURL {
@@ -249,6 +261,7 @@ struct MediaDetailView: View {
                     onMovieAdded: onMovieAdded,
                     addTargetName: addTargetName
                 )
+                .navigationTransition(.zoom(sourceID: selectedSimilarSourceID, in: similarNamespace))
             }
             .toastOverlay()
         }
@@ -453,6 +466,7 @@ struct MediaDetailView: View {
     }
 
     private func openSimilarDetail(_ item: SimilarMediaItem) {
+        selectedSimilarSourceID = "similar:" + MediaIDKey.make(item.mediaType, item.id)
         let posterURL = service.imageURL(path: item.posterPath)
         if item.mediaType == .tvShow {
             let tvShow = TVShow(id: String(item.id), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
@@ -485,6 +499,7 @@ struct MediaDetailView: View {
     }
 
     private func openCollectionDetail(_ part: TMDBCollectionPart) {
+        selectedSimilarSourceID = "collection:" + MediaIDKey.make(.movie, part.id)
         let posterURL = service.imageURL(path: part.posterPath)
         let movie = Movie(id: String(part.id), title: part.title, thumbnailURL: posterURL, voteAverage: part.voteAverage)
         selectedSimilarItem = ListItem(movie: movie)

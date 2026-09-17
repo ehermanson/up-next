@@ -6,6 +6,11 @@ struct MediaListView: View {
     var filteredUnwatchedItems: [ListItem]
     @Binding var watchedItems: [ListItem]
     @Binding var expandedItemID: String?
+    /// This tab's media type — namespaces the zoom-transition source ids (see `MediaIDKey`) so a
+    /// row's id can never collide with anything outside this tab.
+    let mediaType: MediaType
+    /// Shared with the presenter so the detail sheet can zoom out of the tapped row.
+    let detailNamespace: Namespace.ID
     var availableGenres: [String]
     @Binding var selectedGenre: String?
     var availableProviderCategories: [String]
@@ -289,6 +294,8 @@ struct MediaListView: View {
             itemID: item.media?.id ?? "",
             expandedItemID: $expandedItemID,
             subtitle: subtitleProvider(item),
+            transitionID: MediaIDKey.make(mediaType, item.media?.id ?? ""),
+            detailNamespace: detailNamespace,
             onItemExpanded: onItemExpanded,
             onWatchedToggled: {
                 toggleWatched(item)
@@ -312,6 +319,10 @@ struct MediaListView: View {
                             UpcomingCard(item: entry.item, dateLabel: entry.dateLabel, detail: entry.detail)
                         }
                         .buttonStyle(.plain)
+                        // The strip and the main list can show the same title at once, so this
+                        // needs its own id (already namespaced "upcoming:" — see `entry.id`) —
+                        // the sheet always zooms from the list row's source, not this one.
+                        .matchedTransitionSource(id: entry.id, in: detailNamespace)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -483,6 +494,9 @@ struct MediaListRow: View {
     let itemID: String
     @Binding var expandedItemID: String?
     let subtitle: String?
+    /// Type-namespaced id (see `MediaIDKey`) the detail sheet zooms from/to.
+    let transitionID: String
+    let detailNamespace: Namespace.ID
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
     let onDeleteRequested: () -> Void
@@ -543,6 +557,7 @@ struct MediaListRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .matchedTransitionSource(id: transitionID, in: detailNamespace)
         .padding(.horizontal, 6)
         .padding(.vertical, 5)
         .listRowInsets(EdgeInsets())
@@ -666,6 +681,8 @@ struct MediaListRow: View {
         filteredUnwatchedItems: stubItems.filter { !$0.isWatched },
         watchedItems: .constant(stubItems.filter { $0.isWatched }),
         expandedItemID: .constant("tv-1"),
+        mediaType: .tvShow,
+        detailNamespace: Namespace().wrappedValue,
         availableGenres: [],
         selectedGenre: .constant(nil),
         availableProviderCategories: [],

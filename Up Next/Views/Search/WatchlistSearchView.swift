@@ -37,6 +37,9 @@ struct WatchlistSearchView: View {
     @State private var isLoadingRecommendations = false
     @State private var recommendationTask: Task<Void, Never>?
     @State private var detailListItem: ListItem?
+    /// The tapped row's zoom-transition source id, captured alongside `detailListItem`.
+    @State private var detailSourceID: String = ""
+    @Namespace private var detailNamespace
 
     private let service = TMDBService.shared
 
@@ -248,6 +251,7 @@ struct WatchlistSearchView: View {
             onTVShowAdded: isListMode ? nil : { onTVShowAdded($0) },
             onMovieAdded: isListMode ? nil : { onMovieAdded($0) }
         )
+        .navigationTransition(.zoom(sourceID: detailSourceID, in: detailNamespace))
     }
 
     /// A single stable `List` lives under `.searchable` at all times — swapping the whole
@@ -384,7 +388,8 @@ struct WatchlistSearchView: View {
                     onAdd: { addTVShow(result) },
                     onTap: { openTVShowDetail(result) },
                     voteAverage: result.voteAverage,
-                    year: year(from: result.firstAirDate)
+                    year: year(from: result.firstAirDate),
+                    transitionSource: (id: MediaIDKey.make(.tvShow, result.id), namespace: detailNamespace)
                 )
             }
         } else {
@@ -399,7 +404,8 @@ struct WatchlistSearchView: View {
                     onAdd: { addMovie(result) },
                     onTap: { openMovieDetail(result) },
                     voteAverage: result.voteAverage,
-                    year: year(from: result.releaseDate)
+                    year: year(from: result.releaseDate),
+                    transitionSource: (id: MediaIDKey.make(.movie, result.id), namespace: detailNamespace)
                 )
             }
         }
@@ -432,7 +438,8 @@ struct WatchlistSearchView: View {
                         onAdd: { addTVShow(result) },
                         onTap: { openTVShowDetail(result) },
                         voteAverage: result.voteAverage,
-                        year: year(from: result.firstAirDate)
+                        year: year(from: result.firstAirDate),
+                        transitionSource: (id: MediaIDKey.make(.tvShow, result.id), namespace: detailNamespace)
                     )
                 }
             } else {
@@ -447,7 +454,8 @@ struct WatchlistSearchView: View {
                         onAdd: { addMovie(result) },
                         onTap: { openMovieDetail(result) },
                         voteAverage: result.voteAverage,
-                        year: year(from: result.releaseDate)
+                        year: year(from: result.releaseDate),
+                        transitionSource: (id: MediaIDKey.make(.movie, result.id), namespace: detailNamespace)
                     )
                 }
             }
@@ -640,11 +648,13 @@ struct WatchlistSearchView: View {
     }
 
     private func openTVShowDetail(_ result: TMDBTVShowSearchResult) {
+        detailSourceID = MediaIDKey.make(.tvShow, result.id)
         let tvShow = service.mapToTVShow(result)
         detailListItem = ListItem(tvShow: tvShow)
     }
 
     private func openMovieDetail(_ result: TMDBMovieSearchResult) {
+        detailSourceID = MediaIDKey.make(.movie, result.id)
         let movie = service.mapToMovie(result)
         detailListItem = ListItem(movie: movie)
     }
