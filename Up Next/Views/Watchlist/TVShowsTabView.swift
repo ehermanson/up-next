@@ -221,12 +221,9 @@ struct TVShowsTabView: View {
 
         if !item.watchedSeasons.isEmpty,
            let total = tvShow.numberOfSeasons, total > 1,
-           let next = item.nextSeasonToWatch {
-            if next == total {
-                return "Next Season: S\(next)"
-            } else {
-                return "Next Season: S\(next) (of \(total))"
-            }
+           !item.isWatched {
+            let watched = Set(item.watchedSeasons).filter { (1...total).contains($0) }.count
+            return "\(watched) of \(total) seasons watched"
         }
 
         return tvShow.seasonsEpisodesSummary

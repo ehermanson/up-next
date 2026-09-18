@@ -135,9 +135,6 @@ enum RemoteActivityNotifier {
                     : "\(actor) marked \(title) unwatched"
             }
             if updated.contains("watchedSeasonsRaw") {
-                if let next = item.nextSeasonToWatch {
-                    return "\(actor) is up to season \(next) of \(title)"
-                }
                 return "\(actor) updated seasons for \(title)"
             }
             if updated.contains("userRatingNumber") {

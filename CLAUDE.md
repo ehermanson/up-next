@@ -238,6 +238,8 @@ The target is universal (`TARGETED_DEVICE_FAMILY = 1,2`, resizable windows on iP
 
 ### Description truncation
 
+The detail sheet presents metadata/providers, then the overall description and cast, then season/episode and tracking controls. Keep the description and cast above the season checklist.
+
 `ClampedDescriptionText` uses a soft line limit: descriptions that fit within the limit plus one line show in full without more/less. Longer passages collapse to the original limit. Hidden copies measure the actual font and available width, so this adapts to Dynamic Type and resizing. Show/season overviews, season rows, episode rows, and search previews share this component; search previews disable expansion because they are inside navigation buttons. Titles, metadata, and editable notes keep their existing layout limits.
 
 ### Watched State (TV Shows)
@@ -246,8 +248,8 @@ The target is universal (`TARGETED_DEVICE_FAMILY = 1,2`, resizable windows on iP
 - **Season availability** (`TVShow.availableSeasonCount` / `announcedSeasonNumber` / `announcedSeasonPremiere`, computed — no schema): a season counts only once it has episodes (`seasonEpisodeCounts`) *and* has started airing (`next_episode_to_air` pointing at its episode 1 means it hasn't). TMDB adds a season the moment it's announced, so without this a caught-up show bounces back into Up Next with nothing to watch. Stub rows without season data treat every season as available.
 - `nextSeasonToWatch`: Computed from *available* seasons vs watched
 - `syncWatchedStateFromSeasons()`: watched ⇔ every available season is in `watchedSeasons` (and at least one is). A caught-up show with an announced season therefore stays in Watched with a "Season N announced / premieres …" subtitle and no partial progress bar; the 6-hour refresh re-runs the sync for every library row, so it returns to Up Next by itself once the season starts. `handleSeasonCountUpdate` no longer un-marks on a season-count increase — the sync decides.
-- **Season row actions**: only the bounded 44-point circle target marks a season watched/unwatched. The timeline connector never receives taps. The header (title/count/score/chevron) and episode chart open season details; the summary’s more/less button only expands text. Keep these targets separate.
-- `toggleSeason(_:)` cascades: marking S*n* marks 1…*n*; un-marking S*n* un-marks *n*…last
+- **Season row actions**: only the bounded 44-point circle target marks a season watched/unwatched. Rows are independent checklist entries without timeline connectors. The header (title/count/score/chevron) and episode chart open season details; the summary’s more/less button only expands text. Keep these targets separate.
+- `toggleSeason(_:)` changes only the selected season, preserving gaps and all other season marks. Partial-progress subtitles show “N of M seasons watched”; season-change notifications don't imply a viewing order. Clearing the last mark explicitly clears watched state before syncing, avoiding the legacy whole-show fallback.
 - Shows remain in unwatched list when partially watched
 - Rows can be marked watched/unwatched (or "Pick Back Up" for dropped shows) via leading swipe or context menu — the transition lives on `ListItem.toggleWatched()` (all seasons for TV). This is the *library's* watched state only; custom-list rows have their own, unrelated toggle (see "Custom Lists")
 - Watched section is sorted most-recently-watched first

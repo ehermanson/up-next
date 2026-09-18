@@ -149,21 +149,25 @@ final class ListItem: NSManagedObject, Identifiable {
         }
     }
 
-    /// Toggles a season, cascading to the seasons around it: people watch shows in order, so
-    /// marking season N watched also marks 1...N (any later seasons already watched stay watched),
-    /// and un-marking season N un-marks N...last. Without the cascade, tapping S5 on a fresh show
-    /// would leave `nextSeasonToWatch` pointing at S1.
+    /// Toggles only the selected season, allowing anthologies and out-of-order viewing.
     /// No-op for movies or shows without `numberOfSeasons`.
     func toggleSeason(_ season: Int) {
         guard season >= 1, let tvShow = tvShow, let total = tvShow.numberOfSeasons, total > 0 else { return }
 
         var watched = Set(watchedSeasons)
         if watched.contains(season) {
-            watched = watched.filter { $0 < season }
+            watched.remove(season)
         } else {
-            watched.formUnion(1...season)
+            watched.insert(season)
         }
         watchedSeasons = watched.sorted()
+
+        // An explicit removal of the last mark isn't a legacy whole-show watched state.
+        // Keep the sync's legacy fallback from filling the seasons back in.
+        if watched.isEmpty, !isDropped {
+            isWatched = false
+            watchedAt = nil
+        }
 
         // If all seasons are now watched while dropped, clear the drop (legitimately complete)
         if isDropped, (1...total).allSatisfy({ watched.contains($0) }) {

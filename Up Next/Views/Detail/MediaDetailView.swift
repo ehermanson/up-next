@@ -124,8 +124,18 @@ struct MediaDetailView: View {
                         )
                         AddedByCaption(listItem: listItem)
 
-                        // Tracking controls live above the fold, right after the metadata — this
-                        // is what the user opened the sheet to act on.
+                        DescriptionSection(
+                            isLoading: isLoadingDetails,
+                            descriptionText: listItem.media?.descriptionText,
+                            errorMessage: detailError)
+
+                        CastSection(
+                            cast: listItem.media?.cast ?? [],
+                            castImagePaths: listItem.media?.castImagePaths ?? [],
+                            castCharacters: listItem.media?.castCharacters ?? []
+                        )
+
+                        // Introduce the title before its season and tracking controls.
                         if let collectionWatched {
                             CollectionWatchedCard(
                                 collectionName: collectionName,
@@ -171,17 +181,6 @@ struct MediaDetailView: View {
                                 episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
                             )
                         }
-
-                        DescriptionSection(
-                            isLoading: isLoadingDetails,
-                            descriptionText: listItem.media?.descriptionText,
-                            errorMessage: detailError)
-
-                        CastSection(
-                            cast: listItem.media?.cast ?? [],
-                            castImagePaths: listItem.media?.castImagePaths ?? [],
-                            castCharacters: listItem.media?.castCharacters ?? []
-                        )
 
                         actionButtonRow
 

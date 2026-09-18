@@ -244,21 +244,6 @@ struct SeasonChecklistCard: View {
         .padding(.leading, 56)
         .padding(.bottom, isLast ? 0 : 16)
         .overlay(alignment: .topLeading) {
-            // Decoration only: the connector must never inherit the watched action.
-            if !isLast {
-                VStack(spacing: 0) {
-                    Color.clear.frame(height: 36)
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.3)) : AnyShapeStyle(.fill.tertiary))
-                        .frame(width: 2)
-                        .frame(maxHeight: .infinity)
-                }
-                .frame(width: 44)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-        }
-        .overlay(alignment: .topLeading) {
             // A bounded target with a separate gutter; no row-sized watched button.
             Button {
                 listItem.toggleSeason(season)
@@ -270,7 +255,7 @@ struct SeasonChecklistCard: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Mark Season \(season) as \(isWatched ? "unwatched" : "watched")")
             .accessibilityValue(isWatched ? "Watched" : "Not watched")
-            .accessibilityHint(isWatched ? "Also marks later seasons unwatched" : "Also marks earlier seasons watched")
+            .accessibilityHint("Changes only this season")
             .accessibilityAddTraits(.isToggle)
         }
     }

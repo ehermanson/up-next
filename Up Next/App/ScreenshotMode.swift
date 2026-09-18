@@ -48,7 +48,7 @@ enum ScreenshotMode {
 
     private struct TVSeed {
         let id: Int
-        /// Seasons to mark watched via `toggleSeason` (cascades 1...n). Takes priority over
+        /// Marks each season from 1 through this number watched. Takes priority over
         /// `fullyWatched` when both are set (they aren't, in practice).
         let watchedThroughSeason: Int?
         /// Marks every season watched — used by the "Watched" seeds below.
@@ -202,11 +202,13 @@ enum ScreenshotMode {
         library.addTVShow(tvShow)
         guard let item = library.tvShows.first(where: { $0.media?.id == tvShow.id }) else { return }
         if let watchedThroughSeason = seed.watchedThroughSeason {
-            item.toggleSeason(watchedThroughSeason)
+            if watchedThroughSeason > 0 {
+                for season in 1...watchedThroughSeason where !item.watchedSeasons.contains(season) {
+                    item.toggleSeason(season)
+                }
+            }
         } else if seed.fullyWatched {
-            if let total = tvShow.numberOfSeasons, total > 0 {
-                item.toggleSeason(total)
-            } else {
+            if !item.isWatched {
                 item.toggleWatched()
             }
         }
