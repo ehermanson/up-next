@@ -9,46 +9,55 @@ struct SeasonEpisodesView: View {
     let season: Int
     var seasonName: String? = nil
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var seasonDetail: TMDBSeasonDetail?
     @State private var isLoading = false
     @State private var loadError: String?
-    @State private var expandedEpisodeIDs: Set<Int> = []
 
     private let service = TMDBService.shared
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: DesignTokens.Spacing.rowGap) {
-                header
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: DesignTokens.Spacing.rowGap) {
+                    header
 
-                if isLoading {
-                    ForEach(0..<6, id: \.self) { _ in placeholderRow }
-                } else if let loadError {
-                    EmptyStateView(
-                        icon: "wifi.exclamationmark",
-                        title: "Couldn't load episodes",
-                        subtitle: loadError
-                    ) {
-                        Button("Try Again") {
-                            Task { await loadSeason() }
+                    if isLoading {
+                        ForEach(0..<6, id: \.self) { _ in placeholderRow }
+                    } else if let loadError {
+                        EmptyStateView(
+                            icon: "wifi.exclamationmark",
+                            title: "Couldn't load episodes",
+                            subtitle: loadError
+                        ) {
+                            Button("Try Again") {
+                                Task { await loadSeason() }
+                            }
+                            .buttonStyle(.glassProminent)
                         }
-                        .buttonStyle(.glassProminent)
-                    }
-                    .padding(.top, 40)
-                } else if let episodes = seasonDetail?.episodes, !episodes.isEmpty {
-                    ForEach(episodes) { episode in
-                        episodeRow(episode)
-                    }
-                } else {
-                    EmptyStateView(icon: "list.number", title: "No episodes listed yet")
                         .padding(.top, 40)
+                    } else if let episodes = seasonDetail?.episodes, !episodes.isEmpty {
+                        SeasonRatingsSnapshot(episodes: episodes) { episode in
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+                                scrollProxy.scrollTo(episode.id, anchor: .top)
+                            }
+                        }
+                        ForEach(episodes) { episode in
+                            episodeRow(episode)
+                                .id(episode.id)
+                        }
+                    } else {
+                        EmptyStateView(icon: "list.number", title: "No episodes listed yet")
+                            .padding(.top, 40)
+                    }
                 }
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
+                .padding(.vertical, DesignTokens.Spacing.section)
+                // Keeps the column readable on the iPad page sheet, matching `MediaDetailView`.
+                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, DesignTokens.Spacing.screenInset)
-            .padding(.vertical, DesignTokens.Spacing.section)
-            // Keeps the column readable on the iPad page sheet, matching `MediaDetailView`.
-            .frame(maxWidth: 760, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
         .background { AppBackground() }
         .navigationTitle("Season \(season)")
@@ -100,17 +109,7 @@ struct SeasonEpisodesView: View {
                 }
 
                 if let overview = episode.overview, !overview.isEmpty {
-                    Button {
-                        toggleExpanded(episode.id)
-                    } label: {
-                        Text(overview)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(expandedEpisodeIDs.contains(episode.id) ? nil : 3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
+                    ClampedDescriptionText(text: overview, lineLimit: 3, font: .subheadline)
                 }
             }
         }
@@ -154,16 +153,6 @@ struct SeasonEpisodesView: View {
     }
 
     // MARK: - Helpers
-
-    private func toggleExpanded(_ id: Int) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            if expandedEpisodeIDs.contains(id) {
-                expandedEpisodeIDs.remove(id)
-            } else {
-                expandedEpisodeIDs.insert(id)
-            }
-        }
-    }
 
     private func hasVote(_ episode: TMDBSeasonEpisode) -> Bool {
         (episode.voteCount ?? 0) > 0 && episode.voteAverage != nil

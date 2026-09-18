@@ -80,6 +80,7 @@ struct TMDBSeason: Codable {
     let name: String?
     let episodeCount: Int?
     let overview: String?
+    let voteAverage: Double?
 }
 
 // MARK: - Season Detail (episode list)

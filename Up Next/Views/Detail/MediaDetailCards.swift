@@ -136,6 +136,7 @@ struct UserRatingCard: View {
 
 struct SeasonChecklistCard: View {
     @ObservedObject var listItem: ListItem
+    var ratings: [Int: Double] = [:]
 
     private var totalSeasons: Int {
         listItem.tvShow?.numberOfSeasons ?? 0
@@ -159,7 +160,7 @@ struct SeasonChecklistCard: View {
         listItem.tvShow?.title ?? ""
     }
 
-    @State private var expandedSeasons: Set<Int> = []
+    @State private var seasonEpisodes: [Int: [TMDBSeasonEpisode]] = [:]
 
     private let circleSize: CGFloat = 28
 
@@ -168,6 +169,18 @@ struct SeasonChecklistCard: View {
             Text("Seasons")
                 .font(.headline)
 
+            if let tvID, ratings.contains(where: {
+                $0.key > 0 && $0.key <= (listItem.tvShow?.availableSeasonCount ?? 0)
+            }) {
+                SeasonComparisonChart(
+                    tvID: tvID,
+                    showTitle: showTitle,
+                    seasonCount: totalSeasons,
+                    availableSeasonCount: listItem.tvShow?.availableSeasonCount ?? 0,
+                    ratings: ratings
+                )
+            }
+
             VStack(spacing: 0) {
                 ForEach(1...max(totalSeasons, 1), id: \.self) { season in
                     seasonRow(season: season)
@@ -175,15 +188,8 @@ struct SeasonChecklistCard: View {
             }
         }
         .sensoryFeedback(.selection, trigger: listItem.watchedSeasons)
-    }
-
-    private func toggleDescription(_ season: Int) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            if expandedSeasons.contains(season) {
-                expandedSeasons.remove(season)
-            } else {
-                expandedSeasons.insert(season)
-            }
+        .task(id: "\(tvID ?? 0):\(listItem.tvShow?.availableSeasonCount ?? 0)") {
+            await loadEpisodeRatings()
         }
     }
 
@@ -201,122 +207,154 @@ struct SeasonChecklistCard: View {
         let episodeCount = season <= episodeCounts.count ? episodeCounts[season - 1] : nil
         let description = season <= seasonDescriptions.count ? seasonDescriptions[season - 1] : nil
         let isLast = season == totalSeasons
-        let isExpanded = expandedSeasons.contains(season)
         // Announced seasons stay tappable — TMDB's data can lag a real airing — but read as
         // unavailable rather than as something the user is behind on.
         let isAnnounced = season > (listItem.tvShow?.availableSeasonCount ?? 0) && season <= totalSeasons
 
-        return HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Button {
-                    listItem.toggleSeason(season)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Season \(season)")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(isAnnounced ? .secondary : .primary)
-
-                        if isAnnounced {
-                            Text(announcedCaption(season: season))
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        } else if let count = episodeCount, count > 0 {
-                            Text("\(count) episode\(count == 1 ? "" : "s")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Season \(season)")
-                .accessibilityValue(isWatched ? "Watched" : (isAnnounced ? "Announced" : "Not watched"))
-                .accessibilityAddTraits(.isToggle)
-
-                if let description, !description.isEmpty {
-                    Button {
-                        toggleDescription(season)
-                    } label: {
-                        Text(description)
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(isExpanded ? nil : 2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isExpanded ? "Collapse season description" : "Expand season description")
-                }
-            }
-
-            // Separate from the season-toggle button above — tapping it opens the episode list
-            // instead of marking the season watched. Announced/unaired seasons stay tappable;
-            // TMDB often lists their upcoming episodes.
+        return VStack(alignment: .leading, spacing: 2) {
             if let tvID {
                 NavigationLink {
                     SeasonEpisodesView(tvID: tvID, showTitle: showTitle, season: season)
                 } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(.rect)
+                    seasonHeader(season: season, episodeCount: episodeCount, isAnnounced: isAnnounced)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("View Season \(season) episodes")
+                .accessibilityLabel("View Season \(season) details")
+                .accessibilityValue(seasonAccessibilityValue(season, isWatched: isWatched, isAnnounced: isAnnounced))
+            } else {
+                seasonHeader(season: season, episodeCount: episodeCount, isAnnounced: isAnnounced)
+            }
+
+            if let description, !description.isEmpty {
+                ClampedDescriptionText(text: description, lineLimit: 2, font: .caption, color: .secondary)
+            }
+            if !isAnnounced, let tvID, let episodes = seasonEpisodes[season],
+               episodes.contains(where: { $0.snapshotRating != nil }) {
+                NavigationLink {
+                    SeasonEpisodesView(tvID: tvID, showTitle: showTitle, season: season)
+                } label: {
+                    CompactEpisodeRatings(episodes: episodes)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Season \(season) episode ratings")
+                .accessibilityHint("Opens the full episode ratings and details")
+                .padding(.top, 6)
             }
         }
-        .padding(.top, 4)
-        .padding(.leading, circleSize + 12)
-        .padding(.bottom, isLast ? 0 : 12)
-        // The timeline sits in the gutter the leading padding reserves, so it can span the
-        // row's full height (circle + connector) regardless of how tall the text is.
+        .padding(.leading, 56)
+        .padding(.bottom, isLast ? 0 : 16)
         .overlay(alignment: .topLeading) {
+            // Decoration only: the connector must never inherit the watched action.
+            if !isLast {
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: 36)
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.3)) : AnyShapeStyle(.fill.tertiary))
+                        .frame(width: 2)
+                        .frame(maxHeight: .infinity)
+                }
+                .frame(width: 44)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            // A bounded target with a separate gutter; no row-sized watched button.
             Button {
                 listItem.toggleSeason(season)
             } label: {
-                timeline(isWatched: isWatched, isLast: isLast, isAnnounced: isAnnounced)
+                watchedCircle(isWatched: isWatched, isAnnounced: isAnnounced)
+                    .frame(width: 44, height: 44)
+                    .contentShape(.circle)
             }
             .buttonStyle(.plain)
-            .accessibilityHidden(true)
+            .accessibilityLabel("Mark Season \(season) as \(isWatched ? "unwatched" : "watched")")
+            .accessibilityValue(isWatched ? "Watched" : "Not watched")
+            .accessibilityHint(isWatched ? "Also marks later seasons unwatched" : "Also marks earlier seasons watched")
+            .accessibilityAddTraits(.isToggle)
         }
     }
 
-    private func timeline(isWatched: Bool, isLast: Bool, isAnnounced: Bool) -> some View {
-        VStack(spacing: 0) {
-            ZStack {
-                Circle()
-                    .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.15)) : AnyShapeStyle(.fill.tertiary))
-                Circle()
-                    .strokeBorder(
-                        isWatched ? AnyShapeStyle(Color.green.opacity(0.6)) : AnyShapeStyle(.fill.secondary),
-                        // Dashed and fainter: this season isn't out yet.
-                        style: isAnnounced
-                            ? StrokeStyle(lineWidth: 1.5, dash: [3, 3])
-                            : StrokeStyle(lineWidth: 1.5)
-                    )
-                    .opacity(isAnnounced && !isWatched ? 0.6 : 1)
-                if isWatched {
-                    Image(systemName: "checkmark")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.green)
+    private func seasonHeader(season: Int, episodeCount: Int?, isAnnounced: Bool) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Season \(season)")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(isAnnounced ? .secondary : .primary)
+                if isAnnounced {
+                    Text(announcedCaption(season: season))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                } else if let count = episodeCount, count > 0 {
+                    Text("\(count) episode\(count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: circleSize, height: circleSize)
-
-            if !isLast {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.3)) : AnyShapeStyle(.fill.tertiary))
-                    .frame(width: 2)
-                    .frame(maxHeight: .infinity)
+            Spacer(minLength: 0)
+            if !isAnnounced, let rating = ratings[season] {
+                StarRatingLabel(vote: rating)
+                    .monospacedDigit()
+                    .fixedSize()
+            }
+            if tvID != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 24)
             }
         }
-        .frame(width: circleSize)
+        .frame(minHeight: 44)
         .contentShape(.rect)
     }
+
+    /// Optional charts load sequentially to avoid a burst of requests for long-running shows.
+    /// The service caches season responses, including when the episode page is opened next.
+    private func loadEpisodeRatings() async {
+        guard let tvID else { return }
+        let available = listItem.tvShow?.availableSeasonCount ?? 0
+        guard available > 0 else { return }
+        for season in 1...available {
+            guard !Task.isCancelled else { return }
+            if seasonEpisodes[season] != nil { continue }
+            do {
+                let detail = try await TMDBService.shared.getSeasonDetails(tvID: tvID, season: season)
+                guard !Task.isCancelled else { return }
+                seasonEpisodes[season] = detail.episodes ?? []
+            } catch {
+                // Season information remains useful when this optional chart isn't available.
+                if Task.isCancelled { return }
+            }
+        }
+    }
+
+    private func seasonAccessibilityValue(_ season: Int, isWatched: Bool, isAnnounced: Bool) -> String {
+        let status = isWatched ? "Watched" : (isAnnounced ? "Announced" : "Not watched")
+        guard !isAnnounced, let rating = ratings[season] else { return status }
+        return "\(status), TMDB season rating \(rating.formatted(.number.precision(.fractionLength(1)))) out of 10"
+    }
+
+    private func watchedCircle(isWatched: Bool, isAnnounced: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.15)) : AnyShapeStyle(.fill.tertiary))
+            Circle()
+                .strokeBorder(
+                    isWatched ? AnyShapeStyle(Color.green.opacity(0.6)) : AnyShapeStyle(.fill.secondary),
+                    style: isAnnounced
+                        ? StrokeStyle(lineWidth: 1.5, dash: [3, 3])
+                        : StrokeStyle(lineWidth: 1.5)
+                )
+                .opacity(isAnnounced && !isWatched ? 0.6 : 1)
+            if isWatched {
+                Image(systemName: "checkmark")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.green)
+            }
+        }
+        .frame(width: circleSize, height: circleSize)
+    }
+
 }
 
 /// Compact link to the read-only episode list, for shows that don't get a `SeasonChecklistCard`

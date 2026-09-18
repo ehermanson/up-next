@@ -254,10 +254,7 @@ struct SearchResultRow: View {
                 }
 
                 if let overview = overview, !overview.isEmpty {
-                    Text(overview)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
+                    ClampedDescriptionText(text: overview, lineLimit: 3, font: .caption, allowsExpansion: false)
                 }
 
                 if let vote = voteAverage, vote > 0 {

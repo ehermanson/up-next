@@ -5,7 +5,8 @@ Just a fun personal project to replace the running list of movies and TV shows m
 ## Features
 
 - **Manage your watchlist**: Track movies and TV shows you want to watch, mark them as watched, and leave notes
-- **Season tracking**: For TV shows, track which seasons you've watched, and browse every episode's title, description, air date and rating
+- **Readable descriptions**: Short overflows show in full automatically; “more” appears only when a description exceeds its usual limit by more than one line.
+- **Season tracking**: For TV shows, mark seasons watched using the dedicated circle controls, and browse every episode's title, description, air date and rating. A compact chart above the season list compares one TMDB score per season. Season rows show TMDB season scores and tiny episode-rating bars with a dashed episode-average line for quick comparison; tap a strip to open the episodes. A compact episode ratings chart shows the episode average and lets you jump straight to an episode; scroll horizontally on iPhone or see more at once on iPad
 - **Collections**: Create custom collections (Christmas movies, kid-friendly, guilty pleasures, etc.)
 - **Discover**: Search, browse trending titles, see what's airing this week (with the exact episode and day), and get personalized recommendations
 - **Provider filtering**: See only titles available on your streaming services, by region

@@ -54,6 +54,8 @@ struct MediaDetailView: View {
     /// Dominant color of the header artwork, reported up by `HeaderImageView` so the sheet
     /// background can wash the same tint over the top — see `HeaderImageView.onTintChange`.
     @State private var heroTint: Color?
+    /// Display-only season scores from the existing show detail response.
+    @State private var seasonRatings: [Int: Double] = [:]
 
     private let service = TMDBService.shared
 
@@ -140,7 +142,7 @@ struct MediaDetailView: View {
                             }
                         } else if onAdd == nil {
                             if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
-                                SeasonChecklistCard(listItem: listItem)
+                                SeasonChecklistCard(listItem: listItem, ratings: seasonRatings)
                                 DoneWatchingCard(listItem: listItem)
                             }
 
@@ -389,6 +391,11 @@ struct MediaDetailView: View {
             if let tvShow = listItem.tvShow {
                 let previousSeasonCount = tvShow.numberOfSeasons
                 let detail = try await service.getTVShowDetails(id: id)
+                seasonRatings = (detail.seasons ?? []).reduce(into: [:]) { ratings, season in
+                    guard season.seasonNumber > 0, let rating = season.voteAverage,
+                          rating.isFinite, rating > 0, rating <= 10 else { return }
+                    ratings[season.seasonNumber] = rating
+                }
                 let providers = detail.watchProviders?.results?[service.currentRegion]
                 tvShow.update(from: await service.mapToTVShow(detail, providers: providers))
 
@@ -864,60 +871,67 @@ struct DescriptionSection: View {
     }
 }
 
-/// Overview text clamped to 4 lines with a "more"/"less" toggle, shown only when the text
-/// actually overflows. Measures by laying out the full text off-screen (`.hidden()`, `.fixedSize`
-/// so it reports its natural height) alongside the clamped copy and comparing heights — no line
-/// count is ever exposed by `Text` itself.
+/// A soft line limit: reveal the full passage if it needs only one extra line.
+/// Longer passages keep the original limit and offer expansion. Measurements share
+/// the rendered font and width, so the decision adapts to Dynamic Type and iPad layouts.
 struct ClampedDescriptionText: View {
     let text: String
     var lineLimit: Int = 4
+    var font: Font = .body
+    var color: Color = .secondary
+    /// Previews inside navigation buttons get the same soft limit without a nested button.
+    var allowsExpansion = true
 
     @State private var isExpanded = false
-    @State private var isTruncated = false
     @State private var fullHeight: CGFloat = 0
-    @State private var clampedHeight: CGFloat = 0
+    @State private var relaxedHeight: CGFloat = 0
+
+    private var needsExpansion: Bool {
+        fullHeight > relaxedHeight + 1 && relaxedHeight > 0
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(text)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .lineLimit(isExpanded ? nil : lineLimit)
-                .background {
-                    ZStack(alignment: .topLeading) {
-                        // Full, unclamped copy — invisible, used only to measure natural height.
-                        Text(text)
-                            .font(.body)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .hidden()
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+            description
 
-                        // Clamped copy at the same width, measured the same way so the two
-                        // heights are directly comparable regardless of `isExpanded`.
-                        Text(text)
-                            .font(.body)
-                            .lineLimit(lineLimit)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .hidden()
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { clampedHeight = $0 }
-                    }
-                }
-                .onChange(of: fullHeight) { _, _ in updateTruncation() }
-                .onChange(of: clampedHeight) { _, _ in updateTruncation() }
-
-            if isTruncated {
+            if needsExpansion && allowsExpansion {
                 Button(isExpanded ? "less" : "more") {
                     isExpanded.toggle()
                 }
                 .buttonStyle(.plain)
-                .font(.subheadline)
+                .font(font)
                 .foregroundStyle(Color.accentColor)
+                .accessibilityLabel(isExpanded ? "Show less description" : "Show full description")
             }
         }
+        .onChange(of: text) { isExpanded = false }
     }
 
-    private func updateTruncation() {
-        isTruncated = fullHeight > clampedHeight + 1
+    private var description: some View {
+        Text(text)
+            .font(font)
+            .foregroundStyle(color)
+            .lineLimit(needsExpansion && !(isExpanded && allowsExpansion) ? lineLimit : nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(alignment: .topLeading) {
+                // Separate backgrounds prevent one measuring copy from widening the other.
+                Text(text)
+                    .font(font)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .hidden()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+                    .accessibilityHidden(true)
+            }
+            .background(alignment: .topLeading) {
+                Text(text)
+                    .font(font)
+                    .lineLimit(lineLimit + 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .hidden()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { relaxedHeight = $0 }
+                    .accessibilityHidden(true)
+            }
     }
 }
 
