@@ -20,10 +20,11 @@ struct MediaListView: View {
     var showsMyServicesFilter: Bool
 
     let navigationTitle: String
-    /// Heading for the upcoming strip — "Airing Soon" (TV) or "Coming Soon" (movies).
+    /// Heading for the upcoming strip — "Returning Soon" (TV) or "Coming Soon" (movies).
     let upcomingTitle: String
     /// Items with a future air/release date, shown in a horizontal strip above "Up Next".
     var upcomingItems: [UpcomingEntry] = []
+    var watchingItems: [ListItem] = []
     let subtitleProvider: (ListItem) -> String?
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
@@ -44,6 +45,19 @@ struct MediaListView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(ToastState.self) private var toast
+    @AppStorage("tvShows.watchedExpanded") private var tvWatchedExpanded = false
+    @AppStorage("movies.watchedExpanded") private var movieWatchedExpanded = false
+
+    private var isWatchedExpanded: Bool {
+        mediaType == .tvShow ? tvWatchedExpanded : movieWatchedExpanded
+    }
+
+    private var disclosureAnimation: Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.35)
+    }
+
     @State private var isEditingOrder = false
     /// Bumped on every watched toggle / reorder so `.sensoryFeedback` has a trigger to observe.
     @State private var watchedToggleCount = 0
@@ -63,7 +77,7 @@ struct MediaListView: View {
     }
 
     private var isEmpty: Bool {
-        unwatchedItems.isEmpty && watchedItems.isEmpty
+        unwatchedItems.isEmpty && watchedItems.isEmpty && watchingItems.isEmpty
     }
 
     /// Rows actually rendered — drop any item without a stable media id so the two sections can't
@@ -178,11 +192,18 @@ struct MediaListView: View {
                     .listRowSeparator(.hidden)
             }
 
+            if !watchingItems.isEmpty && !isEditingOrder {
+                SectionHeader(title: "Watching", count: watchingItems.count, icon: "play.circle.fill", showsFilter: false)
+                ForEach(watchingItems, id: \.media?.id) { item in
+                    row(for: item)
+                }
+            }
+
             if !upcomingItems.isEmpty && !isEditingOrder {
                 upcomingStrip
             }
 
-            if unwatchedItems.isEmpty && !isEditingOrder {
+            if unwatchedItems.isEmpty && watchingItems.isEmpty && !isEditingOrder {
                 caughtUpRow
             }
 
@@ -208,10 +229,12 @@ struct MediaListView: View {
             }
 
             if !watchedItems.isEmpty && !isEditingOrder {
-                SectionHeader(title: "Watched", count: watchedItems.count)
+                watchedHeader
 
-                ForEach(displayedWatchedItems, id: \.media?.id) { item in
+                // Keep the ForEach identity stable so List animates individual row changes.
+                ForEach(isWatchedExpanded ? displayedWatchedItems : [], id: \.media?.id) { item in
                     row(for: item)
+                        .transition(.opacity)
                 }
                 .onDelete(perform: deleteWatched)
             }
@@ -219,6 +242,9 @@ struct MediaListView: View {
         .refreshable {
             await onRefresh?()
         }
+        // AppStorage can publish outside the button's transaction; key the layout animation
+        // to the rendered preference so inserts/removals still receive an animation.
+        .animation(disclosureAnimation, value: isWatchedExpanded)
         .scrollContentBackground(.hidden)
         .listStyle(.plain)
         .contentMargins(.bottom, 20, for: .scrollContent)
@@ -247,12 +273,19 @@ struct MediaListView: View {
                         .padding(.horizontal, DesignTokens.Spacing.screenInset)
                 }
 
+                if !watchingItems.isEmpty {
+                    section(
+                        header: SectionHeader(title: "Watching", count: watchingItems.count, icon: "play.circle.fill", showsFilter: false),
+                        items: watchingItems
+                    )
+                }
+
                 if !upcomingItems.isEmpty {
                     upcomingStrip
                 }
 
                 if unwatchedItems.isEmpty {
-                    caughtUpRow
+                    if watchingItems.isEmpty { caughtUpRow }
                 } else {
                     section(
                         header: SectionHeader(
@@ -270,10 +303,7 @@ struct MediaListView: View {
                 }
 
                 if !watchedItems.isEmpty {
-                    section(
-                        header: SectionHeader(title: "Watched", count: watchedItems.count),
-                        items: displayedWatchedItems
-                    )
+                    watchedGridSection
                 }
             }
         }
@@ -289,8 +319,8 @@ struct MediaListView: View {
         GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 12)
     ]
 
-    private func section(
-        header: SectionHeader,
+    private func section<Header: View>(
+        header: Header,
         items: [ListItem]
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -304,6 +334,60 @@ struct MediaListView: View {
             }
         }
         .padding(.horizontal, DesignTokens.Spacing.screenInset)
+    }
+
+    private var watchedGridSection: some View {
+        VStack(alignment: .leading, spacing: isWatchedExpanded ? 12 : 0) {
+            watchedHeader
+            // Preserve the grid during collapse so its height can shrink smoothly instead of
+            // snapping to the height of an empty LazyVGrid.
+            LazyVGrid(columns: Self.gridColumns, alignment: .leading, spacing: 12) {
+                ForEach(displayedWatchedItems, id: \.media?.id) { item in
+                    row(for: item)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(height: isWatchedExpanded ? nil : 0, alignment: .top)
+            .clipped()
+            .opacity(isWatchedExpanded ? 1 : 0)
+            .allowsHitTesting(isWatchedExpanded)
+            .accessibilityHidden(!isWatchedExpanded)
+        }
+        .padding(.horizontal, DesignTokens.Spacing.screenInset)
+        .animation(disclosureAnimation, value: isWatchedExpanded)
+    }
+
+    private var watchedHeader: some View {
+        Button {
+            withAnimation(disclosureAnimation) {
+                if mediaType == .tvShow {
+                    tvWatchedExpanded.toggle()
+                } else {
+                    movieWatchedExpanded.toggle()
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text("Watched").font(.title3.bold())
+                Chip(text: "\(watchedItems.count)")
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .rotationEffect(.degrees(isWatchedExpanded ? 90 : 0))
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.primary)
+            .frame(minHeight: 44)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .animation(disclosureAnimation, value: isWatchedExpanded)
+        .accessibilityLabel("Watched, \(watchedItems.count) titles")
+        .accessibilityValue(isWatchedExpanded ? "Expanded" : "Collapsed")
+        .accessibilityHint(isWatchedExpanded ? "Hide watched titles" : "Show watched titles")
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private func row(for item: ListItem) -> some View {
@@ -320,6 +404,15 @@ struct MediaListView: View {
             },
             onDeleteRequested: {
                 if let id = item.media?.id { onItemDeleted?(id) }
+            },
+            onWatchingToggled: {
+                let previous = item.watchState
+                withAnimation(Self.listChangeAnimation) {
+                    item.toggleWatching()
+                    onWatchedToggled()
+                }
+                watchedToggleCount += 1
+                toast.showWatchedMove(for: item, previous: previous, onUndo: onWatchedToggled)
             }
         )
     }
@@ -417,6 +510,7 @@ struct MediaListView: View {
     }
 
     private func toggleWatched(_ item: ListItem) {
+        let previous = item.watchState
         // Wrap the whole transition — the item moving between Up Next and Watched, plus the
         // derived arrays recomputed in onWatchedToggled() — in one animation so both sections
         // diff coherently instead of animating partially out of sync.
@@ -429,10 +523,11 @@ struct MediaListView: View {
             onWatchedToggled()
         }
         watchedToggleCount += 1
+        toast.showWatchedMove(for: item, previous: previous, onUndo: onWatchedToggled)
     }
 }
 
-/// Compact poster card in the "Airing Soon" / "Coming Soon" strip. Tapping it opens the same
+/// Compact poster card in the "Returning Soon" / "Coming Soon" strip. Tapping it opens the same
 /// detail sheet a list row does.
 private struct UpcomingCard: View {
     @ObservedObject var item: ListItem
@@ -520,6 +615,7 @@ struct MediaListRow: View {
     let onItemExpanded: (String?) -> Void
     let onWatchedToggled: () -> Void
     let onDeleteRequested: () -> Void
+    var onWatchingToggled: (() -> Void)? = nil
 
     /// Rows are buttons; while reordering, a tap must not open the detail sheet.
     @Environment(\.editMode) private var editMode
@@ -567,12 +663,16 @@ struct MediaListRow: View {
                 genres: item.media?.genres ?? [],
                 userRating: item.userRating,
                 seasonProgress: seasonProgress,
-                nextAirDate: item.tvShow?.nextEpisodeAirDate,
+                nextAirDate: item.isWatching ? item.tvShow?.nextEpisodeAirDate : nil,
                 nextEpisodeCode: episodeCode(
                     season: item.tvShow?.nextEpisodeSeason,
                     episode: item.tvShow?.nextEpisodeNumber
                 )
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.card)
+                    .strokeBorder(Color.accentColor.opacity(item.isWatching ? 0.45 : 0), lineWidth: 1)
+            }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -594,7 +694,8 @@ struct MediaListRow: View {
             }
         }
         // Swipe actions are suppressed automatically while the list is in edit mode.
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .swipeActions(edge: .leading, allowsFullSwipe: item.tvShow == nil) {
+            watchingButton
             Button {
                 onWatchedToggled()
             } label: {
@@ -603,6 +704,7 @@ struct MediaListRow: View {
             .tint(watchedAction.tint)
         }
         .contextMenu {
+            watchingButton
             Button {
                 onWatchedToggled()
             } label: {
@@ -613,6 +715,14 @@ struct MediaListRow: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var watchingButton: some View {
+        if item.tvShow != nil, let onWatchingToggled {
+            Button(item.watchingActionTitle, systemImage: item.isWatching ? "arrow.uturn.backward" : "play.fill", action: onWatchingToggled)
+                .tint(Color.accentColor)
         }
     }
 }
@@ -713,7 +823,7 @@ struct MediaListRow: View {
         onlyMyServices: .constant(false),
         showsMyServicesFilter: true,
         navigationTitle: "TV Shows",
-        upcomingTitle: "Airing Soon",
+        upcomingTitle: "Returning Soon",
         upcomingItems: upcomingEntries(from: stubItems, mediaType: .tvShow),
         subtitleProvider: { item in
             if let summary = item.tvShow?.seasonsEpisodesSummary {
@@ -725,4 +835,5 @@ struct MediaListRow: View {
         onWatchedToggled: {},
         onSearchTapped: nil
     )
+    .environment(ToastState())
 }

@@ -27,6 +27,25 @@ final class ListItem: NSManagedObject, Identifiable {
     /// Whether the item has been marked as watched
     @NSManaged var isWatched: Bool
 
+    /// Explicit ongoing viewing intent, independent of season completion.
+    @NSManaged var watchingStartedAt: Date?
+
+    var isWatching: Bool { tvShow != nil && watchingStartedAt != nil && !isDropped }
+
+    var watchingActionTitle: String {
+        isWatching ? (isWatched ? "Move to Watched" : "Move to Up Next") : "Start Watching"
+    }
+
+    func toggleWatching() {
+        guard tvShow != nil, list != nil else { return }
+        if isWatching {
+            watchingStartedAt = nil
+        } else {
+            if isDropped { resumeShow() }
+            watchingStartedAt = .now
+        }
+    }
+
     /// The date when the item was marked as watched (nil if not watched)
     @NSManaged var watchedAt: Date?
 
@@ -193,6 +212,7 @@ final class ListItem: NSManagedObject, Identifiable {
     /// Marks the show as "done watching" — appears in Watched regardless of season completion.
     func dropShow() {
         let now = Date.now
+        watchingStartedAt = nil
         droppedAt = now
         isWatched = true
         watchedAt = now
@@ -201,6 +221,8 @@ final class ListItem: NSManagedObject, Identifiable {
     /// Resumes a dropped show — clears the drop override and re-derives watched state from seasons.
     func resumeShow() {
         droppedAt = nil
+        isWatched = false
+        watchedAt = nil
         syncWatchedStateFromSeasons()
     }
 
@@ -262,5 +284,31 @@ final class ListItem: NSManagedObject, Identifiable {
             userNotes: userNotes,
             context: context
         )
+    }
+}
+
+/// Captures only viewing state, so Undo preserves unrelated edits such as notes and ratings.
+extension ListItem {
+    struct WatchState: Equatable {
+        let isWatched: Bool
+        let watchedAt: Date?
+        let droppedAt: Date?
+        let watchingStartedAt: Date?
+        let seasons: [Int]
+
+        var isInWatchedSection: Bool { isWatched && (watchingStartedAt == nil || droppedAt != nil) }
+    }
+
+    var watchState: WatchState {
+        WatchState(isWatched: isWatched, watchedAt: watchedAt, droppedAt: droppedAt,
+                   watchingStartedAt: watchingStartedAt, seasons: watchedSeasons)
+    }
+
+    func restoreWatchState(_ state: WatchState) {
+        isWatched = state.isWatched
+        watchedAt = state.watchedAt
+        droppedAt = state.droppedAt
+        watchingStartedAt = state.watchingStartedAt
+        watchedSeasons = state.seasons
     }
 }

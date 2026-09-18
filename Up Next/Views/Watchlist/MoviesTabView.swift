@@ -9,6 +9,7 @@ struct MoviesTabView: View {
     @Environment(ToastState.self) private var toast
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    @State private var detailWatchState: (item: ListItem, state: ListItem.WatchState)?
     @State private var expandedItemID: String? = nil
     @State private var selectedGenre: String? = nil
     @State private var selectedProviderCategory: String? = nil
@@ -51,9 +52,21 @@ struct MoviesTabView: View {
             // instead — that covers every way the sheet can go away. `persistChanges` is idempotent.
             onDismiss: {
                 viewModel.persistChanges(for: .movie)
+                if let previous = detailWatchState,
+                   viewModel.movies.contains(where: { $0 === previous.item }) {
+                    toast.showWatchedMove(for: previous.item, previous: previous.state) {
+                        viewModel.persistChanges(for: .movie)
+                    }
+                }
+                detailWatchState = nil
             }
         ) { item in
             detailView(for: item)
+                .onAppear {
+                    if detailWatchState == nil {
+                        detailWatchState = (item, item.watchState)
+                    }
+                }
         }
         .onChange(of: viewModel.availableMovieGenres) {
             if let genre = selectedGenre, !viewModel.availableMovieGenres.contains(genre) {

@@ -10,7 +10,7 @@ func syncUnwatchedItems(
         },
         uniquingKeysWith: { first, _ in first }
     )
-    let newUnwatched = allItems.filter { !$0.isWatched }
+    let newUnwatched = allItems.filter { !$0.isWatched && !$0.isWatching }
 
     // Preserve order for items that are already in unwatched list, sort new items by order/addedAt
     let preservedOrder = newUnwatched.sorted { lhs, rhs in
@@ -87,7 +87,7 @@ func filterItems(
 // MARK: - Upcoming
 
 /// A watchlist item with a release/air date that hasn't happened yet, rendered in the
-/// "Airing Soon" / "Coming Soon" strip above the list.
+/// "Returning Soon" / "Coming Soon" strip above the list.
 struct UpcomingEntry: Identifiable {
     let item: ListItem
     let date: Date
@@ -115,8 +115,8 @@ func isGenericEpisodeName(_ name: String) -> Bool {
 
 /// Upcoming episodes (TV) or releases (movies) within the next `windowDays`, soonest first.
 ///
-/// TV includes watched items too — a returning show the user is caught up on is exactly what this
-/// strip is for — but never dropped ones. Movies only include unwatched items, and only those
+/// TV includes season premieres for caught-up shows outside Watching, never dropped ones.
+/// Movies only include unwatched items, and only those
 /// releasing *after* today (a movie released today is already watchable, not "coming soon").
 /// The window keeps far-off placeholder dates (TMDB will happily report a premiere ten months
 /// out) from squatting at the top of the list.
@@ -139,8 +139,9 @@ func upcomingEntries(
 
         switch mediaType {
         case .tvShow:
-            guard !item.isDropped,
+            guard !item.isDropped, !item.isWatching, item.isWatched,
                   let tvShow = item.tvShow,
+                  tvShow.nextEpisodeNumber == 1,
                   let airDate = tvShow.nextEpisodeAirDate,
                   let parsed = AirDateFormat.date(from: airDate),
                   parsed >= today, parsed <= horizon

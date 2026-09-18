@@ -11,6 +11,7 @@ struct TVShowsTabView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
 
+    @State private var detailWatchState: (item: ListItem, state: ListItem.WatchState)?
     @State private var expandedItemID: String? = nil
     @State private var selectedGenre: String? = nil
     @State private var selectedProviderCategory: String? = nil
@@ -33,7 +34,7 @@ struct TVShowsTabView: View {
         return viewModel.tvShows.first(where: { $0.media?.id == id })
     }
 
-    /// Upcoming episodes across the whole tab — watched shows included, dropped ones excluded.
+    /// Upcoming season premieres for caught-up shows outside Watching.
     private var upcomingItems: [UpcomingEntry] {
         upcomingEntries(from: viewModel.tvShows, mediaType: .tvShow)
     }
@@ -88,9 +89,21 @@ struct TVShowsTabView: View {
             // instead — that covers every way the sheet can go away. `persistChanges` is idempotent.
             onDismiss: {
                 viewModel.persistChanges(for: .tvShow)
+                if let previous = detailWatchState,
+                   viewModel.tvShows.contains(where: { $0 === previous.item }) {
+                    toast.showWatchedMove(for: previous.item, previous: previous.state) {
+                        viewModel.persistChanges(for: .tvShow)
+                    }
+                }
+                detailWatchState = nil
             }
         ) { item in
             detailView(for: item)
+                .onAppear {
+                    if detailWatchState == nil {
+                        detailWatchState = (item, item.watchState)
+                    }
+                }
         }
         .onChange(of: viewModel.availableTVGenres) {
             if let genre = selectedGenre, !viewModel.availableTVGenres.contains(genre) {
@@ -124,8 +137,9 @@ struct TVShowsTabView: View {
             onlyMyServices: $onlyMyServices,
             showsMyServicesFilter: settings.hasSelectedProviders,
             navigationTitle: "TV Shows",
-            upcomingTitle: "Airing Soon",
+            upcomingTitle: "Returning Soon",
             upcomingItems: upcomingItems,
+            watchingItems: viewModel.watchingTVShows,
             subtitleProvider: { item in
                 tvShowSubtitle(for: item)
             },
@@ -202,6 +216,8 @@ struct TVShowsTabView: View {
 
     private func tvShowSubtitle(for item: ListItem) -> String? {
         guard let tvShow = item.tvShow else { return nil }
+
+        if item.isWatching && item.isWatched { return "Caught up" }
 
         if item.isDropped {
             let count = item.watchedSeasons.count

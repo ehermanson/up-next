@@ -6,6 +6,7 @@ import Foundation
 final class MediaLibraryViewModel {
     var tvShows: [ListItem] = []
     var movies: [ListItem] = []
+    var watchingTVShows: [ListItem] = []
     var unwatchedTVShows: [ListItem] = []
     var unwatchedMovies: [ListItem] = []
     var watchedTVShows: [ListItem] = []
@@ -256,7 +257,9 @@ final class MediaLibraryViewModel {
                 allItems: tvShows,
                 currentUnwatched: unwatchedTVShows
             )
-            watchedTVShows = tvShows.filter { $0.isWatched }
+            watchingTVShows = tvShows.filter { $0.isWatching }
+                .sorted { ($0.watchingStartedAt ?? .distantPast) < ($1.watchingStartedAt ?? .distantPast) }
+            watchedTVShows = tvShows.filter { $0.isWatched && !$0.isWatching }
                 .sorted { lhs, rhs in
                     // Most recently watched first; items missing a date sink to the bottom.
                     switch (lhs.watchedAt, rhs.watchedAt) {

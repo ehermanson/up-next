@@ -17,6 +17,7 @@
     </entity>
     <entity name="ListItem" representedClassName=".ListItem" syncable="YES">
         <attribute name="addedAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="watchingStartedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="droppedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="isWatched" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="order" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>

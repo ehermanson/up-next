@@ -1,3 +1,4 @@
+import CoreData
 import SwiftUI
 
 /// Single source of truth for formatting a TMDB air-date string ("yyyy-MM-dd")
@@ -353,4 +354,20 @@ extension View {
         .toastOverlay()
         .environment(toast)
         .onAppear { toast.show("Added to Watchlist") }
+}
+
+// Library-only feedback shared by list actions and detail-sheet dismissal.
+extension ToastState {
+    func showWatchedMove(for item: ListItem, previous: ListItem.WatchState, onUndo: @escaping () -> Void) {
+        let current = item.watchState
+        guard !previous.isInWatchedSection, current.isInWatchedSection else { return }
+        show("Moved \(item.media?.title ?? "title") to Watched", icon: "checkmark.circle.fill", actionLabel: "Undo") {
+            // A later local or partner edit takes precedence over this older undo action.
+            guard !item.isDeleted, item.managedObjectContext != nil, item.watchState == current else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                item.restoreWatchState(previous)
+                onUndo()
+            }
+        }
+    }
 }

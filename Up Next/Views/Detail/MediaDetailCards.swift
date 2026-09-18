@@ -16,6 +16,33 @@ private extension View {
     }
 }
 
+struct WatchingToggleCard: View {
+    @ObservedObject var listItem: ListItem
+
+    var body: some View {
+        Button {
+            withAnimation { listItem.toggleWatching() }
+            PersistenceController.shared.save()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: listItem.isWatching ? "play.circle.fill" : "play.circle")
+                    .font(.title2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(listItem.watchingActionTitle).font(.headline)
+                    Text(listItem.isWatching ? "Keep your season progress when you move this show." : "Keep this show at the top of your TV list.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(16)
+            .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact, tint: listItem.isWatching ? Color.accentColor : nil)
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: listItem.isWatching)
+    }
+}
+
 struct WatchedToggleCard: View {
     @ObservedObject var listItem: ListItem
 

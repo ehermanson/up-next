@@ -129,6 +129,11 @@ enum RemoteActivityNotifier {
                     ? "\(actor) stopped watching \(title)"
                     : "\(actor) picked \(title) back up"
             }
+            if updated.contains("watchingStartedAt") {
+                return item.isWatching
+                    ? "\(actor) started watching \(title)"
+                    : "\(actor) moved \(title) to \(item.isWatched ? "Watched" : "Up Next")"
+            }
             if updated.contains("isWatched") || updated.contains("watchedAt") {
                 return item.isWatched
                     ? "\(actor) marked \(title) watched"
