@@ -29,7 +29,23 @@ enum DesignTokens {
     enum Colors {
         /// Anchor color of `AppBackground`. Use this when a view must blend into the background
         /// (e.g. a gradient fading an image into the sheet) instead of a hard-coded literal.
-        static let backgroundBase = Color(red: 0.09, green: 0.06, blue: 0.20)
+        static let backgroundBase = Color("BackgroundBase")
+
+        /// Explicit variants for RGB blending, independent of UIKit's current traits.
+        static func backgroundBase(for scheme: ColorScheme) -> Color {
+            scheme == .dark
+                ? Color(red: 0.09, green: 0.06, blue: 0.20)
+                : Color(red: 0.93, green: 0.91, blue: 0.99)
+        }
+
+        /// Light-mode content surface. Dark mode uses `.fill.tertiary` (white-alpha over purple
+        /// reads as frosted lavender); on a light mesh that same fill is black-alpha and goes flat
+        /// gray, so light surfaces are translucent white that lets the mesh glow through.
+        static let lightSurface = Color.white.opacity(0.65)
+        /// Hairline that ties light-mode cards to the palette.
+        static let lightSurfaceBorder = Color.accentColor.opacity(0.10)
+        /// Faint accent wash over light chips/cells so they read tinted rather than gray.
+        static let lightSurfaceWash = Color.accentColor.opacity(0.05)
     }
 
     enum Spacing {
@@ -49,33 +65,65 @@ enum DesignTokens {
 extension View {
     /// Tinted, non-glass surface for content cards and list rows.
     func cardSurface(cornerRadius: CGFloat = DesignTokens.Radius.card) -> some View {
-        background(.fill.tertiary, in: .rect(cornerRadius: cornerRadius))
+        modifier(CardSurface(cornerRadius: cornerRadius))
     }
 
     /// Tinted, non-glass surface for small square cells (icons, logos, grid cells).
     /// Pass `tint` to emphasize a selected state.
     func cellSurface(cornerRadius: CGFloat = DesignTokens.Radius.cell, tint: Color? = nil) -> some View {
-        background {
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .fill(.fill.tertiary)
-                .overlay {
-                    if let tint {
-                        RoundedRectangle(cornerRadius: cornerRadius).fill(tint.opacity(0.25))
-                    }
-                }
-        }
+        modifier(SmallSurface(shape: RoundedRectangle(cornerRadius: cornerRadius), tint: tint))
     }
 
     /// Tinted, non-glass capsule surface for pills and small badges.
     func chipSurface(tint: Color? = nil) -> some View {
-        background {
-            Capsule()
-                .fill(.fill.tertiary)
-                .overlay {
-                    if let tint {
-                        Capsule().fill(tint.opacity(0.25))
-                    }
+        modifier(SmallSurface(shape: Capsule(), tint: tint))
+    }
+}
+
+/// Card/row surface. Dark: `.fill.tertiary`. Light: translucent white with a hairline accent
+/// border and a soft drop shadow so cards float over the mesh instead of sitting flat on it.
+private struct CardSurface: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content.background {
+            let shape = RoundedRectangle(cornerRadius: cornerRadius)
+            if colorScheme == .dark {
+                shape.fill(.fill.tertiary)
+            } else {
+                shape
+                    .fill(DesignTokens.Colors.lightSurface)
+                    .overlay(shape.strokeBorder(DesignTokens.Colors.lightSurfaceBorder))
+                    .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
+            }
+        }
+    }
+}
+
+/// Cell/chip surface. Dark: `.fill.tertiary`. Light: translucent white with a faint accent wash
+/// (no border or shadow — too noisy at this size). `tint` overlays a selected state in both.
+private struct SmallSurface<S: InsettableShape>: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let shape: S
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        content.background {
+            Group {
+                if colorScheme == .dark {
+                    shape.fill(.fill.tertiary)
+                } else {
+                    shape
+                        .fill(DesignTokens.Colors.lightSurface)
+                        .overlay(shape.fill(DesignTokens.Colors.lightSurfaceWash))
                 }
+            }
+            .overlay {
+                if let tint {
+                    shape.fill(tint.opacity(0.25))
+                }
+            }
         }
     }
 }

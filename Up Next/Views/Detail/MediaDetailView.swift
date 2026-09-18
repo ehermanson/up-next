@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MediaDetailView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var listItem: ListItem
     let dismiss: () -> Void
     let onRemove: () -> Void
@@ -53,7 +54,7 @@ struct MediaDetailView: View {
     @State private var collectionParts: [TMDBCollectionPart] = []
     /// Dominant color of the header artwork, reported up by `HeaderImageView` so the sheet
     /// background can wash the same tint over the top — see `HeaderImageView.onTintChange`.
-    @State private var heroTint: Color?
+    @State private var heroTint: DominantTint?
     /// Display-only season scores from the existing show detail response.
     @State private var seasonRatings: [Int: Double] = [:]
 
@@ -229,7 +230,10 @@ struct MediaDetailView: View {
                     if let heroTint {
                         GeometryReader { proxy in
                             LinearGradient(
-                                colors: [heroTint.opacity(0.55), .clear],
+                                colors: [
+                                    heroTint.color(for: colorScheme).opacity(colorScheme == .dark ? 0.55 : 0.7),
+                                    .clear,
+                                ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -616,12 +620,13 @@ private struct StackedLabelStyle: LabelStyle {
 /// Detail-sheet header. With a TMDB backdrop it renders full-bleed 16:9 artwork with the poster
 /// floating over its bottom-leading edge; without one it falls back to the poster as the header.
 struct HeaderImageView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let backdropPath: String?
     let posterURL: URL?
     let title: String
     /// Reports the artwork's dominant color upward whenever it's computed, so the presenting
     /// sheet can wash the same tint over its own background. Nil until the first image loads.
-    var onTintChange: ((Color?) -> Void)? = nil
+    var onTintChange: ((DominantTint?) -> Void)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -630,7 +635,7 @@ struct HeaderImageView: View {
     @State private var availableWidth: CGFloat = 0
     /// Dominant color of whichever image is showing (backdrop, or poster in the fallback
     /// header) — drives `bottomFade` here and is mirrored to `onTintChange`.
-    @State private var tint: Color?
+    @State private var tint: DominantTint?
 
     private let compactBackdropHeight: CGFloat = 260
     /// Ceiling for the backdrop at regular width. Letting 16:9 run free in a 1000pt-wide page
@@ -782,7 +787,7 @@ struct HeaderImageView: View {
         }
         .frame(width: posterWidth, height: posterHeight)
         .clipShape(.rect(cornerRadius: DesignTokens.Radius.poster))
-        .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.18), radius: 10, y: 6)
     }
 
     private var imagePlaceholder: some View {
@@ -801,7 +806,7 @@ struct HeaderImageView: View {
     private func applyTint(from image: UIImage) {
         let animated = !reduceMotion
         Task.detached(priority: .utility) {
-            let color = image.dominantColor()
+            let color = image.dominantTint()
             await MainActor.run {
                 if animated {
                     withAnimation(.easeInOut(duration: 0.35)) {
@@ -819,8 +824,8 @@ struct HeaderImageView: View {
     /// stops blend toward the artwork's dominant color when known; the final stop is always the
     /// exact sheet background so the fade never shows a seam against it.
     private func bottomFade(height: CGFloat) -> some View {
-        let base = DesignTokens.Colors.backgroundBase
-        let mid = tint.map { base.mixed(with: $0, amount: 0.75) } ?? base
+        let base = DesignTokens.Colors.backgroundBase(for: colorScheme)
+        let mid = tint.map { base.mixed(with: $0.color(for: colorScheme), amount: colorScheme == .dark ? 0.75 : 0.6) } ?? base
         return LinearGradient(
             stops: [
                 .init(color: base.opacity(0), location: 0.0),

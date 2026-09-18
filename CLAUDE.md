@@ -104,12 +104,13 @@ Up Next/
 │   │   ├── CreateListView.swift         # Create/edit list dialog with icon picker
 │   │   └── AddToListSheet.swift         # Add item to a custom list
 │   └── Settings/
-│       ├── SettingsView.swift           # Settings root (sheet from every tab): Sharing / Streaming Services / Region rows + About; hosts the Sharing push screen
+│       ├── SettingsView.swift           # Settings root (sheet from every tab): Sharing / Streaming Services / Region rows + Appearance picker + About; hosts the Sharing push screen
 │       ├── ProviderSettingsView.swift   # Streaming service grid; isRoot owns its own NavigationStack+Done (first-launch onboarding), else pushed from SettingsView. Also hosts RegionPickerView (internal)
 │       └── SharingSettingsView.swift    # SharingSection: owner unshared → share link; owner shared → participants + manage; participant → leave. Pushed from SettingsView's Sharing row
 │
 ├── Services/
 │   ├── PersistenceController.swift      # Core Data + CloudKit container, role rule, remote change tracking, sharing API
+│   ├── AppAppearance.swift              # Device-local appearance preference: Dark (default), Light, System
 │   ├── RemoteActivityNotifier.swift     # Partner edits → local notifications (background) or toast (foreground), attributed via CKRecord.lastModifiedUserRecordID
 │   ├── TMDBService.swift                # TMDB API client (singleton): search, details, providers, discover
 │   ├── TMDBModels.swift                 # Codable structs for TMDB API responses
@@ -121,9 +122,9 @@ Up Next/
 │   ├── MediaCardView.swift              # Media item card (72×108 poster, title, subtitle folded with first genre, networks)
 │   ├── NetworkLogosView.swift           # Inline streaming provider logos with overflow badge
 │   ├── CachedAsyncImage.swift           # AsyncImage wrapper with NSCache (200 items, 100 MB); optional onLoad hands back the decoded UIImage
-│   ├── ImageColor.swift                 # UIImage.dominantColor() (CIAreaAverage, HSB-clamped for dark UI) + Color.mixed(with:amount:)
+│   ├── ImageColor.swift                 # UIImage.dominantTint() (CIAreaAverage, appearance-adaptive DominantTint) + Color.mixed(with:amount:)
 │   ├── SharedViews.swift                # AirDateFormat, StarRatingLabel, EmptyStateView, toast overlay
-│   ├── AppBackground.swift              # MeshGradient background
+│   ├── AppBackground.swift              # Appearance-adaptive MeshGradient background
 │   ├── SafariView.swift                 # In-app Safari (UIViewControllerRepresentable)
 │   ├── TMDBAttributionView.swift        # TMDB attribution footer
 │   ├── SFSymbolPickerGrid.swift         # SF Symbol picker for custom list icons
@@ -219,12 +220,15 @@ TMDB movie and TV ids are separate namespaces. Any set that mixes both must use 
 
 ### Design System (iOS 26 Liquid Glass)
 
-- `.preferredColorScheme(.dark)` is set once on the root in `Watch_ListApp.swift` — don't repeat it per view. Font design is the system default app-wide (titles, body, cards, section headers); `.fontDesign(.rounded)` is opted into per-component only for chips, badges, counts and small metadata captions — `Chip` (`DesignTokens.swift`), `StarRatingLabel` and the toast text (`SharedViews.swift`), the network overflow "+N" badge (`NetworkLogosView.swift`), `SettingsToolbarButton`'s initials, the collection count captions in `MyListsView.swift`/`CustomListDetailView.swift`, and `UpcomingCard`'s detail caption in `MediaListView.swift`.
+- `AppAppearance` is stored with `@AppStorage("appearance")`, defaults to Dark, and offers Light/System in Settings. `.preferredColorScheme(appearance.colorScheme)` is applied at the app root in `Watch_ListApp.swift` and the Settings sheet's `NavigationStack`, so an open Settings presentation updates immediately; System passes nil to both.
+- **Light mode is the same design, not a fallback.** `AppBackground`'s light mesh mirrors the dark one's structure (saturated centre, cool corner, warm rose corner) with real chroma — near-white stops collapse into off-white. Surfaces are scheme-aware inside `DesignTokens.swift` (`CardSurface` / `SmallSurface` modifiers): dark keeps `.fill.tertiary` (white-alpha over purple = frosted lavender); light uses translucent white (`lightSurface`) so the mesh glows through — cards add a hairline accent border + soft shadow, chips/cells a faint accent wash. Shadows that are barely visible on dark (detail poster, toast) are dialled down in light; the toast's neutral glass tint swaps from white-alpha to accent-alpha since white does nothing on a light background.
+- **Per-title hero tint is conditioned per scheme at render time**: `UIImage.dominantTint()` (`ImageColor.swift`) returns a raw `DominantTint` (hue/sat/brightness); `color(for:)` clamps it into a deep band for dark and a pastel (sat 0.30–0.50, brightness 0.90–0.97) for light, so the wash can run at real opacity (0.7 wash / 0.6 fade mix in light vs 0.55 / 0.75 in dark) instead of a muddy deep color at 0.12. `MediaDetailView.heroTint` and `HeaderImageView.tint` store the raw tint and resolve against `colorScheme` in body, so a scheme flip while the sheet is open re-tints without recomputing. Font design is the system default app-wide (titles, body, cards, section headers); `.fontDesign(.rounded)` is opted into per-component only for chips, badges, counts and small metadata captions — `Chip` (`DesignTokens.swift`), `StarRatingLabel` and the toast text (`SharedViews.swift`), the network overflow "+N" badge (`NetworkLogosView.swift`), `SettingsToolbarButton`'s initials, the collection count captions in `MyListsView.swift`/`CustomListDetailView.swift`, and `UpcomingCard`'s detail caption in `MediaListView.swift`.
 - Glass (`.glassEffect`, `.buttonStyle(.glass/.glassProminent)`) is reserved for the floating control layer: toolbar/tab bar, the toast, the detail sheet's action row, and empty-state CTAs. Content (rows, cards, pills, badges, logos, fields) uses `cardSurface` / `cellSurface` / `chipSurface` / `Chip` from `DesignTokens.swift`. No glass on glass.
 - Metadata joiner is always `" \u{00B7} "` (middle dot with spaces) — never `•` or `" - "`. `Chip`'s text carries `.contentTransition(.numericText())` so count chips tick instead of blinking when their value changes inside an animated transaction.
 - Use `Color.accentColor` for tints (asset `AccentColor`), `DesignTokens.Radius.*` for corner radii, and `DesignTokens.Colors.backgroundBase` when blending into `AppBackground`.
+- **Watchlist alignment**: `MediaListView` uses `DesignTokens.Spacing.screenInset` for share-card and media-row list insets, upcoming headers/posters, and grid sections. Do not add outer horizontal padding to its `List`; that compounds the row insets. `MediaListRow` uses list insets rather than view padding so grid cards align with their section headers.
 - Reorder in the watchlist is native `List` + `.onMove` driven by `editMode`.
-- **Per-title hero tint**: `MediaDetailView`'s `HeaderImageView` derives a dominant color from the backdrop (or poster, in the poster-only fallback) via `UIImage.dominantColor()` and blends it into its `bottomFade` and a top-anchored wash over the sheet's `AppBackground()`; everywhere else in the design system stays purple.
+- **Per-title hero tint**: `MediaDetailView`'s `HeaderImageView` derives a dominant color from the backdrop (or poster, in the poster-only fallback) via `UIImage.dominantTint()` and blends it into its `bottomFade` and a top-anchored wash over the sheet's `AppBackground()`; everywhere else in the design system stays purple.
 - **Zoom transition into the detail sheet**: every presenter of `MediaDetailView` (watchlist rows, the upcoming strip, Discover carousels/Browse All/search, collection rows, the search sheet, and the nested "More Like This"/TMDB-collection sheet) owns a `@Namespace`, marks the tapped poster/row `.matchedTransitionSource(id:in:)`, and applies `.navigationTransition(.zoom(sourceID:in:))` to the presented `MediaDetailView`. Source ids are `MediaIDKey` strings (`"tv:123"` / `"movie:456"`); wherever the same title can render twice on one screen (a carousel + Browse All, two carousels, the watchlist row + upcoming strip), the id is additionally prefixed per surface (`"Trending:"`, `"browse:"`, `"upcoming:"`, …) so `matchedTransitionSource` ids never collide — the strip zooms from the list row's source, not its own card. `SearchResultRowWithImage`/`SearchResultRow` take an optional `transitionSource: (id:namespace:)?` (applied via `TransitionSourceModifier` in `SearchComponents.swift`) so rows stay source-compatible without forcing every caller to own a namespace.
 
 ### iPad / Size Classes

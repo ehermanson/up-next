@@ -2,13 +2,36 @@ import CoreImage
 import SwiftUI
 import UIKit
 
+/// Dominant hue of a piece of artwork, stored raw so it can be conditioned per color scheme at
+/// render time — a sheet that flips appearance keeps the same per-title identity.
+nonisolated struct DominantTint: Equatable, Sendable {
+    let hue: CGFloat
+    let saturation: CGFloat
+    let brightness: CGFloat
+
+    /// The tint as it should be drawn in `scheme`.
+    /// - Dark: saturation clamped up so a washed-out poster still reads as a color, brightness
+    ///   held in a narrow deep band so a bright poster doesn't blow out the background and a neon
+    ///   one doesn't scream.
+    /// - Light: a pastel of the same hue — a deep color on a light mesh goes muddy, a pastel can
+    ///   be washed over it at real opacity.
+    func color(for scheme: ColorScheme) -> Color {
+        switch scheme {
+        case .dark:
+            Color(hue: hue, saturation: max(saturation, 0.55), brightness: min(max(brightness, 0.38), 0.55))
+        default:
+            Color(hue: hue, saturation: min(max(saturation, 0.30), 0.50), brightness: min(max(brightness, 0.90), 0.97))
+        }
+    }
+}
+
 extension UIImage {
-    /// Dominant color of the image, conditioned for use as a per-title accent tint in a dark UI
-    /// (see `HeaderImageView`). `CIAreaAverage` over the image extent is the cheap, standard
-    /// approach to a "dominant" color — good enough for a background wash, not a palette.
+    /// Dominant color of the image for use as a per-title accent tint (see `HeaderImageView`).
+    /// `CIAreaAverage` over the image extent is the cheap, standard approach to a "dominant"
+    /// color — good enough for a background wash, not a palette.
     /// Safe to call off the main actor — the module defaults to main-actor isolation, so this is
     /// explicitly `nonisolated`.
-    nonisolated func dominantColor() -> Color? {
+    nonisolated func dominantTint() -> DominantTint? {
         guard let ciImage = CIImage(image: self) else { return nil }
 
         let extent = ciImage.extent
@@ -47,13 +70,7 @@ extension UIImage {
         UIColor(red: red, green: green, blue: blue, alpha: 1)
             .getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
 
-        // Condition for a dark sheet: clamp saturation up so a washed-out poster still reads as
-        // a color, and clamp brightness into a narrow deep-tint band so a bright/white poster
-        // doesn't blow out the background and a neon one doesn't scream.
-        let clampedSaturation = max(saturation, 0.55)
-        let clampedBrightness = min(max(brightness, 0.38), 0.55)
-
-        return Color(hue: hue, saturation: clampedSaturation, brightness: clampedBrightness)
+        return DominantTint(hue: hue, saturation: saturation, brightness: brightness)
     }
 }
 

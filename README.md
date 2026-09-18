@@ -4,6 +4,8 @@ Just a fun personal project to replace the running list of movies and TV shows m
 
 ## Features
 
+- **Appearance**: Dark by default, with Light and System options in Settings. Your choice is saved on this device.
+
 - **Manage your watchlist**: Track movies and TV shows you want to watch, mark them as watched, and leave notes
 - **Readable descriptions**: The title’s description and cast appear above seasons and tracking controls. Short overflows show in full automatically; “more” appears only when a description exceeds its usual limit by more than one line.
 - **Season tracking**: For TV shows, mark each season watched independently using the dedicated circle controls (or mark the whole show watched at once), and browse every episode's title, description, air date and rating. A compact chart above the season list compares one TMDB score per season. Season rows show TMDB season scores and tiny episode-rating bars with a dashed episode-average line for quick comparison; tap a strip to open the episodes. A compact episode ratings chart shows the episode average and lets you jump straight to an episode; scroll horizontally on iPhone or see more at once on iPad

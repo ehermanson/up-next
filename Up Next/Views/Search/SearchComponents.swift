@@ -117,7 +117,7 @@ struct ShimmerLoadingView: View {
                         LinearGradient(
                             colors: [
                                 .clear,
-                                Color.white.opacity(0.04),
+                                Color.primary.opacity(0.04),
                                 .clear,
                             ],
                             startPoint: .leading,

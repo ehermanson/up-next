@@ -8,6 +8,8 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .dark
+
     @State private var regions: [TMDBWatchProviderRegion] = []
     @State private var isLoadingRegions = true
 
@@ -20,6 +22,7 @@ struct SettingsView: View {
                     sharingRow
                     streamingServicesRow
                     regionRow
+                    appearanceSection
                     aboutSection
 
                     #if DEBUG
@@ -38,6 +41,9 @@ struct SettingsView: View {
                 }
             }
         }
+        // Sheets own their presentation appearance. Update this presentation as well as the
+        // app root so a selection takes effect while Settings remains open.
+        .preferredColorScheme(appearance.colorScheme)
         .task {
             await loadRegions()
         }
@@ -145,6 +151,26 @@ struct SettingsView: View {
         isLoadingRegions = true
         regions = (try? await TMDBService.shared.fetchWatchProviderRegions()) ?? []
         isLoadingRegions = false
+    }
+
+    // MARK: - Appearance
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Appearance", systemImage: "circle.lefthalf.filled")
+                .font(.subheadline.weight(.semibold))
+            Picker("Appearance", selection: $appearance) {
+                ForEach(AppAppearance.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text("System follows your device’s appearance.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
     // MARK: - About

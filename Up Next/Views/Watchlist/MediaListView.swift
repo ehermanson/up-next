@@ -173,7 +173,7 @@ struct MediaListView: View {
         let list = List {
             if let topContent, !isEditingOrder {
                 topContent()
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 4, leading: DesignTokens.Spacing.screenInset, bottom: 8, trailing: DesignTokens.Spacing.screenInset))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
@@ -222,7 +222,7 @@ struct MediaListView: View {
         .scrollContentBackground(.hidden)
         .listStyle(.plain)
         .contentMargins(.bottom, 20, for: .scrollContent)
-        .padding(.horizontal, 12)
+        // Each row owns its inset; an outer List padding would compound header/card insets.
         .environment(\.editMode, .constant(isEditingOrder ? .active : .inactive))
 
         if horizontalSizeClass == .regular {
@@ -244,7 +244,7 @@ struct MediaListView: View {
             LazyVStack(alignment: .leading, spacing: 24) {
                 if let topContent {
                     topContent()
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, DesignTokens.Spacing.screenInset)
                 }
 
                 if !upcomingItems.isEmpty {
@@ -303,7 +303,7 @@ struct MediaListView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, DesignTokens.Spacing.screenInset)
     }
 
     private func row(for item: ListItem) -> some View {
@@ -327,6 +327,7 @@ struct MediaListView: View {
     private var upcomingStrip: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: upcomingTitle, icon: "calendar.badge.clock", showsFilter: false)
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
 
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
@@ -343,7 +344,7 @@ struct MediaListView: View {
                         .matchedTransitionSource(id: entry.id, in: detailNamespace)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
                 .padding(.vertical, 2)
             }
             .scrollIndicators(.hidden)
@@ -577,9 +578,12 @@ struct MediaListRow: View {
         }
         .buttonStyle(.plain)
         .matchedTransitionSource(id: transitionID, in: detailNamespace)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-        .listRowInsets(EdgeInsets())
+        .listRowInsets(EdgeInsets(
+            top: DesignTokens.Spacing.rowGap / 2,
+            leading: DesignTokens.Spacing.screenInset,
+            bottom: DesignTokens.Spacing.rowGap / 2,
+            trailing: DesignTokens.Spacing.screenInset
+        ))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing) {

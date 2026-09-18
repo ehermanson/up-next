@@ -23,6 +23,8 @@ struct Watch_ListApp: App {
         }
     }
 
+    @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .dark
+
     @State private var toastState = ToastState()
 
     var body: some Scene {
@@ -30,7 +32,7 @@ struct Watch_ListApp: App {
             ContentView()
                 .environment(toastState)
                 .environment(\.managedObjectContext, PersistenceController.shared.viewContext)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(appearance.colorScheme)
                 // Default font design app-wide; .fontDesign(.rounded) is opted into
                 // per-component for chips, badges, counts and small metadata captions.
         }

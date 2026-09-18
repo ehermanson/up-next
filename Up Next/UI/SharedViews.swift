@@ -270,7 +270,14 @@ private struct ToastIcon: View {
 
 struct ToastOverlayModifier: ViewModifier {
     @Environment(ToastState.self) private var toast
+    @Environment(\.colorScheme) private var colorScheme
     var bottomPadding: CGFloat = 20
+
+    /// Neutral action-toast tint: white-alpha frosts dark glass but does nothing on a light
+    /// background, so light mode leans on the accent instead.
+    private var neutralTint: Color {
+        colorScheme == .dark ? .white.opacity(0.08) : Color.accentColor.opacity(0.10)
+    }
 
     func body(content: Content) -> some View {
         content
@@ -297,8 +304,8 @@ struct ToastOverlayModifier: ViewModifier {
                     .id(item.id)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
-                    .glassEffect(.regular.tint(isAction ? .white.opacity(0.08) : .green.opacity(0.25)), in: .capsule)
-                    .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
+                    .glassEffect(.regular.tint(isAction ? neutralTint : .green.opacity(0.25)), in: .capsule)
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 12, y: 6)
                     .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
                     .padding(.bottom, bottomPadding)
                 }
