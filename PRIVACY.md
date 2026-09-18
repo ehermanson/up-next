@@ -1,16 +1,11 @@
 # Privacy Policy
 
-**Up Next** does not collect, store, or share any personal information.
+Up Next stores your library on your device and uses Apple iCloud/CloudKit to sync it when available. If you choose library sharing, your library is shared with the people you invite. No separate Up Next account is required. The app has no ads or analytics tracking.
 
-- All your watchlist data is stored locally on your device
-- No accounts or sign-ups required
-- No analytics or tracking
-- No ads
+The app uses [The Movie Database (TMDB)](https://www.themoviedb.org/) to retrieve movie and TV information. Search text (including a collection name when used to find initial suggestions) and requests for title metadata are sent to TMDB. See [TMDB’s privacy policy](https://www.themoviedb.org/privacy-policy).
 
-The app uses [The Movie Database (TMDB)](https://www.themoviedb.org/) API to fetch movie and TV show information. Your searches are sent to TMDB to retrieve results. See [TMDB's privacy policy](https://www.themoviedb.org/privacy-policy) for details on how they handle data.
+When Jev-powered Collection suggestions are configured, the app sends the collection’s name and public metadata for selected member titles and candidate suggestions to TypeSafe’s API to rank suggestions. This includes titles, TMDB identifiers, years, descriptions, genres, and media types. The recommendation request does not include your personal notes, ratings, watch progress, or sharing participants. Requests are made directly from your device. See [TypeSafe](https://typesafe.ai/) for information about the service.
 
-That's it. Your data stays on your device.
+Recommendation scores are cached on your device for up to 24 hours. The score cache stores request hashes and scores, not collection names or API credentials. Third-party services receive the network information needed to handle requests, such as your IP address.
 
----
-
-Last updated: February 2025
+Last updated: September 18, 2026

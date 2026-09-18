@@ -295,3 +295,16 @@ nonisolated struct TMDBWatchProviderRegion: Codable, Identifiable, Sendable, Has
 
     var id: String { iso31661 }
 }
+
+// Movies use `keywords`; TV and keyword search use `results`.
+struct TMDBKeyword: Codable, Hashable, Sendable {
+    let id: Int
+    let name: String
+}
+
+struct TMDBKeywordResponse: Codable {
+    let keywords: [TMDBKeyword]?
+    let results: [TMDBKeyword]?
+
+    var values: [TMDBKeyword] { keywords ?? results ?? [] }
+}

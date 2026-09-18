@@ -8,7 +8,7 @@ final class CustomListViewModel {
     var activeListID: UUID?
 
     /// Bumped on every mutation. Views derive their rows from `visibleItems(in:)` /
-    /// `containsItem(mediaID:in:)`, which read this — a child `CustomListItem` changing its
+    /// `containsItem(mediaID:mediaType:in:)`, which read this — a child `CustomListItem` changing its
     /// `watchedAt` doesn't republish the parent `CustomList`, so without it a toggled row would
     /// update its badge but never move between the Unwatched / Watched sections.
     private(set) var changeToken = 0
@@ -80,8 +80,11 @@ final class CustomListViewModel {
         let mediaID = movie?.id ?? tvShow?.id
         guard let mediaID else { return }
         // Re-adding something awaiting removal would leave a duplicate behind on Undo.
-        commitPendingRemoval(ifTargeting: mediaID, in: list)
-        guard !containsItem(mediaID: mediaID, in: list) else { return }
+        commitPendingRemoval(ifTargeting: mediaID, mediaType: movie != nil ? .movie : .tvShow, in: list)
+        // Movie and TV IDs are separate TMDB namespaces; a mixed collection may contain both.
+        guard !visibleItems(in: list).contains(where: { item in
+            movie != nil ? item.movie?.id == mediaID : item.tvShow?.id == mediaID
+        }) else { return }
 
         let context = persistence.viewContext
         let canonicalMovie = movie.map { canonicalMovieRow(for: $0, in: context) }
@@ -153,10 +156,10 @@ final class CustomListViewModel {
 
     /// Commits a pending removal only when it targets the same title in the same list; adding
     /// anything *else* must leave the Undo window intact.
-    private func commitPendingRemoval(ifTargeting mediaID: String, in list: CustomList) {
+    private func commitPendingRemoval(ifTargeting mediaID: String, mediaType: MediaType, in list: CustomList) {
         guard let pending = pendingRemoval,
               pending.list === list,
-              pending.item.media?.id == mediaID
+              (mediaType == .movie ? pending.item.movie?.id : pending.item.tvShow?.id) == mediaID
         else { return }
         commitPendingRemoval()
     }
@@ -172,8 +175,14 @@ final class CustomListViewModel {
         return all.filter { $0 !== pending.item }
     }
 
-    func containsItem(mediaID: String, in list: CustomList) -> Bool {
-        visibleItems(in: list).contains { $0.media?.id == mediaID }
+    func item(mediaID: String, mediaType: MediaType, in list: CustomList) -> CustomListItem? {
+        visibleItems(in: list).first {
+            (mediaType == .movie ? $0.movie?.id : $0.tvShow?.id) == mediaID
+        }
+    }
+
+    func containsItem(mediaID: String, mediaType: MediaType, in list: CustomList) -> Bool {
+        item(mediaID: mediaID, mediaType: mediaType, in: list) != nil
     }
 
     // MARK: - Watched state

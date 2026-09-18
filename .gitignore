@@ -116,3 +116,11 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
+
+# Local recommendation evaluation credentials and API artifacts
+.env.jev.local
+.local/jev-eval/
+__pycache__/
+
+# Visible shortcut to the local Jev credentials file
+Jev.local.env

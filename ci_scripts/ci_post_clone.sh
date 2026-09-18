@@ -8,7 +8,21 @@ if [ -z "$TMDB_API_KEY" ]; then
     exit 1
 fi
 
-sed "s/YOUR_API_KEY_HERE/${TMDB_API_KEY}/" "$CI_PRIMARY_REPOSITORY_PATH/Up Next/Info.plist.template" > "$CI_PRIMARY_REPOSITORY_PATH/Up Next/Info.plist"
+# Parse the plist rather than interpolating credentials into shell/sed expressions.
+python3 - <<'PYTHON'
+import os
+from pathlib import Path
+import plistlib
+root = Path(os.environ["CI_PRIMARY_REPOSITORY_PATH"])
+template = root / "Up Next/Info.plist.template"
+config = plistlib.loads(template.read_bytes())
+config["TMDB_API_KEY"] = os.environ["TMDB_API_KEY"]
+config["TYPESAFE_API_KEY"] = os.environ.get("TYPESAFE_API_KEY", "")
+(root / "Up Next/Info.plist").write_bytes(plistlib.dumps(config, sort_keys=False))
+PYTHON
+if [ -z "$TYPESAFE_API_KEY" ]; then
+    echo "TYPESAFE_API_KEY is unset; Collections will use TMDB recommendations."
+fi
 
 echo "Info.plist generated successfully"
 

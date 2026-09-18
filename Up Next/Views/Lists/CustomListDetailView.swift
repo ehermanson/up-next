@@ -46,6 +46,7 @@ struct CustomListDetailView: View {
                         .buttonStyle(.glassProminent)
                         .controlSize(.large)
                     }
+                    suggestions
                 }
                 .background(AppBackground())
             } else if horizontalSizeClass == .regular {
@@ -180,6 +181,11 @@ struct CustomListDetailView: View {
                     row(for: item)
                 }
             }
+
+            suggestions
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
         }
         .scrollContentBackground(.hidden)
         .listStyle(.plain)
@@ -211,10 +217,15 @@ struct CustomListDetailView: View {
                         }
                     }
                 }
+                suggestions
             }
             .padding(.horizontal, 16)
         }
         .background(AppBackground())
+    }
+
+    private var suggestions: some View {
+        CollectionSuggestionsView(list: list, viewModel: viewModel)
     }
 
     private var gridColumns: [GridItem] {

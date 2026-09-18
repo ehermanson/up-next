@@ -27,7 +27,7 @@ For any effort that involves multiple steps — whether due to dependencies/bloc
 - **Deployment target**: iOS 26.1
 - **Swift version**: 5.0
 - **Persistence**: Core Data (`NSPersistentCloudKitContainer`, two stores: private + shared scope) in iCloud container `iCloud.com.erichermanson.upnext.shared`
-- **No tests**
+- **Tests**: no Xcode test target; standalone Collection checks use Python unittest and Swift runtime checks (see README)
 - **No third-party dependencies** — all networking and persistence handled natively
 
 ## Setup
@@ -94,12 +94,14 @@ Up Next/
 │   │   └── SeasonEpisodesView.swift     # Read-only episode list for one season (number, title, description, rating, air date, runtime, still)
 │   ├── Search/
 │   │   ├── WatchlistSearchView.swift    # Context-aware search (all, TV, movies, specific lists); one stable List under .searchable
-│   │   ├── RecommendationEngine.swift   # Weighted seeds, genre affinity, discover pool + unified scoring; collection-mode thematic scoring; GenreCatalog
+│   │   ├── CollectionRecommendationEngine.swift # TMDB candidate aggregation + Jev ranking; exact collection names, no theme aliases
+│   │   ├── RecommendationEngine.swift   # Weighted seeds, genre affinity, discover pool + unified scoring; collection seed selection; GenreCatalog
 │   │   └── SearchComponents.swift       # MediaType, ShimmerRow/ShimmerRows (List-row placeholders), ShimmerLoadingView, result row
 │   ├── Discover/
 │   │   └── DiscoverView.swift           # Browse/discover tab with carousels, filters, and in-tab search
 │   ├── Lists/
 │   │   ├── MyListsView.swift            # Custom lists overview; rows show a poster mosaic (PosterMosaicView) of the first 4 items
+│   │   ├── CollectionSuggestionsView.swift # Movie/TV suggestion carousel, collection-scoped adds, cancellable loading
 │   │   ├── CustomListDetailView.swift   # Icon/name/count header, Unwatched/Watched sections, per-collection watched toggle + detail sheet wrapper
 │   │   ├── CreateListView.swift         # Create/edit list dialog with icon picker
 │   │   └── AddToListSheet.swift         # Add item to a custom list
@@ -113,6 +115,7 @@ Up Next/
 │   ├── AppAppearance.swift              # Device-local appearance preference: Dark (default), Light, System
 │   ├── RemoteActivityNotifier.swift     # Partner edits → local notifications (background) or toast (foreground), attributed via CKRecord.lastModifiedUserRecordID
 │   ├── TMDBService.swift                # TMDB API client (singleton): search, details, providers, discover
+│   ├── JevRecommendationService.swift   # Direct TypeSafe Score client, batches of six, deduplicated requests, 24-hour disk cache, full TMDB fallback
 │   ├── TMDBModels.swift                 # Codable structs for TMDB API responses
 │   └── ProviderSettings.swift           # UserDefaults-backed provider preferences + region override (effectiveRegion)
 │
@@ -135,7 +138,7 @@ Up Next/
 ├── Up Next.xcdatamodeld/                # Core Data model: 8 entities, CloudKit-safe (all optional/defaulted, relationships optional with inverses)
 ├── AppIcon.icon/                        # Icon Composer (Liquid Glass) app icon: icon.json + Assets/{Ring,Core}.png layers; wins over the appiconset on iOS 26
 ├── Assets.xcassets                      # AccentColor, images, legacy flat AppIcon.appiconset (fallback / App Store)
-├── Info.plist.template                  # Template with TMDB_API_KEY + CloudKit entitlements (`CKSharingSupported`, `UIBackgroundModes`)
+├── Info.plist.template                  # Template with TMDB_API_KEY, optional TYPESAFE_API_KEY + CloudKit entitlements (`CKSharingSupported`, `UIBackgroundModes`)
 ├── Up Next.entitlements                 # CloudKit (`iCloud.com.erichermanson.upnext.shared` container) + APS entitlements
 ├── PrivacyInfo.xcprivacy                # Privacy manifest (no tracking)
 └── docs/v2-shared-library-plan.md       # Implementation plan (one shared library via zone sharing)
@@ -211,7 +214,7 @@ All attributes optional or defaulted; all relationships optional with inverses (
 - **Recommended For You** (search sheet, watchlist contexts): `weightedSeeds` picks ≤3 positive seeds sharing one budget (thumbs-up +2 → recent unwatched +1 → recently watched +0.75) and ≤2 thumbs-down seeds at −2. Each seed costs one `/recommendations`; alongside them one `/discover` sweep uses the top 3 positive-affinity genres (`with_genres` OR'd), `ProviderSettings.watchProvidersQueryValue` (whenever any providers are selected — independent of the Discover toggle), `vote_count.gte=100` and released-to-date. Skipped when there's neither a genre nor a provider constraint.
 - **Scoring**: `Σ seedWeight × 1/(1+rank/10)` + 1.5 × genre affinity (sum over the candidate's `genreIds`, clamped ±2) + 0.5 × quality (`(voteAverage−6)/4`) + 1.0 if it came from the discover pool and providers are selected. Floors: 50 votes, 6.0 average, total > 0 (so a title only a thumbs-down seed vouches for drops out). Capped at 20. Providers are a strong boost, not a hard filter — `/recommendations` results carry no provider data.
 - **Genre affinity** is keyed by the genre *names* stored on media rows (+2 thumbs-up / +1 neutral / −1 thumbs-down, normalised to [−1, 1]); `GenreCatalog.shared` memoises `/genre/{tv,movie}/list` per process to translate to/from the `genreIds` the list endpoints return. `TMDBTVShowSearchResult`/`TMDBMovieSearchResult` carry optional `genreIds` and `voteCount` for this.
-- **Collection mode** (`selectListSeeds` + `aggregate` + thematic keywords / `searchThematicResults`) is unchanged apart from the 50-vote floor (a `nil` `voteCount` is kept, since `/search` may omit it).
+- **Collection mode** uses `CollectionRecommendationEngine`: up to eight member seeds, a 36-title TMDB pool with the 50-vote floor (unknown counts retained), then Jev fit/tone scoring (75%/25%). No rating floor or hardcoded themes. Empty collections start with literal name search; arbitrary name-only discovery is limited. Any scoring failure returns the entire TMDB order. The suggestion row stays stable on adds and refreshes on reopening or renaming.
 - **Detail sheet**: `MediaDetailView.mergedMoreLikeThis` folds TMDB's `recommendations` (first) and `similar` into one "More Like This" row, deduped by `MediaIDKey`, minus the current title and anything in `existingIDs` *at open time* — titles added while the sheet is open keep their checkmark rather than vanishing. Capped at 12.
 
 ### Media IDs
@@ -315,7 +318,7 @@ DEBUG builds accept `--screenshots` (see `ScreenshotMode.swift`): the app uses a
 ## CI/CD (Xcode Cloud)
 
 `ci_scripts/ci_post_clone.sh`:
-1. Generates `Info.plist` from template using `$TMDB_API_KEY` env var
+1. Generates `Info.plist` using plistlib with required `$TMDB_API_KEY` and optional `$TYPESAFE_API_KEY` workflow environment variables
 2. Sets the build number (`CURRENT_PROJECT_VERSION`) from `$CI_BUILD_NUMBER`
 
 `MARKETING_VERSION` is managed manually in the project (currently 2.0). To release a new version, bump `MARKETING_VERSION` in `project.pbxproj`, commit, and push.
@@ -323,3 +326,22 @@ DEBUG builds accept `--screenshots` (see `ScreenshotMode.swift`): the app uses a
 **CloudKit schema**: When changes are made to the Core Data model (new attributes, entities, or relationships), the Development schema is automatically created by the first saves to the CloudKit container. Before any TestFlight build, the Development schema must be deployed to Production in CloudKit Console (do this by running a DEBUG build on a device first to let `NSPersistentCloudKitContainer` initialize the Development schema, then deploy it in the console). This is one-time per schema change; once deployed, subsequent builds sync incrementally.
 
 **Important**: Distribution Preparation must be set to "App Store Connect" to select a build for distribution.
+
+## Jev Collection recommendation experiment
+
+`experiments/collection_recommendations/` contains a standard-library Python evaluation harness (`evaluate.py`), six test definitions (`cases.json`), validation tests (`test_evaluate.py`), live experiment notes (`findings.md`), and its README. It is independent of the app and never accesses real library/CloudKit data. Credentials: `TYPESAFE_API_KEY` in `.env.jev.local` or environment; TMDB uses `Up Next/Info.plist` or optional `TMDB_API_KEY`. Both `.env.jev.local` and generated `.local/jev-eval/` artifacts are gitignored.
+
+- Prepare: `python3 experiments/collection_recommendations/evaluate.py prepare`
+- Live evaluation: `python3 experiments/collection_recommendations/evaluate.py run --batch-size 6`
+- Cache-only report: `python3 experiments/collection_recommendations/evaluate.py report --batch-size 6`
+- Checks: `python3 -m unittest discover -s experiments/collection_recommendations -p "test_*.py"`
+
+The baseline is TMDB seed-rank aggregation, not a port of the production Swift ranker. The before/after comedy cases deliberately share a retrieval pool. Raw Jev outputs remain cached; report weights are experimental. Human labels are needed to claim recommendation accuracy.
+
+The first live Jev evaluation found candidate-position sensitivity in large requests. Use `--batch-size 6` for focused movie batches with separate keyword evaluation; omit it only to reproduce the original whole-state experiment. See `experiments/collection_recommendations/findings.md` for measured results and limitations.
+
+### Jev app integration
+
+`JevRecommendationService` calls TypeSafe directly using the bundled `TYPESAFE_API_KEY`, pinned to `jev-1.13.0`. Context includes the raw Collection name and public movie/TV metadata, never notes or ratings. Batches contain at most six candidates, with three concurrent requests per ranking wave and a four-second request timeout. Complete validated batches are cached for 24 hours (128 entries max); only request hashes and scores are persisted. Identical requests share in-flight work. Failures trigger a 60-second cooldown and full TMDB fallback. Prompt changes must bump `promptVersion`. Local credentials come from the ignored app plist; the evaluation harness env file is not read by the app. `RuntimeChecks.swift` tests the production service via URLProtocol without live calls.
+
+Collection membership lookup, add, removal, and pending-removal matching use both media type and TMDB ID. The Add Items screen retains Collection suggestions after adding, with immediate namespaced checkmarks; personal-library recommendations still refresh on adds.

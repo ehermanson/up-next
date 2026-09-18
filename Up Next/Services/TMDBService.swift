@@ -149,6 +149,59 @@ final class TMDBService: @unchecked Sendable {
         return response.results
     }
 
+    func fetchKeywords(id: Int, mediaType: MediaType) async throws -> [TMDBKeyword] {
+        let path = mediaType == .movie ? "movie" : "tv"
+        let response: TMDBKeywordResponse = try await performRequest(
+            endpoint: "/\(path)/\(id)/keywords", queryItems: []
+        )
+        return response.values
+    }
+
+    func searchKeywords(query: String) async throws -> [TMDBKeyword] {
+        let response: TMDBKeywordResponse = try await performRequest(
+            endpoint: "/search/keyword", queryItems: [URLQueryItem(name: "query", value: query)]
+        )
+        return response.values
+    }
+
+    func collectionMovies(name: String, seeds: [Int], excluding ids: Set<String>) async -> [TMDBMovieSearchResult] {
+        let genres = (try? await fetchMovieGenres()) ?? []
+        let genreNames = Dictionary(uniqueKeysWithValues: genres.map { ($0.id, $0.name) })
+        return await CollectionRecommendationEngine.load(
+            name: name, seeds: seeds, excluding: ids,
+            recommendations: { try await self.fetchMovieRecommendations(id: $0) },
+            member: {
+                let detail = try await self.getMovieDetails(id: $0)
+                return JevTitle(id: detail.id, title: detail.title, year: String((detail.releaseDate ?? "").prefix(4)),
+                                overview: detail.overview ?? "", genres: detail.genres?.map(\.name) ?? [], mediaType: "movie")
+            },
+            candidate: {
+                JevTitle(id: $0.id, title: $0.title, year: String(($0.releaseDate ?? "").prefix(4)),
+                         overview: $0.overview ?? "", genres: ($0.genreIds ?? []).compactMap { genreNames[$0] }, mediaType: "movie")
+            },
+            search: { try await self.searchMovies(query: $0) }
+        )
+    }
+
+    func collectionTVShows(name: String, seeds: [Int], excluding ids: Set<String>) async -> [TMDBTVShowSearchResult] {
+        let genres = (try? await fetchTVGenres()) ?? []
+        let genreNames = Dictionary(uniqueKeysWithValues: genres.map { ($0.id, $0.name) })
+        return await CollectionRecommendationEngine.load(
+            name: name, seeds: seeds, excluding: ids,
+            recommendations: { try await self.fetchTVRecommendations(id: $0) },
+            member: {
+                let detail = try await self.getTVShowDetails(id: $0)
+                return JevTitle(id: detail.id, title: detail.name, year: String((detail.firstAirDate ?? "").prefix(4)),
+                                overview: detail.overview ?? "", genres: detail.genres?.map(\.name) ?? [], mediaType: "tv")
+            },
+            candidate: {
+                JevTitle(id: $0.id, title: $0.name, year: String(($0.firstAirDate ?? "").prefix(4)),
+                         overview: $0.overview ?? "", genres: ($0.genreIds ?? []).compactMap { genreNames[$0] }, mediaType: "tv")
+            },
+            search: { try await self.searchTVShows(query: $0) }
+        )
+    }
+
     /// Get details for a movie collection (e.g. "Dune Collection")
     func getCollectionDetails(id: Int) async throws -> TMDBCollectionDetail {
         let endpoint = "/collection/\(id)"
@@ -640,6 +693,7 @@ final class TMDBService: @unchecked Sendable {
         page: Int = 1,
         sortBy: String = "popularity.desc",
         withGenres: String? = nil,
+        withKeywords: String? = nil,
         withWatchProviders: String? = nil,
         watchRegion: String? = nil,
         voteCountGte: Int? = nil,
@@ -651,6 +705,9 @@ final class TMDBService: @unchecked Sendable {
             URLQueryItem(name: "page", value: String(page)),
             URLQueryItem(name: "sort_by", value: sortBy),
         ]
+        if let withKeywords {
+            queryItems.append(URLQueryItem(name: "with_keywords", value: withKeywords))
+        }
         if let withGenres {
             queryItems.append(URLQueryItem(name: "with_genres", value: withGenres))
         }
@@ -682,6 +739,7 @@ final class TMDBService: @unchecked Sendable {
         page: Int = 1,
         sortBy: String = "popularity.desc",
         withGenres: String? = nil,
+        withKeywords: String? = nil,
         withWatchProviders: String? = nil,
         watchRegion: String? = nil,
         voteCountGte: Int? = nil,
@@ -691,6 +749,9 @@ final class TMDBService: @unchecked Sendable {
             URLQueryItem(name: "page", value: String(page)),
             URLQueryItem(name: "sort_by", value: sortBy),
         ]
+        if let withKeywords {
+            queryItems.append(URLQueryItem(name: "with_keywords", value: withKeywords))
+        }
         if let withGenres {
             queryItems.append(URLQueryItem(name: "with_genres", value: withGenres))
         }

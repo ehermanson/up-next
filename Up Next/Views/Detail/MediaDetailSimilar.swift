@@ -60,7 +60,7 @@ extension MediaDetailView {
 // MARK: - Shared card
 
 /// One poster card in the detail sheet's horizontal carousels (Similar, Recommended, Collection).
-private struct PosterCard: View {
+struct PosterCard: View {
     let posterPath: String?
     let title: String
     var subtitle: String?

@@ -150,13 +150,14 @@ struct WatchlistSearchView: View {
         }
     }
 
-    private func isAlreadyAdded(id: Int) -> Bool {
+    private func isAlreadyAdded(id: Int, mediaType: MediaType) -> Bool {
         let stringID = String(id)
+        if addedIDs.contains(MediaIDKey.make(mediaType, stringID)) { return true }
         if isListMode, let list = selectedList {
-            return customListViewModel?.containsItem(mediaID: stringID, in: list) == true
+            return customListViewModel?.containsItem(mediaID: stringID, mediaType: mediaType, in: list) == true
         }
-        let existingIDs = effectiveMediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
-        return existingIDs.contains(stringID) || addedIDs.contains(MediaIDKey.make(effectiveMediaType, stringID))
+        let existingIDs = mediaType == .tvShow ? existingTVShowIDs : existingMovieIDs
+        return existingIDs.contains(stringID)
     }
 
     private func performDone() {
@@ -220,6 +221,8 @@ struct WatchlistSearchView: View {
                 loadRecommendations()
             }
             .onChange(of: addedIDs) { _, _ in
+                // Collection suggestions stay in place and display their added checkmarks.
+                guard !isListMode else { return }
                 guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                 loadRecommendations()
             }
@@ -384,7 +387,7 @@ struct WatchlistSearchView: View {
                     posterPath: result.posterPath,
                     mediaId: result.id,
                     mediaType: .tvShow,
-                    isAdded: isAlreadyAdded(id: result.id),
+                    isAdded: isAlreadyAdded(id: result.id, mediaType: effectiveMediaType),
                     onAdd: { addTVShow(result) },
                     onTap: { openTVShowDetail(result) },
                     voteAverage: result.voteAverage,
@@ -400,7 +403,7 @@ struct WatchlistSearchView: View {
                     posterPath: result.posterPath,
                     mediaId: result.id,
                     mediaType: .movie,
-                    isAdded: isAlreadyAdded(id: result.id),
+                    isAdded: isAlreadyAdded(id: result.id, mediaType: effectiveMediaType),
                     onAdd: { addMovie(result) },
                     onTap: { openMovieDetail(result) },
                     voteAverage: result.voteAverage,
@@ -434,7 +437,7 @@ struct WatchlistSearchView: View {
                         posterPath: result.posterPath,
                         mediaId: result.id,
                         mediaType: .tvShow,
-                        isAdded: isAlreadyAdded(id: result.id),
+                        isAdded: isAlreadyAdded(id: result.id, mediaType: effectiveMediaType),
                         onAdd: { addTVShow(result) },
                         onTap: { openTVShowDetail(result) },
                         voteAverage: result.voteAverage,
@@ -450,7 +453,7 @@ struct WatchlistSearchView: View {
                         posterPath: result.posterPath,
                         mediaId: result.id,
                         mediaType: .movie,
-                        isAdded: isAlreadyAdded(id: result.id),
+                        isAdded: isAlreadyAdded(id: result.id, mediaType: effectiveMediaType),
                         onAdd: { addMovie(result) },
                         onTap: { openMovieDetail(result) },
                         voteAverage: result.voteAverage,
@@ -478,91 +481,28 @@ struct WatchlistSearchView: View {
             return
         }
 
-        let seeds: [Int]
-        let allExisting: Set<String>
-        let listName: String?
-
         guard let list = selectedList else {
             clearRecommendations(for: mediaType)
             isLoadingRecommendations = false
             return
         }
-
-        let listItems = list.items ?? []
-        seeds = RecommendationEngine.selectListSeeds(from: listItems, mediaType: mediaType)
-        allExisting = RecommendationEngine.existingIDs(in: listItems, mediaType: mediaType)
+        let items = customListViewModel?.visibleItems(in: list) ?? list.items ?? []
+        let seeds = RecommendationEngine.selectListSeeds(from: items, mediaType: mediaType)
+        let existing = RecommendationEngine.existingIDs(in: items, mediaType: mediaType)
             .union(MediaIDKey.rawIDs(mediaType, in: addedIDs))
-        listName = list.name
-
-        guard !seeds.isEmpty else {
-            let keywords = RecommendationEngine.thematicKeywords(for: listName)
-            guard isListMode, let name = listName, !keywords.isEmpty else {
-                clearRecommendations(for: mediaType)
-                isLoadingRecommendations = false
-                return
-            }
-
-            let query = RecommendationEngine.thematicSearchQuery(for: name)
-            guard !query.isEmpty else {
-                clearRecommendations(for: mediaType)
-                isLoadingRecommendations = false
-                return
-            }
-
-            isLoadingRecommendations = true
-            recommendationTask = Task {
-                defer { isLoadingRecommendations = false }
-                if mediaType == .tvShow {
-                    let results = await RecommendationEngine.searchThematicResults(
-                        query: query,
-                        excluding: allExisting,
-                        thematicKeywords: keywords
-                    ) { try await service.searchTVShows(query: $0) }
-                    guard !Task.isCancelled else { return }
-                    tvRecommendations = results
-                } else {
-                    let results = await RecommendationEngine.searchThematicResults(
-                        query: query,
-                        excluding: allExisting,
-                        thematicKeywords: keywords
-                    ) { try await service.searchMovies(query: $0) }
-                    guard !Task.isCancelled else { return }
-                    movieRecommendations = results
-                }
-            }
-            return
-        }
-
-        let minimumFrequency = RecommendationEngine.minimumFrequency(seedCount: seeds.count, isListMode: isListMode)
-        let keywords = RecommendationEngine.thematicKeywords(for: listName)
+        let name = list.name
         isLoadingRecommendations = true
-
         recommendationTask = Task {
-            defer { isLoadingRecommendations = false }
-
             if mediaType == .tvShow {
-                let results: [TMDBTVShowSearchResult] = await RecommendationEngine.fetchRecommendations(
-                    seeds: seeds,
-                    excluding: allExisting,
-                    minimumFrequency: minimumFrequency,
-                    thematicKeywords: keywords
-                ) { id in
-                    (try? await service.fetchTVRecommendations(id: id)) ?? []
-                }
+                let results = await service.collectionTVShows(name: name, seeds: seeds, excluding: existing)
                 guard !Task.isCancelled else { return }
                 tvRecommendations = results
             } else {
-                let results: [TMDBMovieSearchResult] = await RecommendationEngine.fetchRecommendations(
-                    seeds: seeds,
-                    excluding: allExisting,
-                    minimumFrequency: minimumFrequency,
-                    thematicKeywords: keywords
-                ) { id in
-                    (try? await service.fetchMovieRecommendations(id: id)) ?? []
-                }
+                let results = await service.collectionMovies(name: name, seeds: seeds, excluding: existing)
                 guard !Task.isCancelled else { return }
                 movieRecommendations = results
             }
+            isLoadingRecommendations = false
         }
     }
 
@@ -662,7 +602,7 @@ struct WatchlistSearchView: View {
     private func addFromDetail(_ item: ListItem) {
         guard let media = item.media else { return }
         let stringID = media.id
-        guard let intID = Int(stringID), !isAlreadyAdded(id: intID) else { return }
+        guard let intID = Int(stringID), !isAlreadyAdded(id: intID, mediaType: item.tvShow == nil ? .movie : .tvShow) else { return }
         addedIDs.insert(MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, stringID))
 
         if let tvShow = item.tvShow {
@@ -781,7 +721,7 @@ struct WatchlistSearchView: View {
     // MARK: - Add Actions
 
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
-        guard !isAlreadyAdded(id: result.id) else { return }
+        guard !isAlreadyAdded(id: result.id, mediaType: .tvShow) else { return }
         addedIDs.insert(MediaIDKey.make(.tvShow, result.id))
         toast.show("\(result.name) has been added")
         Task {
@@ -802,7 +742,7 @@ struct WatchlistSearchView: View {
     }
 
     private func addMovie(_ result: TMDBMovieSearchResult) {
-        guard !isAlreadyAdded(id: result.id) else { return }
+        guard !isAlreadyAdded(id: result.id, mediaType: .movie) else { return }
         addedIDs.insert(MediaIDKey.make(.movie, result.id))
         toast.show("\(result.title) has been added")
         Task {

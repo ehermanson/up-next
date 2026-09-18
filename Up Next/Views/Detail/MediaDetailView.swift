@@ -584,7 +584,7 @@ struct MediaDetailView: View {
         // Read changeToken so the menu re-derives its check marks when collections mutate.
         _ = vm.changeToken
         return vm.customLists.map { list in
-            let isMember = vm.containsItem(mediaID: mediaID, in: list)
+            let isMember = vm.containsItem(mediaID: mediaID, mediaType: listItem.tvShow == nil ? .movie : .tvShow, in: list)
             return PillCollectionEntry(
                 id: list.id.uuidString,
                 name: list.name,
@@ -598,7 +598,7 @@ struct MediaDetailView: View {
     private func toggleCollectionMembership(mediaID: String, list: CustomList, currentlyMember: Bool) {
         guard let vm = customListViewModel else { return }
         if currentlyMember {
-            if let item = (list.items ?? []).first(where: { $0.media?.id == mediaID }) {
+            if let item = vm.item(mediaID: mediaID, mediaType: listItem.tvShow == nil ? .movie : .tvShow, in: list) {
                 let title = vm.removeItem(item, from: list) ?? listItem.media?.title ?? "Title"
                 toast.show("\(title) removed from \(list.name)", icon: "trash")
             }

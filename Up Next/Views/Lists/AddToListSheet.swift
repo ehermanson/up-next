@@ -33,7 +33,7 @@ struct AddToListSheet: View {
                 } else {
                     List {
                         ForEach(viewModel.customLists, id: \.id) { list in
-                            let isInList = mediaID.map { viewModel.containsItem(mediaID: $0, in: list) } ?? false
+                            let isInList = mediaID.map { viewModel.containsItem(mediaID: $0, mediaType: movie != nil ? .movie : .tvShow, in: list) } ?? false
                             AddToListRow(list: list, isInList: isInList) {
                                 toggleItem(in: list, isInList: isInList)
                             }
@@ -69,7 +69,7 @@ struct AddToListSheet: View {
 
     private func toggleItem(in list: CustomList, isInList: Bool) {
         if isInList {
-            if let mediaID, let item = viewModel.visibleItems(in: list).first(where: { $0.media?.id == mediaID }) {
+            if let mediaID, let item = viewModel.item(mediaID: mediaID, mediaType: movie != nil ? .movie : .tvShow, in: list) {
                 viewModel.removeItem(item, from: list)
             }
         } else {
