@@ -283,15 +283,21 @@ struct SearchResultRow: View {
 
     @ViewBuilder
     private var addIcon: some View {
+        // Filled circle glyphs so the add affordance carries real weight: a hairline plus reads
+        // like a decorative divider next to the poster. Unified with the detail-sheet pill so
+        // "add" is one glyph across the app.
         if isAdded {
-            Image(systemName: "checkmark")
-                .font(.headline.weight(.semibold))
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title2)
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.green)
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("Already added")
         } else {
-            Image(systemName: "plus")
-                .font(.headline.weight(.semibold))
+            Image(systemName: "plus.circle.fill")
+                .font(.title2)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Color.accentColor)
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("Add")
         }

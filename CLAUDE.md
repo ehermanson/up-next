@@ -87,7 +87,7 @@ Up Next/
 │   │   └── SharePitchCard.swift         # Dismissable "share with a partner" pitch card, TV Shows tab only
 │   ├── Detail/
 │   │   ├── MediaDetailView.swift        # Detail sheet: edit watched state, rating, notes, seasons
-│   │   ├── MediaDetailCards.swift       # Interactive cards: watched toggle, rating, season checklist, episodes link
+│   │   ├── MediaDetailCards.swift       # Content-granular cards: `SeasonChecklistCard`, `UserRatingCard`, `EpisodesLinkCard`, `CollectionWatchedCard`. Top-level state transitions moved into `primaryAddPill`'s menu — `WatchingToggleCard` / `WatchedToggleCard` / `DoneWatchingCard` no longer render (kept only as unused defs for now)
 │   │   ├── MediaDetailMetadata.swift    # Metadata row, provider row, pills, flow layout
 │   │   ├── MediaDetailSimilar.swift     # "More Like This" row (recs + similar merged), TMDB collection section, MediaIDKey
 │   │   ├── SeasonRatingsSnapshot.swift  # Adaptive TMDB episode ratings bars, episode mean, tap-to-scroll
@@ -242,7 +242,20 @@ The target is universal (`TARGETED_DEVICE_FAMILY = 1,2`, resizable windows on iP
 
 ### Description truncation
 
-The detail sheet presents metadata/providers, then the overall description and cast, then season/episode and tracking controls. Keep the description and cast above the season checklist.
+The detail sheet presents metadata/providers, then the **primary Add pill** (`primaryAddPill` in `MediaDetailView.swift`), then the overall description and cast, then season/episode and tracking controls. Keep the description and cast above the season checklist.
+
+### Primary Add pill
+
+The pill (`primaryAddPill`) sits directly under the metadata/provider block and is the app's one canonical Add affordance in the detail sheet — the old top-leading toolbar "+" and "trash" buttons are gone; the toolbar now only carries "Done". Its state derives from context:
+- **Addable** (`onAdd != nil` and the title is not in `existingIDs`): big glass `.glassProminent` accent pill labelled "Add to Up Next" (or `"Add to \(addTargetName)"` in a collection add-flow). Tap → parent's `onAdd`, toast, flip to the added style in place. **Never auto-dismisses the sheet** — the user reads on and dismisses when done. The flip is animated + gets a `.success` haptic via `sensoryFeedback`.
+- **Added / owned / in-collection** (`onAdd == nil`, or `collectionWatched != nil`, or just added locally, or the current media key is in `existingIDs`): compact card-surface status chip whose label + icon reflect the title's **actual state** — "Watching" (`play.circle.fill`, accent) / "Watched" (`checkmark.circle.fill`, green) / "Dropped" (`xmark.circle.fill`, orange) / "On Up Next" (`bookmark.circle.fill`, accent) for library items; "In &lt;Christmas&gt;" (green check) for collections; "On &lt;target&gt;" for a title just added in this session. Reading "On Up Next" for a show set to Watching (while `WatchingToggleCard` below offered "Move to Up Next") is the exact confusion this label was rewritten to avoid — don't collapse it back to a single string.
+
+Both states carry an `ellipsis` menu that is the single place all title-level actions live:
+1. **State transitions** for library-owned titles (`libraryStateActions`): "Start Watching" / "Move to Up Next" / "Mark as Watched" / "Mark as Unwatched" / "Pick Back Up" — computed from `listItem.isWatching` / `isWatched` / `isDropped`. TV and movies each get an appropriate subset. `markLibraryWatched` also clears `watchingStartedAt` and `droppedAt` so the state ends cleanly at Watched instead of "watching+watched" limbo; `markLibraryUnwatched` reverses seasons and drop. These replaced the on-page `WatchingToggleCard` / `WatchedToggleCard` / `DoneWatchingCard` — the cards were showing "Move to Up Next" *underneath* a "Watching" status pill, which read as a contradiction. Do not reintroduce those cards.
+2. **Collections** — every user collection listed with a `checkmark` prefix when the current title is a member; one tap toggles via `CustomListViewModel.addItem` / `removeItem` (5-second Undo window on removes, same pattern as swipe-delete). Reads `customListViewModel.changeToken` so checks re-derive on mutation. This is the app's only surface for adding a title to a specific collection while browsing detail.
+3. **Destructive Remove** — plain `Text` (no `Label` icon, which wrapped in narrow menus) reading "Remove from Up Next" for library items or the caller's `removeLabel` for collections. Triggers the existing `isConfirmingRemoval` alert. Hidden in the addable state (nothing to remove yet).
+
+The retired "Collections" glass button in the action row is gone; the action row is now Trailer + Share only.
 
 `ClampedDescriptionText` uses a soft line limit: descriptions that fit within the limit plus one line show in full without more/less. Longer passages collapse to the original limit. Hidden copies measure the actual font and available width, so this adapts to Dynamic Type and resizing. Show/season overviews, season rows, episode rows, and search previews share this component; search previews disable expansion because they are inside navigation buttons. Titles, metadata, and editable notes keep their existing layout limits.
 
@@ -269,9 +282,17 @@ The code says `CustomList`/"list"; every user-facing string says "collection" �
 - Removal is deferred 5 s with an Undo toast (`commitPendingRemoval` flushed on `scenePhase == .background`). `refreshAllItems` also refreshes rows referenced only by lists.
 - **Overview + detail visuals**: `MyListsRow` (`MyListsView.swift`) shows a `PosterMosaicView` (2×2, first 4 items by `addedAt`) instead of a plain icon tile once a collection has items, with the collection's icon shrunk into a small badge next to the name; empty collections keep the SF-symbol tile. `CustomListDetailView` shows an icon/name/"N titles · M watched" header above the sections. Both read `viewModel.changeToken` (via `visibleItems(in:)`) so a sibling row's add/remove keeps them in sync.
 
+### Watching
+
+`ListItem.watchingStartedAt` (optional Date) records explicit TV viewing intent independently of `isWatched` / season progress. `isWatching` excludes movies and dropped shows. `MediaLibraryViewModel.watchingTVShows` is sorted oldest-started first; Watching items are excluded from Up Next and Watched. Filters and drag ordering apply only to Up Next. Start Watching / Move to Up Next / Mark as Watched appear in the detail sheet's **primary Add pill menu** (`libraryStateActions`), and on the list rows via swipe actions and context menus — never as their own on-page cards. Completing seasons retains Watching; `markLibraryWatched` explicitly clears `watchingStartedAt` so a menu-driven "Mark as Watched" from Watching ends the state cleanly. Dropping clears watching. The optional attribute requires deploying the updated CloudKit schema before TestFlight.
+
+### Watched Disclosure
+
+TV and Movies use a tappable Watched header in both list and grid layouts. `tvShows.watchedExpanded` / `movies.watchedExpanded` are device-local `@AppStorage` preferences, defaulting to false. Collections are unchanged. List actions and library detail dismissal show a Watched-move toast with Undo. `ListItem.WatchState` captures viewing fields only; Undo restores exact season progress and Watching state, leaves notes/ratings alone, and skips deleted objects or titles whose viewing state has changed since the toast. Moving a title never changes the disclosure preference. Disclosure animations are keyed to the persisted expansion value (AppStorage may publish outside the button transaction); List keeps a stable ForEach, and the iPad grid animates a clipped height while retaining its rows. The chevron shares the 0.35-second smooth animation, disabled for Reduce Motion.
+
 ### Upcoming Strip
 
-`upcomingEntries(from:mediaType:)` in `MediaListHelpers.swift` builds the "Airing Soon" (TV) / "Coming Soon" (Movies) strip at the top of each watchlist tab. TV: any non-dropped show (watched or not) with `nextEpisodeAirDate` ≥ today; movies: unwatched with `releaseDate` > today. Only dates within the next 30 days qualify (TMDB reports placeholder premieres far out). Sorted soonest-first, capped at 12, ids namespaced `upcoming:<mediaID>`. `TVShow` stores `nextEpisodeSeason/Number/Name` and `status` (from TMDB `next_episode_to_air` / `status`) — cards and the detail chip render `"S3E2 · Jun 15"`, and the detail shows an Ended/Canceled/Returning chip. Relative day labels come from `AirDateFormat.relativeLabel` (UTC day math, consistent with the parser); any date outside the current year renders with the year ("Jul 8, 2027"). Pull-to-refresh calls `MediaLibraryViewModel.refreshNow()`, which bypasses the 6-hour interval and cancels any in-flight launch refresh.
+`upcomingEntries(from:mediaType:)` in `MediaListHelpers.swift` builds the "Returning Soon" (TV) / "Coming Soon" (Movies) strip at the top of each watchlist tab. TV: caught-up, non-dropped shows outside Watching with a season premiere (`nextEpisodeNumber == 1`) and `nextEpisodeAirDate` ≥ today; movies: unwatched with `releaseDate` > today. Only dates within the next 30 days qualify (TMDB reports placeholder premieres far out). Sorted soonest-first, capped at 12, ids namespaced `upcoming:<mediaID>`. `TVShow` stores `nextEpisodeSeason/Number/Name` and `status` (from TMDB `next_episode_to_air` / `status`) — Watching rows and the detail chip render `"S3E2 · Jun 15"`, and the detail shows an Ended/Canceled/Returning chip. Relative day labels come from `AirDateFormat.relativeLabel` (UTC day math, consistent with the parser); any date outside the current year renders with the year ("Jul 8, 2027"). Pull-to-refresh calls `MediaLibraryViewModel.refreshNow()`, which bypasses the 6-hour interval and cancels any in-flight launch refresh.
 
 ### Image Caching
 

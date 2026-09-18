@@ -32,7 +32,10 @@ struct MediaDetailView: View {
     @State private var detailError: String?
     @State private var isConfirmingRemoval = false
     @State private var showingTMDBPage = false
-    @State private var showingAddToList = false
+    /// Set by the primary Add pill so the sheet can flip its "Add to Up Next" button to a
+    /// "✓ On Up Next" status chip without waiting for the store to round-trip. Cleared when
+    /// the sheet reopens on a new title.
+    @State private var justAddedLocally = false
     /// TMDB's recommendations and similar-titles feeds merged into one ranked, deduped list —
     /// see `mergedMoreLikeThis`.
     @State private var moreLikeThisItems: [SimilarMediaItem] = []
@@ -125,6 +128,8 @@ struct MediaDetailView: View {
                         )
                         AddedByCaption(listItem: listItem)
 
+                        primaryAddPill
+
                         DescriptionSection(
                             isLoading: isLoadingDetails,
                             descriptionText: listItem.media?.descriptionText,
@@ -136,14 +141,15 @@ struct MediaDetailView: View {
                             castCharacters: listItem.media?.castCharacters ?? []
                         )
 
-                        // Introduce the title before its season and tracking controls.
+                        // State-transition controls live in `primaryAddPill`'s menu now — those
+                        // "Move to Up Next" / "Mark as Watched" / etc. cards were duplicating what
+                        // the pill's own status label reports. Cards below are content-granular
+                        // (per-season checklist, thumbs rating, episode nav), not state-toggles.
                         if let collectionWatched {
                             CollectionWatchedCard(
                                 collectionName: collectionName,
                                 isWatched: collectionWatched
                             )
-                            // Collections never show the season checklist, so this is the only
-                            // route to episode info here.
                             if let tvShowID {
                                 EpisodesLinkCard(
                                     tvID: tvShowID,
@@ -152,21 +158,17 @@ struct MediaDetailView: View {
                                 )
                             }
                         } else if onAdd == nil {
-                            if listItem.tvShow != nil, let total = listItem.tvShow?.numberOfSeasons, total > 1 {
-                                SeasonChecklistCard(listItem: listItem, ratings: seasonRatings)
-                                DoneWatchingCard(listItem: listItem)
-                            }
-
                             let hasSeasonChecklist = listItem.tvShow != nil && (listItem.tvShow?.numberOfSeasons ?? 0) > 1
-                            if !listItem.isDropped && !hasSeasonChecklist {
-                                WatchedToggleCard(listItem: listItem)
-                                if let tvShowID {
-                                    EpisodesLinkCard(
-                                        tvID: tvShowID,
-                                        showTitle: listItem.media?.title ?? "",
-                                        episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
-                                    )
-                                }
+                            if hasSeasonChecklist {
+                                SeasonChecklistCard(listItem: listItem, ratings: seasonRatings)
+                            } else if let tvShowID {
+                                // Single-season TV: the one link into the episode list. Movies
+                                // and season-less stubs get no episode nav.
+                                EpisodesLinkCard(
+                                    tvID: tvShowID,
+                                    showTitle: listItem.media?.title ?? "",
+                                    episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
+                                )
                             }
 
                             if listItem.isWatched {
@@ -249,26 +251,6 @@ struct MediaDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if let onAdd {
-                        Button {
-                            onAdd()
-                            if let title = listItem.media?.title {
-                                toast.show(addedMessage(for: title))
-                            }
-                            dismiss()
-                        } label: {
-                            Label(addTargetName.map { "Add to \($0)" } ?? "Add to Watchlist", systemImage: "plus")
-                        }
-                    } else {
-                        Button(role: .destructive) {
-                            isConfirmingRemoval = true
-                        } label: {
-                            Label(removeLabel ?? "Remove", systemImage: "trash")
-                        }
-                        .accessibilityLabel(removeLabel ?? "Remove from watchlist")
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
@@ -302,27 +284,352 @@ struct MediaDetailView: View {
         }
     }
 
+    // MARK: - Primary Add Pill
+
+    /// Namespaced key for the currently-open title. `MediaIDKey.make` treats TV and movie ids as
+    /// distinct namespaces so a set of these can safely mix both.
+    private var currentMediaKey: String? {
+        guard let media = listItem.media, let id = Int(media.id) else { return nil }
+        return MediaIDKey.make(listItem.tvShow != nil ? .tvShow : .movie, id)
+    }
+
+    private var isAlreadyInLibrary: Bool {
+        guard let currentMediaKey else { return false }
+        return existingIDs.contains(currentMediaKey)
+    }
+
+    /// Human name for the primary add target: the collection name when opened in an "add to
+    /// collection" flow (Discover/similar from inside a collection), else "Up Next".
+    private var primaryAddTarget: String { addTargetName ?? "Up Next" }
+
+    private enum PillState {
+        /// Big glass "Add to <target>" pill; not yet added.
+        case addable
+        /// Big glass pill that was just tapped or is already in the target — shows the check state.
+        case added
+    }
+
+    private var pillState: PillState {
+        // Any of these mean the title is already in whatever the current target is: it's a library
+        // item (owned), a collection member (collectionWatched set), we just added it in this
+        // session, or the parent's existingIDs already flags it.
+        if collectionWatched != nil || onAdd == nil || justAddedLocally || isAlreadyInLibrary {
+            return .added
+        }
+        return .addable
+    }
+
+    /// The primary action pill shown right below metadata. Replaces the old toolbar "+" and puts
+    /// the Add verb where the eye lands. Its menu is the one place users can add/remove this
+    /// title from any collection while browsing detail.
+    @ViewBuilder
+    private var primaryAddPill: some View {
+        switch pillState {
+        case .addable:
+            addablePillView
+        case .added:
+            statusPillView
+        }
+    }
+
+    private var addablePillView: some View {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
+                Button {
+                    performPrimaryAdd()
+                } label: {
+                    Label("Add to \(primaryAddTarget)", systemImage: "plus.circle.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(Color.accentColor)
+                .accessibilityLabel("Add to \(primaryAddTarget)")
+
+                pillMenuButton
+            }
+        }
+        .sensoryFeedback(.success, trigger: justAddedLocally)
+    }
+
+    private var statusPillView: some View {
+        HStack(spacing: 10) {
+            Image(systemName: statusPillIcon)
+                .font(.title3)
+                .foregroundStyle(statusPillIconColor)
+                .accessibilityHidden(true)
+
+            Text(statusPillTitle)
+                .font(.headline)
+
+            Spacer(minLength: 0)
+
+            pillMenuButton
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(minHeight: 44)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The status pill's label reflects the *actual* library state of the title, not just "On Up
+    /// Next" — otherwise a show set to Watching reads "On Up Next" here while the card below offers
+    /// "Move to Up Next", which is confusing. Order: collection > just-added toast > library state.
+    private var statusPillTitle: String {
+        if let collectionName, collectionWatched != nil {
+            return "In \(collectionName)"
+        }
+        // Fresh-add flip in browse context: use the target we just added to, not the derived
+        // library state (the ListItem may not have picked up its list membership yet).
+        if justAddedLocally {
+            return "On \(primaryAddTarget)"
+        }
+        // Library context: reflect the actual watch state.
+        if listItem.list != nil {
+            if listItem.isDropped { return "Dropped" }
+            if listItem.isWatched { return "Watched" }
+            if listItem.isWatching { return "Watching" }
+            return "On Up Next"
+        }
+        // Browse context where the title was already in the parent's existingIDs — the transient
+        // ListItem carries no library state, so "In Library" is the honest label.
+        return "In Library"
+    }
+
+    private var statusPillIcon: String {
+        if collectionWatched != nil { return "checkmark.circle.fill" }
+        if justAddedLocally { return "checkmark.circle.fill" }
+        if listItem.list != nil {
+            if listItem.isDropped { return "xmark.circle.fill" }
+            if listItem.isWatched { return "checkmark.circle.fill" }
+            if listItem.isWatching { return "play.circle.fill" }
+            return "bookmark.circle.fill"
+        }
+        return "checkmark.circle.fill"
+    }
+
+    private var statusPillIconColor: Color {
+        if collectionWatched != nil { return .green }
+        if justAddedLocally { return .green }
+        if listItem.list != nil {
+            if listItem.isDropped { return .orange }
+            if listItem.isWatched { return .green }
+            if listItem.isWatching { return Color.accentColor }
+            return Color.accentColor
+        }
+        return .green
+    }
+
+    private var pillMenuButton: some View {
+        Menu {
+            pillMenuContent
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.headline)
+                .frame(width: 44, height: 44)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("More options")
+    }
+
+    @ViewBuilder
+    private var pillMenuContent: some View {
+        libraryStateActions
+
+        if !collectionMenuEntries.isEmpty {
+            Section("Collections") {
+                ForEach(collectionMenuEntries) { entry in
+                    Button(action: entry.toggle) {
+                        if entry.isMember {
+                            Label(entry.name, systemImage: "checkmark")
+                        } else {
+                            Text(entry.name)
+                        }
+                    }
+                }
+            }
+        }
+
+        if canRemoveFromPill {
+            // Plain Text (no `Label` with icon) so the destructive item renders on one line at
+            // any menu width — the icon+text pair wrapped in narrow menus.
+            Button(role: .destructive) {
+                isConfirmingRemoval = true
+            } label: {
+                Text(destructiveMenuLabel)
+            }
+        }
+    }
+
+    private var destructiveMenuLabel: String {
+        if let removeLabel { return removeLabel }
+        return "Remove from Up Next"
+    }
+
+    /// State-transition actions for library-owned titles — the pill's menu is the one place
+    /// these live now (`WatchingToggleCard` / `WatchedToggleCard` / `DoneWatchingCard` are gone).
+    @ViewBuilder
+    private var libraryStateActions: some View {
+        // Only library-owned items get state actions. Browse/add and collection contexts skip.
+        if listItem.list != nil, collectionWatched == nil {
+            Section {
+                if listItem.tvShow != nil {
+                    tvStateActions
+                } else if listItem.movie != nil {
+                    movieStateActions
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tvStateActions: some View {
+        if listItem.isDropped {
+            Button {
+                withAnimation { listItem.resumeShow() }
+                persistence.save()
+            } label: { Label("Pick Back Up", systemImage: "arrow.uturn.forward.circle") }
+            Button {
+                markLibraryWatched()
+            } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
+        } else if listItem.isWatched {
+            Button {
+                markLibraryUnwatched()
+            } label: { Label("Mark as Unwatched", systemImage: "arrow.uturn.backward.circle") }
+        } else if listItem.isWatching {
+            Button {
+                withAnimation { listItem.toggleWatching() }
+                persistence.save()
+            } label: { Label("Move to Up Next", systemImage: "list.bullet.circle") }
+            Button {
+                markLibraryWatched()
+            } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
+        } else {
+            // On Up Next
+            Button {
+                withAnimation { listItem.toggleWatching() }
+                persistence.save()
+            } label: { Label("Start Watching", systemImage: "play.circle") }
+            Button {
+                markLibraryWatched()
+            } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
+        }
+    }
+
+    @ViewBuilder
+    private var movieStateActions: some View {
+        if listItem.isWatched {
+            Button {
+                markLibraryUnwatched()
+            } label: { Label("Mark as Unwatched", systemImage: "arrow.uturn.backward.circle") }
+        } else {
+            Button {
+                markLibraryWatched()
+            } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
+        }
+    }
+
+    /// Marks the current library item watched: seasons filled, `isWatched` on, `watchedAt` now.
+    /// Also finalises Watching (clears `watchingStartedAt`) and reverses any drop, so the state
+    /// ends cleanly at "Watched" instead of the "watching+watched" limbo.
+    private func markLibraryWatched() {
+        withAnimation {
+            listItem.droppedAt = nil
+            listItem.watchingStartedAt = nil
+            if let tvShow = listItem.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
+                listItem.watchedSeasons = Array(1...total)
+            }
+            listItem.isWatched = true
+            listItem.watchedAt = .now
+        }
+        persistence.save()
+    }
+
+    private func markLibraryUnwatched() {
+        withAnimation {
+            listItem.droppedAt = nil
+            if let tvShow = listItem.tvShow, (tvShow.numberOfSeasons ?? 0) > 0 {
+                listItem.watchedSeasons = []
+            }
+            listItem.isWatched = false
+            listItem.watchedAt = nil
+        }
+        persistence.save()
+    }
+
+    private var persistence: PersistenceController { PersistenceController.shared }
+
+    /// Present a Remove menu item whenever there's something to remove: a library-owned title, a
+    /// collection member, or a title we just added in this session (so the same tap can undo).
+    private var canRemoveFromPill: Bool {
+        if collectionWatched != nil { return true }        // collection detail
+        if onAdd == nil { return true }                     // library detail
+        return false                                        // browse/add context: nothing to remove
+    }
+
+    private struct PillCollectionEntry: Identifiable {
+        /// The `CustomList`'s stable UUID (`CustomList.id`) — no CoreData types leak into this view.
+        let id: String
+        let name: String
+        let isMember: Bool
+        let toggle: () -> Void
+    }
+
+    private var collectionMenuEntries: [PillCollectionEntry] {
+        guard let vm = customListViewModel else { return [] }
+        guard let mediaID = listItem.media?.id else { return [] }
+        // Read changeToken so the menu re-derives its check marks when collections mutate.
+        _ = vm.changeToken
+        return vm.customLists.map { list in
+            let isMember = vm.containsItem(mediaID: mediaID, in: list)
+            return PillCollectionEntry(
+                id: list.id.uuidString,
+                name: list.name,
+                isMember: isMember
+            ) {
+                toggleCollectionMembership(mediaID: mediaID, list: list, currentlyMember: isMember)
+            }
+        }
+    }
+
+    private func toggleCollectionMembership(mediaID: String, list: CustomList, currentlyMember: Bool) {
+        guard let vm = customListViewModel else { return }
+        if currentlyMember {
+            if let item = (list.items ?? []).first(where: { $0.media?.id == mediaID }) {
+                let title = vm.removeItem(item, from: list) ?? listItem.media?.title ?? "Title"
+                toast.show("\(title) removed from \(list.name)", icon: "trash")
+            }
+        } else {
+            vm.addItem(movie: listItem.movie, tvShow: listItem.tvShow, to: list)
+            let title = listItem.media?.title ?? "Title"
+            toast.show("\(title) added to \(list.name)")
+        }
+    }
+
+    /// The pill's primary-tap action for the addable state. Fires the parent's `onAdd`, shows a
+    /// confirmation toast, and flips the pill to its status style in place — the sheet stays open
+    /// so the user can keep reading and/or add to collections.
+    private func performPrimaryAdd() {
+        guard let onAdd else { return }
+        onAdd()
+        if let title = listItem.media?.title {
+            toast.show(addedMessage(for: title))
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            justAddedLocally = true
+        }
+    }
+
     // MARK: - Action Buttons
 
     /// The sheet's floating control layer — the one place glass belongs in this view.
+    /// (Collection membership moved to the primary pill's menu, so this row is Trailer + Share.)
     private var actionButtonRow: some View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
-                if let customListVM = customListViewModel {
-                    Button { showingAddToList = true } label: {
-                        Label("Collections", systemImage: "tray.full")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glass)
-                    .sheet(isPresented: $showingAddToList) {
-                        AddToListSheet(
-                            viewModel: customListVM,
-                            movie: listItem.movie,
-                            tvShow: listItem.tvShow
-                        )
-                    }
-                }
-
                 if trailerKey != nil {
                     Button { showingTrailer = true } label: {
                         Label("Trailer", systemImage: "play.fill")
@@ -550,7 +857,8 @@ struct MediaDetailView: View {
         let key = MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
         guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
         addedSimilarIDs.insert(key)
-        toast.show(addedMessage(for: media.title))
+        // No toast here — the child sheet's primary Add pill (`performPrimaryAdd`) already fires
+        // one, and this method is only reached from that pill's `onAdd`.
         if let tvShow = item.tvShow {
             onTVShowAdded?(tvShow)
         } else if let movie = item.movie {
