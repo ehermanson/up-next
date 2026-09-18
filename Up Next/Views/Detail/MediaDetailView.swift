@@ -118,7 +118,11 @@ struct MediaDetailView: View {
                     )
 
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.section) {
-                        MetadataRow(listItem: listItem)
+                        if let tvShow = listItem.tvShow {
+                            MetadataRow(media: tvShow)
+                        } else if let movie = listItem.movie {
+                            MetadataRow(media: movie)
+                        }
 
                         GenreSection(genres: listItem.media?.genres ?? [])
 
@@ -141,6 +145,8 @@ struct MediaDetailView: View {
                             castCharacters: listItem.media?.castCharacters ?? []
                         )
 
+                        trailerButton
+
                         // State-transition controls live in `primaryAddPill`'s menu now — those
                         // "Move to Up Next" / "Mark as Watched" / etc. cards were duplicating what
                         // the pill's own status label reports. Cards below are content-granular
@@ -150,42 +156,17 @@ struct MediaDetailView: View {
                                 collectionName: collectionName,
                                 isWatched: collectionWatched
                             )
-                            if let tvShowID {
-                                EpisodesLinkCard(
-                                    tvID: tvShowID,
-                                    showTitle: listItem.media?.title ?? "",
-                                    episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
-                                )
-                            }
+                            seasonContent(allowsWatchedChanges: false)
                         } else if onAdd == nil {
-                            let hasSeasonChecklist = listItem.tvShow != nil && (listItem.tvShow?.numberOfSeasons ?? 0) > 1
-                            if hasSeasonChecklist {
-                                SeasonChecklistCard(listItem: listItem, ratings: seasonRatings)
-                            } else if let tvShowID {
-                                // Single-season TV: the one link into the episode list. Movies
-                                // and season-less stubs get no episode nav.
-                                EpisodesLinkCard(
-                                    tvID: tvShowID,
-                                    showTitle: listItem.media?.title ?? "",
-                                    episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
-                                )
-                            }
+                            seasonContent(allowsWatchedChanges: true)
 
                             if listItem.isWatched {
                                 UserRatingCard(listItem: listItem)
                                     .transition(.opacity.combined(with: .move(edge: .top)))
                             }
-                        } else if let tvShowID {
-                            // Discover / "add" context: no watched controls (there's nothing to
-                            // add to yet), but people browsing still want episode info.
-                            EpisodesLinkCard(
-                                tvID: tvShowID,
-                                showTitle: listItem.media?.title ?? "",
-                                episodeCount: listItem.tvShow?.seasonEpisodeCounts.first
-                            )
+                        } else {
+                            seasonContent(allowsWatchedChanges: false)
                         }
-
-                        actionButtonRow
 
                         CollectionSection(
                             collectionName: tmdbCollectionName,
@@ -281,6 +262,18 @@ struct MediaDetailView: View {
                 .navigationTransition(.zoom(sourceID: selectedSimilarSourceID, in: similarNamespace))
             }
             .toastOverlay()
+        }
+    }
+
+    @ViewBuilder
+    private func seasonContent(allowsWatchedChanges: Bool) -> some View {
+        if let tvShow = listItem.tvShow {
+            DetailSeasonsSection(
+                listItem: listItem,
+                tvShow: tvShow,
+                ratings: seasonRatings,
+                allowsWatchedChanges: allowsWatchedChanges
+            )
         }
     }
 
@@ -623,37 +616,24 @@ struct MediaDetailView: View {
         }
     }
 
-    // MARK: - Action Buttons
+    // MARK: - Trailer
 
-    /// The sheet's floating control layer — the one place glass belongs in this view.
-    /// (Collection membership moved to the primary pill's menu, so this row is Trailer + Share.)
-    private var actionButtonRow: some View {
-        GlassEffectContainer(spacing: 10) {
-            HStack(spacing: 10) {
-                if trailerKey != nil {
-                    Button { showingTrailer = true } label: {
-                        Label("Trailer", systemImage: "play.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glass)
-                    .sheet(isPresented: $showingTrailer) {
-                        if let url = URL(string: "https://www.youtube.com/watch?v=\(trailerKey ?? "")") {
-                            SafariView(url: url)
-                                .ignoresSafeArea()
-                        }
-                    }
-                }
-
-                if let tmdbURL {
-                    ShareLink(item: tmdbURL, preview: SharePreview(listItem.media?.title ?? "Up Next")) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glass)
-                }
+    @ViewBuilder
+    private var trailerButton: some View {
+        if let trailerKey {
+            Button { showingTrailer = true } label: {
+                Label("Trailer", systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.glass)
             .labelStyle(StackedLabelStyle())
             .controlSize(.large)
+            .sheet(isPresented: $showingTrailer) {
+                if let url = URL(string: "https://www.youtube.com/watch?v=\(trailerKey)") {
+                    SafariView(url: url)
+                        .ignoresSafeArea()
+                }
+            }
         }
     }
 

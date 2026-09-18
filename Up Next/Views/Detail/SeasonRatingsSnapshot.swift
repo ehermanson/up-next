@@ -1,5 +1,38 @@
 import SwiftUI
 
+/// Shared bar geometry for season, episode, and compact charts. The plot's bottom is always
+/// zero; labels are overlays so their size cannot move the bar or change its measured height.
+struct RatingChartBar<ScoreLabel: View>: View {
+    enum LabelPlacement {
+        case inside
+        case above
+    }
+
+    let rating: Double?
+    let plotHeight: CGFloat
+    let cornerRadius: CGFloat
+    let fillOpacity: Double
+    let labelHeight: CGFloat
+    var labelPlacement: LabelPlacement = .inside
+    @ViewBuilder var scoreLabel: () -> ScoreLabel
+
+    private var barHeight: CGFloat {
+        rating.map { max(2, plotHeight * $0 / 10) } ?? 2
+    }
+
+    var body: some View {
+        UnevenRoundedRectangle(topLeadingRadius: cornerRadius, topTrailingRadius: cornerRadius)
+            .fill(.tint.opacity(fillOpacity))
+            .frame(height: barHeight)
+            .overlay(alignment: .top) {
+                scoreLabel()
+                    .frame(height: labelHeight)
+                    .offset(y: labelPlacement == .above ? -labelHeight - 4 : min(4, barHeight - labelHeight))
+            }
+            .frame(height: plotHeight, alignment: .bottom)
+    }
+}
+
 /// Season-level scores from the show response, aligned to a shared zero baseline.
 struct SeasonComparisonChart: View {
     let tvID: Int
@@ -12,58 +45,125 @@ struct SeasonComparisonChart: View {
     @ScaledMetric(relativeTo: .caption) private var plotHeight = 64.0
     @ScaledMetric(relativeTo: .caption) private var labelHeight = 24.0
 
+    /// Unweighted mean of the same available, valid season scores shown by the bars.
+    private var seasonAverage: Double? {
+        guard seasonCount > 0 else { return nil }
+        let scores = (1...seasonCount).compactMap { rating(for: $0) }
+        guard !scores.isEmpty else { return nil }
+        return scores.reduce(0, +) / Double(scores.count)
+    }
+
     var body: some View {
-        GeometryReader { geometry in
-            let count = max(1, seasonCount)
-            let gap = count >= 8 ? 4.0 : 8.0
-            let width = max(minimumWidth, (geometry.size.width - gap * Double(count - 1)) / Double(count))
-            ScrollView(.horizontal) {
-                HStack(alignment: .bottom, spacing: gap) {
-                    ForEach(1...count, id: \.self) { season in
-                        let score = rating(for: season)
-                        NavigationLink {
-                            SeasonEpisodesView(tvID: tvID, showTitle: showTitle, season: season)
-                        } label: {
-                            VStack(spacing: 4) {
-                                VStack(spacing: 4) {
-                                    Group {
-                                        if let score {
-                                            Text(score, format: .number.precision(.fractionLength(1)))
-                                        } else {
-                                            Text("—")
-                                        }
-                                    }
-                                    .font(.caption.weight(.semibold))
-                                    .monospacedDigit()
-                                    .foregroundStyle(score == nil ? .secondary : .primary)
-                                    .frame(height: labelHeight)
-
-                                    UnevenRoundedRectangle(topLeadingRadius: 4, topTrailingRadius: 4)
-                                        .fill(.tint.opacity(score == nil ? 0.1 : 0.45))
-                                        .frame(height: score.map { plotHeight * $0 / 10 } ?? 2)
-                                }
-                                .frame(height: plotHeight + labelHeight + 4, alignment: .bottom)
-
-                                Text("S\(season)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(height: labelHeight)
-                            }
-                            .frame(width: width)
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Season \(season)")
-                        .accessibilityValue(score.map {
-                            "TMDB rating \($0.formatted(.number.precision(.fractionLength(1)))) out of 10"
-                        } ?? "Not rated")
-                        .accessibilityHint("Opens season details")
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    chartTitle
+                    Spacer(minLength: 12)
+                    seasonAverageLabel
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    chartTitle
+                    seasonAverageLabel
                 }
             }
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+
+            GeometryReader { geometry in
+                let count = max(1, seasonCount)
+                let gap = count >= 8 ? 4.0 : 8.0
+                let width = max(minimumWidth, (geometry.size.width - gap * Double(count - 1)) / Double(count))
+                ScrollView(.horizontal) {
+                    HStack(alignment: .bottom, spacing: gap) {
+                        ForEach(1...count, id: \.self) { season in
+                            let score = rating(for: season)
+                            NavigationLink {
+                                SeasonEpisodesView(tvID: tvID, showTitle: showTitle, season: season)
+                            } label: {
+                                VStack(spacing: 4) {
+                                    RatingChartBar(
+                                        rating: score,
+                                        plotHeight: plotHeight,
+                                        cornerRadius: 4,
+                                        fillOpacity: score == nil ? 0.1 : 0.45,
+                                        labelHeight: labelHeight,
+                                        labelPlacement: .above
+                                    ) {
+                                        Group {
+                                            if let score {
+                                                Text(score, format: .number.precision(.fractionLength(1)))
+                                            } else {
+                                                Text("—")
+                                            }
+                                        }
+                                        .font(.caption.weight(.semibold))
+                                        .monospacedDigit()
+                                        .foregroundStyle(score == nil ? .secondary : .primary)
+                                    }
+                                    .frame(height: plotHeight + labelHeight + 4, alignment: .bottom)
+
+                                    Text("S\(season)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .frame(height: labelHeight)
+                                }
+                                .frame(width: width)
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Season \(season)")
+                            .accessibilityValue(score.map {
+                                "TMDB rating \($0.formatted(.number.precision(.fractionLength(1)))) out of 10"
+                            } ?? "Not rated")
+                            .accessibilityHint("Opens season details")
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if let seasonAverage {
+                            // Bars share a baseline below the score-label region. Keep the reference
+                            // line on that same 0–10 scale across the entire scrollable plot.
+                            Path { path in
+                                let y = labelHeight + 4 + plotHeight * (1 - seasonAverage / 10)
+                                let contentWidth = max(geometry.size.width,
+                                    (width + gap) * Double(count) - gap)
+                                path.move(to: CGPoint(x: 0, y: y))
+                                path.addLine(to: CGPoint(x: contentWidth, y: y))
+                            }
+                            .stroke(.secondary, style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [1, 3]))
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                        }
+                    }
+                }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            }
+            .frame(height: plotHeight + labelHeight * 2 + 12)
         }
-        .frame(height: plotHeight + labelHeight * 2 + 12)
+    }
+
+    private var chartTitle: some View {
+        Text("Season ratings")
+            .font(.subheadline.weight(.semibold))
+            .accessibilityLabel("TMDB season ratings out of 10")
+    }
+
+    @ViewBuilder
+    private var seasonAverageLabel: some View {
+        if let seasonAverage {
+            HStack(spacing: 5) {
+                Path { path in
+                    path.move(to: CGPoint(x: 0, y: 4))
+                    path.addLine(to: CGPoint(x: 18, y: 4))
+                }
+                .stroke(.secondary, style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [1, 3]))
+                .frame(width: 18, height: 8)
+                Text("Season avg \(seasonAverage.formatted(.number.precision(.fractionLength(1))))")
+                    .monospacedDigit()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Average of rated seasons: \(seasonAverage.formatted(.number.precision(.fractionLength(1)))) out of 10. Dotted reference line.")
+        }
     }
 
     private func rating(for season: Int) -> Double? {
@@ -162,23 +262,23 @@ struct SeasonRatingsSnapshot: View {
             onSelect(episode)
         } label: {
             VStack(spacing: 4) {
-                ZStack(alignment: .bottom) {
+                RatingChartBar(
+                    rating: rating,
+                    plotHeight: plotHeight,
+                    cornerRadius: 5,
+                    fillOpacity: rating == nil ? 0 : 0.22,
+                    labelHeight: labelHeight
+                ) {
                     if let rating {
-                        UnevenRoundedRectangle(topLeadingRadius: 5, topTrailingRadius: 5)
-                            .fill(.tint.opacity(0.22))
-                            .frame(height: max(2, plotHeight * rating / 10))
                         Text(rating, format: .number.precision(.fractionLength(1)))
                             .font(.caption.weight(.semibold))
                             .monospacedDigit()
-                            .padding(.bottom, max(4, plotHeight * rating / 10 - labelHeight))
                     } else {
                         Text("—")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
-                            .padding(.bottom, 4)
                     }
                 }
-                .frame(height: plotHeight)
                 Text("E\(episode.episodeNumber)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -201,6 +301,7 @@ struct CompactEpisodeRatings: View {
 
     @ScaledMetric(relativeTo: .caption2) private var plotHeight = 32.0
     @ScaledMetric(relativeTo: .caption2) private var scoreWidth = 28.0
+    @ScaledMetric(relativeTo: .caption2) private var scoreHeight = 16.0
 
     private var average: Double? {
         let ratings = episodes.compactMap(\.snapshotRating)
@@ -216,19 +317,21 @@ struct CompactEpisodeRatings: View {
                 HStack(alignment: .bottom, spacing: gap) {
                     ForEach(episodes) { episode in
                         let rating = episode.snapshotRating
-                        UnevenRoundedRectangle(topLeadingRadius: 2, topTrailingRadius: 2)
-                            .fill(.tint.opacity(rating == nil ? 0.1 : 0.35))
-                            .frame(height: rating.map { max(2, plotHeight * $0 / 10) } ?? 2)
-                            .overlay(alignment: .top) {
-                                if width >= scoreWidth, let rating {
-                                    Text(rating, format: .number.precision(.fractionLength(1)))
-                                        .font(.caption2)
-                                        .monospacedDigit()
-                                        .foregroundStyle(.secondary)
-                                        .padding(.top, 2)
-                                }
+                        RatingChartBar(
+                            rating: rating,
+                            plotHeight: plotHeight,
+                            cornerRadius: 2,
+                            fillOpacity: rating == nil ? 0.1 : 0.35,
+                            labelHeight: scoreHeight
+                        ) {
+                            if width >= scoreWidth, let rating {
+                                Text(rating, format: .number.precision(.fractionLength(1)))
+                                    .font(.caption2)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                 }
                 .overlay {

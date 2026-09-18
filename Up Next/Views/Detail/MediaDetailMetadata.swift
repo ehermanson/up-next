@@ -129,14 +129,47 @@ struct FlowLayout: Layout {
 }
 
 struct MetadataRow: View {
-    @ObservedObject var listItem: ListItem
+    /// Copy values at the call site: search uses unattached Core Data objects, whose mutations
+    /// don't reliably invalidate a child view observing the same object reference.
+    let contentRating: String?
+    let seasonsEpisodesSummary: String?
+    let runtime: String?
+    let releaseYear: String?
+    let nextEpisodeText: String?
+    let nextEpisodeAccessibilityText: String?
+    let status: String?
+    let voteAverage: Double?
 
-    private var voteAverage: Double? {
-        listItem.tvShow?.voteAverage ?? listItem.movie?.voteAverage
-    }
-
-    private var contentRating: String? {
-        listItem.tvShow?.contentRating ?? listItem.movie?.contentRating
+    init(media: NSManagedObject) {
+        if let tvShow = media as? TVShow {
+            contentRating = tvShow.contentRating
+            seasonsEpisodesSummary = tvShow.seasonsEpisodesSummary
+            runtime = tvShow.episodeRunTime.map { "\($0) min/ep" }
+            releaseYear = nil
+            nextEpisodeText = Self.nextEpisodeChipText(for: tvShow)
+            nextEpisodeAccessibilityText = tvShow.nextEpisodeAirDate.map {
+                Self.nextEpisodeAccessibilityLabel(for: tvShow, airDate: $0)
+            }
+            let showStatus = tvShow.status?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if showStatus == "Ended" || showStatus == "Canceled" || showStatus == "Cancelled" {
+                status = showStatus
+            } else if showStatus == "Returning Series", tvShow.nextEpisodeAirDate == nil {
+                status = "Returning"
+            } else {
+                status = nil
+            }
+            voteAverage = tvShow.voteAverage
+        } else {
+            let movie = media as? Movie
+            contentRating = movie?.contentRating
+            seasonsEpisodesSummary = nil
+            runtime = movie?.runtime.map { "\($0) min" }
+            releaseYear = movie?.releaseYear
+            nextEpisodeText = nil
+            nextEpisodeAccessibilityText = nil
+            status = nil
+            voteAverage = movie?.voteAverage
+        }
     }
 
     var body: some View {
@@ -144,35 +177,22 @@ struct MetadataRow: View {
             if let rating = contentRating, !rating.isEmpty {
                 Chip(text: rating)
             }
-            if let tvShow = listItem.tvShow {
-                if let summary = tvShow.seasonsEpisodesSummary {
-                    Chip(text: summary)
-                }
-                if let runtime = tvShow.episodeRunTime {
-                    Chip(text: "\(runtime) min/ep")
-                }
-                if let airDate = tvShow.nextEpisodeAirDate, let formatted = Self.nextEpisodeChipText(for: tvShow) {
-                    Chip(icon: "calendar", iconColor: .blue, text: formatted)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(Self.nextEpisodeAccessibilityLabel(for: tvShow, airDate: airDate))
-                }
-                // Only two statuses are worth a chip: a finished show, or one that's confirmed
-                // to return but has no scheduled episode yet (the calendar chip covers the rest).
-                if let status = tvShow.status?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !status.isEmpty {
-                    if status == "Ended" || status == "Canceled" || status == "Cancelled" {
-                        Chip(icon: "flag.checkered", text: status)
-                    } else if status == "Returning Series", tvShow.nextEpisodeAirDate == nil {
-                        Chip(icon: "clock", text: "Returning")
-                    }
-                }
-            } else if let movie = listItem.movie {
-                if let year = movie.releaseYear {
-                    Chip(text: year)
-                }
-                if let runtime = movie.runtime {
-                    Chip(text: "\(runtime) min")
-                }
+            if let summary = seasonsEpisodesSummary {
+                Chip(text: summary)
+            }
+            if let releaseYear {
+                Chip(text: releaseYear)
+            }
+            if let runtime {
+                Chip(text: runtime)
+            }
+            if let nextEpisodeText {
+                Chip(icon: "calendar", iconColor: .blue, text: nextEpisodeText)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(nextEpisodeAccessibilityText ?? nextEpisodeText)
+            }
+            if let status {
+                Chip(icon: status == "Returning" ? "clock" : "flag.checkered", text: status)
             }
             if let vote = voteAverage, vote > 0 {
                 Chip(

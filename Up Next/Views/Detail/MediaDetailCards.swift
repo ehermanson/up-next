@@ -161,30 +161,57 @@ struct UserRatingCard: View {
     }
 }
 
+/// Observe the show itself so asynchronously loaded season data updates every detail context.
+struct DetailSeasonsSection: View {
+    let listItem: ListItem
+    @ObservedObject var tvShow: TVShow
+    var ratings: [Int: Double]
+    var allowsWatchedChanges: Bool
+
+    var body: some View {
+        if let total = tvShow.numberOfSeasons, total > 1 {
+            SeasonChecklistCard(
+                listItem: listItem,
+                tvShow: tvShow,
+                ratings: ratings,
+                allowsWatchedChanges: allowsWatchedChanges
+            )
+        } else if tvShow.numberOfSeasons == 1, let tvID = Int(tvShow.id) {
+            EpisodesLinkCard(
+                tvID: tvID,
+                showTitle: tvShow.title,
+                episodeCount: tvShow.seasonEpisodeCounts.first
+            )
+        }
+    }
+}
+
 struct SeasonChecklistCard: View {
     @ObservedObject var listItem: ListItem
+    @ObservedObject var tvShow: TVShow
     var ratings: [Int: Double] = [:]
+    var allowsWatchedChanges = true
 
     private var totalSeasons: Int {
-        listItem.tvShow?.numberOfSeasons ?? 0
+        tvShow.numberOfSeasons ?? 0
     }
 
     private var episodeCounts: [Int] {
-        listItem.tvShow?.seasonEpisodeCounts ?? []
+        tvShow.seasonEpisodeCounts
     }
 
     private var seasonDescriptions: [String] {
-        listItem.tvShow?.seasonDescriptions ?? []
+        tvShow.seasonDescriptions
     }
 
     /// nil when the show's id isn't a TMDB int (shouldn't happen for a persisted row) — the
     /// episodes chevron just doesn't render.
     private var tvID: Int? {
-        listItem.tvShow.flatMap { Int($0.id) }
+        Int(tvShow.id)
     }
 
     private var showTitle: String {
-        listItem.tvShow?.title ?? ""
+        tvShow.title
     }
 
     @State private var seasonEpisodes: [Int: [TMDBSeasonEpisode]] = [:]
@@ -197,13 +224,13 @@ struct SeasonChecklistCard: View {
                 .font(.headline)
 
             if let tvID, ratings.contains(where: {
-                $0.key > 0 && $0.key <= (listItem.tvShow?.availableSeasonCount ?? 0)
+                $0.key > 0 && $0.key <= (tvShow.availableSeasonCount)
             }) {
                 SeasonComparisonChart(
                     tvID: tvID,
                     showTitle: showTitle,
                     seasonCount: totalSeasons,
-                    availableSeasonCount: listItem.tvShow?.availableSeasonCount ?? 0,
+                    availableSeasonCount: tvShow.availableSeasonCount,
                     ratings: ratings
                 )
             }
@@ -215,7 +242,7 @@ struct SeasonChecklistCard: View {
             }
         }
         .sensoryFeedback(.selection, trigger: listItem.watchedSeasons)
-        .task(id: "\(tvID ?? 0):\(listItem.tvShow?.availableSeasonCount ?? 0)") {
+        .task(id: "\(tvID ?? 0):\(tvShow.availableSeasonCount)") {
             await loadEpisodeRatings()
         }
     }
@@ -223,8 +250,8 @@ struct SeasonChecklistCard: View {
     /// Caption for a season that exists on TMDB but can't be watched yet — an announcement, with
     /// its premiere date when TMDB has scheduled one.
     private func announcedCaption(season: Int) -> String {
-        guard season == listItem.tvShow?.announcedSeasonNumber,
-              let premiere = listItem.tvShow?.announcedSeasonPremiere
+        guard season == tvShow.announcedSeasonNumber,
+              let premiere = tvShow.announcedSeasonPremiere
         else { return "Announced" }
         return "Premieres \(AirDateFormat.shortLabel(from: premiere) ?? premiere)"
     }
@@ -236,7 +263,7 @@ struct SeasonChecklistCard: View {
         let isLast = season == totalSeasons
         // Announced seasons stay tappable — TMDB's data can lag a real airing — but read as
         // unavailable rather than as something the user is behind on.
-        let isAnnounced = season > (listItem.tvShow?.availableSeasonCount ?? 0) && season <= totalSeasons
+        let isAnnounced = season > (tvShow.availableSeasonCount) && season <= totalSeasons
 
         return VStack(alignment: .leading, spacing: 2) {
             if let tvID {
@@ -268,22 +295,24 @@ struct SeasonChecklistCard: View {
                 .padding(.top, 6)
             }
         }
-        .padding(.leading, 56)
+        .padding(.leading, allowsWatchedChanges ? 56 : 0)
         .padding(.bottom, isLast ? 0 : 16)
         .overlay(alignment: .topLeading) {
-            // A bounded target with a separate gutter; no row-sized watched button.
-            Button {
-                listItem.toggleSeason(season)
-            } label: {
-                watchedCircle(isWatched: isWatched, isAnnounced: isAnnounced)
-                    .frame(width: 44, height: 44)
-                    .contentShape(.circle)
+            if allowsWatchedChanges {
+                // A bounded target with a separate gutter; no row-sized watched button.
+                Button {
+                    listItem.toggleSeason(season)
+                } label: {
+                    watchedCircle(isWatched: isWatched, isAnnounced: isAnnounced)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Mark Season \(season) as \(isWatched ? "unwatched" : "watched")")
+                .accessibilityValue(isWatched ? "Watched" : "Not watched")
+                .accessibilityHint("Changes only this season")
+                .accessibilityAddTraits(.isToggle)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Mark Season \(season) as \(isWatched ? "unwatched" : "watched")")
-            .accessibilityValue(isWatched ? "Watched" : "Not watched")
-            .accessibilityHint("Changes only this season")
-            .accessibilityAddTraits(.isToggle)
         }
     }
 
@@ -324,7 +353,7 @@ struct SeasonChecklistCard: View {
     /// The service caches season responses, including when the episode page is opened next.
     private func loadEpisodeRatings() async {
         guard let tvID else { return }
-        let available = listItem.tvShow?.availableSeasonCount ?? 0
+        let available = tvShow.availableSeasonCount
         guard available > 0 else { return }
         for season in 1...available {
             guard !Task.isCancelled else { return }
@@ -341,9 +370,12 @@ struct SeasonChecklistCard: View {
     }
 
     private func seasonAccessibilityValue(_ season: Int, isWatched: Bool, isAnnounced: Bool) -> String {
-        let status = isWatched ? "Watched" : (isAnnounced ? "Announced" : "Not watched")
+        let status = allowsWatchedChanges
+            ? (isWatched ? "Watched" : (isAnnounced ? "Announced" : "Not watched"))
+            : (isAnnounced ? "Announced" : "")
         guard !isAnnounced, let rating = ratings[season] else { return status }
-        return "\(status), TMDB season rating \(rating.formatted(.number.precision(.fractionLength(1)))) out of 10"
+        return [status, "TMDB season rating \(rating.formatted(.number.precision(.fractionLength(1)))) out of 10"]
+            .filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
     private func watchedCircle(isWatched: Bool, isAnnounced: Bool) -> some View {
@@ -370,8 +402,7 @@ struct SeasonChecklistCard: View {
 }
 
 /// Compact link to the read-only episode list, for shows that don't get a `SeasonChecklistCard`
-/// (single-season shows, or the Discover/collection "add" context, where the checklist itself
-/// doesn't apply but people browsing still want episode info).
+/// (shows confirmed to have exactly one season).
 struct EpisodesLinkCard: View {
     let tvID: Int
     let showTitle: String
