@@ -565,6 +565,8 @@ private func reconciledNetworks(
 /// Stable display order for a media row's networks. `networks` is an unordered Core Data
 /// relationship, so without this the logos reshuffle on every render. Streaming first, then
 /// ads, rent, buy; alphabetical within a category so the order never depends on fetch order.
+/// CloudKit can merge distinct Network records with the same provider ID into the relationship.
+/// Collapse those before callers filter, truncate, or count providers, including cached data.
 func displayOrderedNetworks(_ networks: [Network]?, categories: [Int: String]) -> [Network] {
     func rank(_ network: Network) -> Int {
         switch categories[network.id] {
@@ -575,7 +577,16 @@ func displayOrderedNetworks(_ networks: [Network]?, categories: [Int: String]) -
         default: return 4
         }
     }
-    return (networks ?? []).sorted { a, b in
+    // Prefer a record with a logo when duplicate records contain different cached metadata.
+    let candidates = (networks ?? []).sorted { a, b in
+        let aHasLogo = !(a.logoPath ?? "").isEmpty
+        let bHasLogo = !(b.logoPath ?? "").isEmpty
+        if aHasLogo != bHasLogo { return aHasLogo }
+        if a.name != b.name { return a.name < b.name }
+        return (a.logoPath ?? "") < (b.logoPath ?? "")
+    }
+    var seenIDs = Set<Int>()
+    return candidates.filter { seenIDs.insert($0.id).inserted }.sorted { a, b in
         let rankA = rank(a)
         let rankB = rank(b)
         if rankA != rankB { return rankA < rankB }
