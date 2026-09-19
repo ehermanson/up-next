@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MediaDetailView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var listItem: ListItem
     let dismiss: () -> Void
     let onRemove: () -> Void
@@ -47,6 +48,11 @@ struct MediaDetailView: View {
     /// carries which row it came from (see `CollectionSection`/`SimilarSection`).
     @State private var selectedSimilarSourceID: String = ""
     @State private var addedSimilarIDs: Set<String> = []
+    /// The "More Like This" card mid-collapse. It stays in `visibleMoreLikeThis` (so it keeps its
+    /// slot) while its own frame/opacity animate to zero, then moves into `addedSimilarIDs` on
+    /// completion — animating a stable view's own geometry works where a `ForEach` removal transition
+    /// inside a horizontal `ScrollView` does not.
+    @State private var collapsingSimilarID: String?
     /// Namespace for the nested "similar title" detail sheet's zoom transition — separate from any
     /// namespace the presenter handed this sheet, since this one is scoped to this view's own
     /// poster carousels.
@@ -186,7 +192,8 @@ struct MediaDetailView: View {
 
                         SimilarSection(
                             title: "More Like This",
-                            items: moreLikeThisItems,
+                            items: visibleMoreLikeThis,
+                            collapsingKey: collapsingSimilarID,
                             existingIDs: existingIDs.union(addedSimilarIDs),
                             onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
                             onTap: { openSimilarDetail($0) },
@@ -769,12 +776,35 @@ struct MediaDetailView: View {
         return "\(title) has been added"
     }
 
+    /// The "More Like This" cards actually shown: the merged pool minus anything added this session,
+    /// capped at 12. Adding a title drops it and slides the next pool entry up into its place, rather
+    /// than leaving a checked-off card sitting in the row.
+    private var visibleMoreLikeThis: [SimilarMediaItem] {
+        moreLikeThisItems
+            .filter { !addedSimilarIDs.contains(MediaIDKey.make($0.mediaType, $0.id)) }
+            .prefix(12)
+            .map { $0 }
+    }
+
     private func addSimilarItem(_ item: SimilarMediaItem) {
         let stringID = String(item.id)
         let key = MediaIDKey.make(item.mediaType, stringID)
-        guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
-        addedSimilarIDs.insert(key)
+        guard !existingIDs.contains(key), !addedSimilarIDs.contains(key), collapsingSimilarID != key else { return }
         toast.show(addedMessage(for: item.title))
+        if reduceMotion {
+            addedSimilarIDs.insert(key)
+        } else {
+            // Collapse the tapped card in place, then drop it (and slide the reserve up) once the
+            // shrink finishes — see `collapsingSimilarID`.
+            withAnimation(Motion.pop) {
+                collapsingSimilarID = key
+            } completion: {
+                withAnimation(Motion.pop) {
+                    addedSimilarIDs.insert(key)
+                    collapsingSimilarID = nil
+                }
+            }
+        }
 
         Task {
             if item.mediaType == .tvShow {
@@ -845,6 +875,8 @@ struct MediaDetailView: View {
         guard let media = item.media else { return }
         let key = MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
         guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
+        // Added from the nested detail sheet (which covers the row), so no in-place collapse to run —
+        // the card is simply gone when the sheet dismisses.
         addedSimilarIDs.insert(key)
         // No toast here — the child sheet's primary Add pill (`performPrimaryAdd`) already fires
         // one, and this method is only reached from that pill's `onAdd`.

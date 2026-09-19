@@ -6,6 +6,10 @@ struct SimilarMediaItem: Identifiable {
     let posterPath: String?
     let voteAverage: Double?
     let mediaType: MediaType
+
+    /// Type-namespaced key (`"tv:123"` / `"movie:456"`) — stable ForEach identity and animation key,
+    /// since TMDB gives movies and shows overlapping numeric ids that `id` alone can't tell apart.
+    var transitionKey: String { MediaIDKey.make(mediaType, id) }
 }
 
 /// TMDB gives movies and TV shows separate ID namespaces, so any set holding both
@@ -34,11 +38,13 @@ enum MediaIDKey {
 
 extension MediaDetailView {
     /// TMDB serves "similar" and "recommendations" as two separately-ranked, heavily-overlapping
-    /// lists. This merges them into one "More Like This" feed: recommendations first (TMDB ranks
+    /// lists. This merges them into one "More Like This" pool: recommendations first (TMDB ranks
     /// them better), then similar, deduped by TMDB id keeping the first (better-ranked) occurrence,
     /// with the current title and anything already added dropped. `existingIDs` must be the set
-    /// captured when the sheet opened — not a live-updating one — so a title the user adds while
-    /// browsing keeps its green checkmark instead of disappearing out from under their finger.
+    /// captured when the sheet opened — not a live-updating one — so adds made during the session are
+    /// handled by `addedSimilarIDs` instead (the view drops an added title and slides the next
+    /// pool entry up into its place). The pool is kept deeper than the 12 shown so there's a reserve
+    /// to refill from.
     static func mergedMoreLikeThis(
         recommended: [SimilarMediaItem],
         similar: [SimilarMediaItem],
@@ -53,7 +59,7 @@ extension MediaDetailView {
             seenKeys.insert(key)
             merged.append(item)
         }
-        return Array(merged.prefix(12))
+        return Array(merged.prefix(24))
     }
 }
 
@@ -227,6 +233,9 @@ struct CollectionSection: View {
 struct SimilarSection: View {
     let title: String
     let items: [SimilarMediaItem]
+    /// `transitionKey` of the card currently animating its collapse before it's dropped — see
+    /// `MediaDetailView.collapsingSimilarID`.
+    var collapsingKey: String? = nil
     var existingIDs: Set<String> = []
     var onAdd: ((SimilarMediaItem) -> Void)?
     var onTap: ((SimilarMediaItem) -> Void)?
@@ -245,7 +254,8 @@ struct SimilarSection: View {
 
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
-                        ForEach(items) { item in
+                        ForEach(items, id: \.transitionKey) { item in
+                            let isCollapsing = collapsingKey == item.transitionKey
                             PosterCard(
                                 posterPath: item.posterPath,
                                 title: item.title,
@@ -253,9 +263,16 @@ struct SimilarSection: View {
                                 onTap: onTap.map { tap in { tap(item) } },
                                 onAdd: onAdd.map { add in { add(item) } },
                                 transitionSource: transitionNamespace.map {
-                                    (id: "\(transitionIDPrefix):" + MediaIDKey.make(item.mediaType, item.id), namespace: $0)
+                                    (id: "\(transitionIDPrefix):" + item.transitionKey, namespace: $0)
                                 }
                             )
+                            // Added card shrinks/fades in place, then the parent drops it and the
+                            // reserve slides up. Animating the card's own geometry is reliable where a
+                            // `ForEach` removal transition inside a horizontal `ScrollView` is not.
+                            .scaleEffect(isCollapsing ? 0.6 : 1, anchor: .center)
+                            .opacity(isCollapsing ? 0 : 1)
+                            .frame(width: isCollapsing ? 0 : nil)
+                            .clipped()
                         }
                     }
                     .padding(.horizontal, 1)
