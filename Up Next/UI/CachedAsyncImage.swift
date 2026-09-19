@@ -47,6 +47,7 @@ struct CachedAsyncImage<Content: View>: View {
     var onLoad: ((UIImage) -> Void)? = nil
     @ViewBuilder let content: (AsyncImagePhase) -> Content
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: AsyncImagePhase = .empty
 
     var body: some View {
@@ -62,6 +63,8 @@ struct CachedAsyncImage<Content: View>: View {
             return
         }
 
+        // Cache hit: assign instantly with no animation so a populated list scrolls flash-free
+        // (a settle on every reused poster would strobe while scrolling).
         if let cached = ImageCache.shared.image(for: url) {
             phase = .success(Image(uiImage: cached))
             onLoad?(cached)
@@ -77,7 +80,16 @@ struct CachedAsyncImage<Content: View>: View {
                 return
             }
             ImageCache.shared.store(uiImage, for: url)
-            phase = .success(Image(uiImage: uiImage))
+            // Fresh download: animate the swap so callers whose `.success` view carries
+            // `Motion.posterAppear` get a soft settle in. Callers without a transition are
+            // unaffected — the animated assignment is a no-op for them.
+            if reduceMotion {
+                phase = .success(Image(uiImage: uiImage))
+            } else {
+                withAnimation(.easeOut(duration: 0.4)) {
+                    phase = .success(Image(uiImage: uiImage))
+                }
+            }
             onLoad?(uiImage)
         } catch {
             phase = .failure(error)

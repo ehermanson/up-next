@@ -118,13 +118,18 @@ struct MediaDetailView: View {
                     )
 
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.section) {
-                        if let tvShow = listItem.tvShow {
-                            MetadataRow(media: tvShow)
-                        } else if let movie = listItem.movie {
-                            MetadataRow(media: movie)
-                        }
+                        // Metadata chips and genre chips read as one badge block, so they share the
+                        // FlowLayout's 8pt row rhythm — the 20pt section gap only sets them apart
+                        // from the provider row below, not from each other.
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let tvShow = listItem.tvShow {
+                                MetadataRow(media: tvShow)
+                            } else if let movie = listItem.movie {
+                                MetadataRow(media: movie)
+                            }
 
-                        GenreSection(genres: listItem.media?.genres ?? [])
+                            GenreSection(genres: listItem.media?.genres ?? [])
+                        }
 
                         DetailProviderRow(
                             networks: allNetworks,
@@ -320,8 +325,10 @@ struct MediaDetailView: View {
         switch pillState {
         case .addable:
             addablePillView
+                .transition(Motion.morph)
         case .added:
             statusPillView
+                .transition(Motion.morph)
         }
     }
 
@@ -350,6 +357,8 @@ struct MediaDetailView: View {
             Image(systemName: statusPillIcon)
                 .font(.title3)
                 .foregroundStyle(statusPillIconColor)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: statusPillIcon)
                 .accessibilityHidden(true)
 
             Text(statusPillTitle)
@@ -867,6 +876,8 @@ private struct CollectionWatchedCard: View {
             Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
                 .font(.title2)
                 .foregroundStyle(isWatched ? .green : .secondary)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: isWatched)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Watched")
@@ -1097,7 +1108,7 @@ struct HeaderImageView: View {
             let color = image.dominantTint()
             await MainActor.run {
                 if animated {
-                    withAnimation(.easeInOut(duration: 0.35)) {
+                    withAnimation(.easeInOut(duration: 0.6)) {
                         tint = color
                     }
                 } else {

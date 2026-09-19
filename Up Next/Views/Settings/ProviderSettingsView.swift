@@ -268,6 +268,7 @@ private struct ProviderGridCell: View {
     let onTap: () -> Void
 
     @ScaledMetric private var badgeSize: CGFloat = 20
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: onTap) {
@@ -280,6 +281,8 @@ private struct ProviderGridCell: View {
                             .font(.system(size: badgeSize))
                             .foregroundStyle(.white, .green)
                             .offset(x: 4, y: 4)
+                            .transition(reduceMotion ? .identity : Motion.checkPop)
+                            .symbolEffect(.bounce, value: reduceMotion ? false : isSelected)
                     }
                 }
 
@@ -295,7 +298,8 @@ private struct ProviderGridCell: View {
             .cellSurface(cornerRadius: DesignTokens.Radius.control, tint: isSelected ? .accentColor : nil)
         }
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        // A springy pop when a service is picked — the selection is the whole point of this screen.
+        .animation(reduceMotion ? nil : Motion.pop, value: isSelected)
         .accessibilityLabel(provider.providerName)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

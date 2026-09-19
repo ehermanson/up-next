@@ -261,8 +261,7 @@ struct DiscoverView: View {
                 .shadow(color: .black.opacity(0.5), radius: 4)
                 .padding(6)
                 .buttonStyle(.plain)
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: reduceMotion ? false : added)
+                .checkmarkPop(isOn: added)
             }
             .overlay(alignment: .bottomLeading) {
                 if showsAirDate, let label = airDateLabel(for: item) {

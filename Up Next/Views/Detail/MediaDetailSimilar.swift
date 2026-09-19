@@ -108,6 +108,7 @@ struct PosterCard: View {
                             .foregroundStyle(isAdded ? .green : .white)
                             .shadow(color: .black.opacity(0.5), radius: 4)
                             .padding(6)
+                            .checkmarkPop(isOn: isAdded)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isAdded ? "\(title) is already added" : "Add \(title)")

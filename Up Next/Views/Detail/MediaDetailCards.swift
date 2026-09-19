@@ -143,11 +143,12 @@ struct UserRatingCard: View {
     private func ratingButton(value: Int, icon: String, tint: Color, label: String) -> some View {
         let selected = isSelected(value)
         return Button {
-            listItem.userRating = selected ? nil : value
+            withAnimation(Motion.pop) { listItem.userRating = selected ? nil : value }
         } label: {
             Image(systemName: icon)
                 .font(.title2)
                 .foregroundStyle(selected ? AnyShapeStyle(tint) : AnyShapeStyle(.tertiary))
+                .symbolEffect(.bounce, value: selected)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .cellSurface(
@@ -192,8 +193,36 @@ struct SeasonChecklistCard: View {
     var ratings: [Int: Double] = [:]
     var allowsWatchedChanges = true
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(ToastState.self) private var toast
+
+    /// Per-season pulse counters for the "caught up" wave. A `Task` bumps each in sequence; every
+    /// checkmark runs its own self-contained pop (keyframe) when its counter changes, so the pops
+    /// overlap — the next check starts rising before the previous one has settled — instead of a
+    /// single crest that hands off instantly.
+    @State private var pulseCounts: [Int: Int] = [:]
+
     private var totalSeasons: Int {
         tvShow.numberOfSeasons ?? 0
+    }
+
+    /// Seasons that have actually aired — the basis for "caught up" (an announced-but-unaired
+    /// season doesn't count against the user).
+    private var availableSeasonCount: Int {
+        tvShow.availableSeasonCount
+    }
+
+    /// Every aired season is checked (and there's at least one). Drives the catch-up celebration.
+    private var isCaughtUp: Bool {
+        guard availableSeasonCount > 0 else { return false }
+        return (1...availableSeasonCount).allSatisfy { listItem.watchedSeasons.contains($0) }
+    }
+
+    /// TMDB marks a show done with these statuses; anything else (incl. "Returning Series") means
+    /// more may come, so completing it reads as "all caught up" rather than "finished".
+    private var isEnded: Bool {
+        let status = tvShow.status?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return status == "Ended" || status == "Canceled" || status == "Cancelled"
     }
 
     private var episodeCounts: [Int] {
@@ -242,8 +271,36 @@ struct SeasonChecklistCard: View {
             }
         }
         .sensoryFeedback(.selection, trigger: listItem.watchedSeasons)
+        // Only the library context can toggle seasons, so the catch-up moment can only originate
+        // there. `onChange` never fires for the initial value, so reopening an already-complete
+        // show stays quiet — the celebration is reserved for the check that completes the set.
+        .onChange(of: isCaughtUp) { _, caughtUp in
+            guard allowsWatchedChanges, caughtUp else { return }
+            celebrateCatchUp()
+        }
         .task(id: "\(tvID ?? 0):\(tvShow.availableSeasonCount)") {
             await loadEpisodeRatings()
+        }
+    }
+
+    /// Checking the last aired season: pop a contextual toast and send a wave back across every
+    /// checkmark. "Finished <show>" when TMDB says the show is done; "All caught up" when more
+    /// seasons may still come. Reduce Motion keeps the toast but skips the wave.
+    private func celebrateCatchUp() {
+        toast.show(
+            isEnded ? "Finished \(showTitle)" : "All caught up",
+            icon: isEnded ? "checkmark.seal.fill" : "clock.badge.checkmark"
+        )
+
+        guard !reduceMotion else { return }
+        let count = availableSeasonCount
+        guard count > 0 else { return }
+        Task {
+            for season in 1...count {
+                pulseCounts[season, default: 0] += 1
+                // Shorter than a single pop's duration (~0.5s), so consecutive checks overlap.
+                try? await Task.sleep(for: .milliseconds(140))
+            }
         }
     }
 
@@ -303,7 +360,7 @@ struct SeasonChecklistCard: View {
                 Button {
                     listItem.toggleSeason(season)
                 } label: {
-                    watchedCircle(isWatched: isWatched, isAnnounced: isAnnounced)
+                    watchedCircle(season: season, isWatched: isWatched, isAnnounced: isAnnounced)
                         .frame(width: 44, height: 44)
                         .contentShape(.circle)
                 }
@@ -378,7 +435,7 @@ struct SeasonChecklistCard: View {
             .filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
-    private func watchedCircle(isWatched: Bool, isAnnounced: Bool) -> some View {
+    private func watchedCircle(season: Int, isWatched: Bool, isAnnounced: Bool) -> some View {
         ZStack {
             Circle()
                 .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.15)) : AnyShapeStyle(.fill.tertiary))
@@ -394,9 +451,25 @@ struct SeasonChecklistCard: View {
                 Image(systemName: "checkmark")
                     .font(.caption2.bold())
                     .foregroundStyle(.green)
+                    .transition(reduceMotion ? .identity : Motion.checkPop)
+                    .symbolEffect(.bounce, value: reduceMotion ? false : isWatched)
             }
         }
         .frame(width: circleSize, height: circleSize)
+        // Keyed to the value (not a `withAnimation` at the tap site) so the fill/border colour
+        // and the checkmark's scale-in animate reliably even when the model mutation republishes
+        // outside an animated transaction.
+        .animation(reduceMotion ? nil : Motion.pop, value: isWatched)
+        // Self-contained swell-and-settle for the catch-up wave, replayed when this season's pulse
+        // counter ticks. Each pop outlasts the 140ms stagger, so neighbours overlap.
+        .keyframeAnimator(initialValue: 1.0, trigger: pulseCounts[season] ?? 0) { view, scale in
+            view.scaleEffect(scale)
+        } keyframes: { _ in
+            KeyframeTrack {
+                CubicKeyframe(1.4, duration: 0.2)
+                CubicKeyframe(1.0, duration: 0.34)
+            }
+        }
     }
 
 }

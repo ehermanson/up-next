@@ -281,26 +281,18 @@ struct SearchResultRow: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
     private var addIcon: some View {
         // Filled circle glyphs so the add affordance carries real weight: a hairline plus reads
         // like a decorative divider next to the poster. Unified with the detail-sheet pill so
-        // "add" is one glyph across the app.
-        if isAdded {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.title2)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.green)
-                .frame(width: 44, height: 44)
-                .accessibilityLabel("Already added")
-        } else {
-            Image(systemName: "plus.circle.fill")
-                .font(.title2)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 44, height: 44)
-                .accessibilityLabel("Add")
-        }
+        // "add" is one glyph across the app. One `Image` with a ternary systemName (not an if/else
+        // of two) so `checkmarkPop` can morph plus → check in place.
+        Image(systemName: isAdded ? "checkmark.circle.fill" : "plus.circle.fill")
+            .font(.title2)
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(isAdded ? .green : Color.accentColor)
+            .frame(width: 44, height: 44)
+            .checkmarkPop(isOn: isAdded)
+            .accessibilityLabel(isAdded ? "Already added" : "Add")
     }
 }
 

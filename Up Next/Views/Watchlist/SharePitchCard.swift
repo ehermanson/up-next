@@ -7,12 +7,15 @@ import SwiftUI
 struct SharePitchCard: View {
     private let settings = ProviderSettings.shared
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "person.2.fill")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
+                    .symbolEffect(.breathe, isActive: !reduceMotion)
                     .frame(width: 44, height: 44)
                     .cellSurface(tint: .accentColor)
 

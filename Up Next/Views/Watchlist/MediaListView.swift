@@ -58,6 +58,14 @@ struct MediaListView: View {
         reduceMotion ? nil : .smooth(duration: 0.35)
     }
 
+    /// Applied to the list/grid keyed to the filter inputs so titles fade/slide in and out when a
+    /// genre, provider or "on my services" filter changes, instead of the set snapping. Keyed to the
+    /// filter values (not the item array) so it never double-animates a reorder, delete or watched
+    /// toggle — those own their own explicit transactions.
+    private var filterAnimation: Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.3)
+    }
+
     @State private var isEditingOrder = false
     /// Bumped on every watched toggle / reorder so `.sensoryFeedback` has a trigger to observe.
     @State private var watchedToggleCount = 0
@@ -234,7 +242,7 @@ struct MediaListView: View {
                 // Keep the ForEach identity stable so List animates individual row changes.
                 ForEach(isWatchedExpanded ? displayedWatchedItems : [], id: \.media?.id) { item in
                     row(for: item)
-                        .transition(.opacity)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 .onDelete(perform: deleteWatched)
             }
@@ -245,6 +253,9 @@ struct MediaListView: View {
         // AppStorage can publish outside the button's transaction; key the layout animation
         // to the rendered preference so inserts/removals still receive an animation.
         .animation(disclosureAnimation, value: isWatchedExpanded)
+        .animation(filterAnimation, value: selectedGenre)
+        .animation(filterAnimation, value: selectedProviderCategory)
+        .animation(filterAnimation, value: onlyMyServices)
         .scrollContentBackground(.hidden)
         .listStyle(.plain)
         .contentMargins(.bottom, 20, for: .scrollContent)
@@ -311,6 +322,9 @@ struct MediaListView: View {
             await onRefresh?()
         }
         .contentMargins(.bottom, 20, for: .scrollContent)
+        .animation(filterAnimation, value: selectedGenre)
+        .animation(filterAnimation, value: selectedProviderCategory)
+        .animation(filterAnimation, value: onlyMyServices)
     }
 
     /// Cells are wide rather than poster-shaped, so the grid adapts by column count instead of
@@ -591,6 +605,7 @@ private struct UpcomingCard: View {
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()
+                            .transition(Motion.posterAppear)
                     default:
                         Rectangle().fill(.fill.tertiary)
                     }

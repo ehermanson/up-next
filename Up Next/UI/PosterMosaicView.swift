@@ -50,6 +50,7 @@ struct PosterMosaicView: View {
                 image
                     .resizable()
                     .scaledToFill()
+                    .transition(Motion.posterAppear)
             default:
                 Rectangle().fill(.fill.tertiary)
             }

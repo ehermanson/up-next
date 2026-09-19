@@ -9,6 +9,7 @@ struct SettingsToolbarButton: View {
     let action: () -> Void
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var share: CKShare?
 
     private let persistence = PersistenceController.shared
@@ -32,9 +33,14 @@ struct SettingsToolbarButton: View {
     private var content: some View {
         if let pair = participantPair {
             avatarPair(pair)
+                .transition(Motion.morph)
         } else {
             Label("Settings", systemImage: "gearshape")
+                .transition(Motion.morph)
         }
+        // Cross-fade the gear into the paired avatars the moment a share goes live — the arrival of
+        // a partner is worth a beat, not a hard swap. Driven by `refresh()` wrapping `share` in an
+        // animated transaction.
     }
 
     // MARK: - State
@@ -49,7 +55,14 @@ struct SettingsToolbarButton: View {
     }
 
     private func refresh() {
-        share = persistence.existingShare()
+        let updated = persistence.existingShare()
+        if reduceMotion {
+            share = updated
+        } else {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
+                share = updated
+            }
+        }
     }
 
     // MARK: - Avatars

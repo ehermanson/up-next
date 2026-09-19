@@ -113,6 +113,8 @@ struct EmptyStateView<Actions: View>: View {
     /// Icon well scales with the user's text size so the symbol never overflows it.
     @ScaledMetric(relativeTo: .largeTitle) private var iconWellSize: CGFloat = 80
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     init(icon: String, title: String, subtitle: String? = nil, @ViewBuilder actions: () -> Actions) {
         self.icon = icon
         self.title = title
@@ -125,6 +127,7 @@ struct EmptyStateView<Actions: View>: View {
             Image(systemName: icon)
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
+                .symbolEffect(.breathe, isActive: !reduceMotion)
                 .frame(width: iconWellSize, height: iconWellSize)
                 .background(.fill.tertiary, in: .circle)
                 .accessibilityHidden(true)

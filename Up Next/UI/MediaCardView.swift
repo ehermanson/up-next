@@ -167,6 +167,7 @@ struct MediaCardView: View {
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()
+                            .transition(Motion.posterAppear)
                     default:
                         Rectangle().fill(.fill.tertiary)
                     }
