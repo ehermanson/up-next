@@ -5,7 +5,6 @@ struct WatchlistSearchView: View {
         case all
         case tvShows
         case movies
-        case myLists
         case specificList(CustomList)
     }
 
@@ -15,7 +14,6 @@ struct WatchlistSearchView: View {
     let onTVShowAdded: (TVShow) -> Void
     let onMovieAdded: (Movie) -> Void
     var customListViewModel: CustomListViewModel?
-    var onDone: (() -> Void)?
     var libraryTVShows: [ListItem] = []
     var libraryMovies: [ListItem] = []
 
@@ -23,15 +21,18 @@ struct WatchlistSearchView: View {
     @Environment(ToastState.self) private var toast
 
     @State private var searchText = ""
-    @State private var selectedMediaType: MediaType = .tvShow
+    @State private var selectedMediaType: MediaType
     @State private var tvShowResults: [TMDBTVShowSearchResult] = []
     @State private var movieResults: [TMDBMovieSearchResult] = []
     @State private var isLoading = false
-    @State private var errorMessage: String?
+    /// Kept per type (rather than one shared `errorMessage`) so flipping the segment can re-read
+    /// the already-fetched outcome for the other type instead of re-running the search — both
+    /// types are always fetched together in `performSearch`.
+    @State private var tvSearchError: String?
+    @State private var movieSearchError: String?
     @State private var searchTask: Task<Void, Never>?
     /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
-    @State private var selectedListID: UUID?
     @State private var tvRecommendations: [TMDBTVShowSearchResult] = []
     @State private var movieRecommendations: [TMDBMovieSearchResult] = []
     @State private var isLoadingRecommendations = false
@@ -43,9 +44,31 @@ struct WatchlistSearchView: View {
 
     private let service = TMDBService.shared
 
+    init(
+        context: SearchContext = .all,
+        initialMediaType: MediaType = .tvShow,
+        existingTVShowIDs: Set<String>,
+        existingMovieIDs: Set<String>,
+        onTVShowAdded: @escaping (TVShow) -> Void,
+        onMovieAdded: @escaping (Movie) -> Void,
+        customListViewModel: CustomListViewModel? = nil,
+        libraryTVShows: [ListItem] = [],
+        libraryMovies: [ListItem] = []
+    ) {
+        self.context = context
+        self.existingTVShowIDs = existingTVShowIDs
+        self.existingMovieIDs = existingMovieIDs
+        self.onTVShowAdded = onTVShowAdded
+        self.onMovieAdded = onMovieAdded
+        self.customListViewModel = customListViewModel
+        self.libraryTVShows = libraryTVShows
+        self.libraryMovies = libraryMovies
+        _selectedMediaType = State(initialValue: initialMediaType)
+    }
+
     private var showMediaTypePicker: Bool {
         switch context {
-        case .all, .myLists, .specificList: return true
+        case .all, .specificList: return true
         case .tvShows, .movies: return false
         }
     }
@@ -54,32 +77,22 @@ struct WatchlistSearchView: View {
         switch context {
         case .tvShows: .tvShow
         case .movies: .movie
-        case .all, .myLists, .specificList: selectedMediaType
+        case .all, .specificList: selectedMediaType
         }
     }
 
     private var isListMode: Bool {
-        switch context {
-        case .myLists, .specificList: return true
-        default: return false
-        }
-    }
-
-    private var hasScopedList: Bool {
-        switch context {
-        case .specificList: return true
-        default: return customListViewModel?.activeListID != nil
-        }
+        if case .specificList = context { return true }
+        return false
     }
 
     private var selectedList: CustomList? {
-        switch context {
-        case .specificList(let list):
-            return list
-        default:
-            guard let id = selectedListID else { return nil }
-            return customListViewModel?.customLists.first(where: { $0.id == id })
-        }
+        if case .specificList(let list) = context { return list }
+        return nil
+    }
+
+    private var errorMessage: String? {
+        effectiveMediaType == .tvShow ? tvSearchError : movieSearchError
     }
 
     private var hasResults: Bool {
@@ -160,28 +173,16 @@ struct WatchlistSearchView: View {
         return existingIDs.contains(stringID)
     }
 
-    private func performDone() {
-        if let onDone {
-            onDone()
-        } else {
-            dismiss()
-        }
-    }
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if context == .myLists && !hasScopedList {
-                    listPickerSection
-                }
-
                 if showMediaTypePicker {
                     Picker("Media Type", selection: $selectedMediaType) {
                         Text("TV Shows").tag(MediaType.tvShow)
                         Text("Movies").tag(MediaType.movie)
                     }
                     .pickerStyle(.segmented)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, DesignTokens.Spacing.screenInset)
                     .padding(.vertical, 8)
                 }
 
@@ -192,7 +193,7 @@ struct WatchlistSearchView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { performDone() }
+                    Button("Done") { dismiss() }
                 }
             }
             .searchable(
@@ -206,28 +207,13 @@ struct WatchlistSearchView: View {
                 scheduleSearch(for: newValue)
             }
             .onChange(of: selectedMediaType) { _, _ in
-                if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    scheduleSearch(for: searchText)
-                } else {
+                // Both types are already fetched together in `performSearch` — flipping the
+                // segment just re-reads the per-type state (`resultRows`, `errorMessage`) for the
+                // other type, no refetch needed. Recommendations are fetched per-type on demand,
+                // so an empty query does need a fresh load for whichever type wasn't loaded yet.
+                if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     loadRecommendations()
                 }
-            }
-            .onChange(of: context) { _, _ in
-                resetSearch()
-                syncActiveList()
-            }
-            .onChange(of: selectedListID) { _, _ in
-                guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                loadRecommendations()
-            }
-            .onChange(of: addedIDs) { _, _ in
-                // Collection suggestions stay in place and display their added checkmarks.
-                guard !isListMode else { return }
-                guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                loadRecommendations()
-            }
-            .onAppear {
-                syncActiveList()
             }
             .task {
                 loadRecommendations()
@@ -270,9 +256,7 @@ struct WatchlistSearchView: View {
 
     @ViewBuilder
     private var mainContentRows: some View {
-        if context == .myLists && selectedList == nil {
-            noListSelectedRow
-        } else if isLoading && !hasResults {
+        if isLoading && !hasResults {
             // Only shimmer on a cold search — otherwise keystrokes would blank the
             // previous results while the debounced request is still in flight.
             ShimmerRows()
@@ -306,10 +290,6 @@ struct WatchlistSearchView: View {
             .id(id)
     }
 
-    private var noListSelectedRow: some View {
-        emptyStateRow(id: "noListSelected") { noListSelectedView }
-    }
-
     private func errorRow(_ message: String) -> some View {
         emptyStateRow(id: "error") {
             EmptyStateView(icon: "exclamationmark.triangle", title: message)
@@ -336,44 +316,6 @@ struct WatchlistSearchView: View {
                     .buttonStyle(.glass)
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var listPickerSection: some View {
-        let lists = customListViewModel?.customLists ?? []
-        if lists.isEmpty {
-            EmptyView()
-        } else {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(lists, id: \.id) { list in
-                        Button {
-                            selectedListID = list.id
-                        } label: {
-                            Chip(icon: list.iconName, text: list.name, isEmphasized: selectedListID == list.id)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-
-    @ViewBuilder
-    private var noListSelectedView: some View {
-        let lists = customListViewModel?.customLists ?? []
-        if lists.isEmpty {
-            EmptyStateView(
-                icon: "tray",
-                title: "Create a collection first",
-                subtitle: "Go to the Collections tab to create one."
-            )
-        } else {
-            EmptyStateView(icon: "tray", title: "Select a collection above")
         }
     }
 
@@ -629,36 +571,13 @@ struct WatchlistSearchView: View {
 
     // MARK: - Search
 
-    private func syncActiveList() {
-        switch context {
-        case .specificList(let list):
-            selectedListID = list.id
-        case .myLists:
-            if let activeID = customListViewModel?.activeListID {
-                selectedListID = activeID
-            }
-        default:
-            break
-        }
-    }
-
-    private func resetSearch() {
-        searchTask?.cancel()
-        searchText = ""
-        tvShowResults = []
-        movieResults = []
-        isLoading = false
-        errorMessage = nil
-        addedIDs = []
-        selectedListID = nil
-    }
-
     private func scheduleSearch(for query: String) {
         searchTask?.cancel()
 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            errorMessage = nil
+            tvSearchError = nil
+            movieSearchError = nil
             isLoading = false
             tvShowResults = []
             movieResults = []
@@ -666,7 +585,8 @@ struct WatchlistSearchView: View {
         }
 
         isLoading = true
-        errorMessage = nil
+        tvSearchError = nil
+        movieSearchError = nil
 
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(300))
@@ -720,8 +640,9 @@ struct WatchlistSearchView: View {
         // A failed type keeps its previous results rather than blanking.
         if tv.error == nil { tvShowResults = tv.results }
         if movies.error == nil { movieResults = movies.results }
-        // Only the type on screen gets to raise the error banner.
-        errorMessage = effectiveMediaType == .tvShow ? tv.error : movies.error
+        // Kept per type so flipping the segment re-reads the right banner without a refetch.
+        tvSearchError = tv.error
+        movieSearchError = movies.error
         isLoading = false
     }
 

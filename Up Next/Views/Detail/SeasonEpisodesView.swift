@@ -7,7 +7,6 @@ struct SeasonEpisodesView: View {
     let tvID: Int
     let showTitle: String
     let season: Int
-    var seasonName: String? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -134,6 +133,8 @@ struct SeasonEpisodesView: View {
         }
         .frame(width: 96, height: 54)
         .clipShape(.rect(cornerRadius: DesignTokens.Radius.poster))
+        // Decorative: the row's text already carries the episode's identity.
+        .accessibilityHidden(true)
     }
 
     private var placeholderRow: some View {

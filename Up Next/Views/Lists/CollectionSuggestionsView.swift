@@ -6,20 +6,23 @@ struct CollectionSuggestionsView: View {
     let viewModel: CustomListViewModel
 
     @Environment(ToastState.self) private var toast
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var movies: [TMDBMovieSearchResult] = []
     @State private var shows: [TMDBTVShowSearchResult] = []
     @State private var isLoading = false
     @State private var detailItem: ListItem?
     @State private var adding: Set<String> = []
+    /// Detail sheet zooms in/out of the tapped card — see `PosterCard`'s `transitionSource` and
+    /// the sheet's `.navigationTransition` below. Ids are `"suggested:"`-prefixed so they never
+    /// collide with the same title's card in the collection's own Unwatched/Watched sections.
+    @Namespace private var detailNamespace
 
     private let service = TMDBService.shared
 
     private var items: [CustomListItem] { viewModel.visibleItems(in: list) }
     private var existingIDs: Set<String> {
-        Set(items.compactMap { item in
-            guard let media = item.media else { return nil }
-            return MediaIDKey.make(item.tvShow == nil ? .movie : .tvShow, media.id)
-        })
+        Set(items.compactMap(\.mediaKey))
     }
     private var requestID: String {
         // Keep the row stable while adding titles. Reopening or renaming refreshes it.
@@ -44,7 +47,8 @@ struct CollectionSuggestionsView: View {
                                     posterPath: movie.posterPath, title: movie.title,
                                     isAdded: isAdded(.movie, movie.id),
                                     onTap: { detailItem = ListItem(movie: service.mapToMovie(movie)) },
-                                    onAdd: { addMovie(movie) }
+                                    onAdd: { addMovie(movie) },
+                                    transitionSource: (id: "suggested:" + MediaIDKey.make(.movie, movie.id), namespace: detailNamespace)
                                 )
                             }
                             ForEach(shows) { show in
@@ -52,7 +56,8 @@ struct CollectionSuggestionsView: View {
                                     posterPath: show.posterPath, title: show.name,
                                     isAdded: isAdded(.tvShow, show.id),
                                     onTap: { detailItem = ListItem(tvShow: service.mapToTVShow(show)) },
-                                    onAdd: { addTVShow(show) }
+                                    onAdd: { addTVShow(show) },
+                                    transitionSource: (id: "suggested:" + MediaIDKey.make(.tvShow, show.id), namespace: detailNamespace)
                                 )
                             }
                         }
@@ -60,15 +65,26 @@ struct CollectionSuggestionsView: View {
                     }
                     .scrollIndicators(.hidden)
                 }
+            } else if items.isEmpty {
+                Text("No suggestions yet — add a few titles")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
             }
         }
         .padding(.vertical, 16)
+        // Once loading resolves empty, the "Suggested for X" heading fades away rather than
+        // popping out — it was on screen a moment ago as the shimmer/progress state.
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: isLoading)
         .task(id: requestID) { await load() }
         .sheet(item: $detailItem) { item in
-            MediaDetailView(
+            let sheet = MediaDetailView(
                 listItem: item,
                 dismiss: { detailItem = nil },
-                onRemove: { detailItem = nil },
+                // Nothing to remove: this is a preview of a title that isn't in the collection
+                // yet, so `canAddToLibrary`'s addable state hides Remove entirely (onAdd below is
+                // non-nil). The parameter isn't optional, so this never actually runs.
+                onRemove: {},
                 onAdd: {
                     if let movie = item.movie { viewModel.addItem(movie: movie, to: list) }
                     if let show = item.tvShow { viewModel.addItem(tvShow: show, to: list) }
@@ -78,12 +94,26 @@ struct CollectionSuggestionsView: View {
                 onMovieAdded: { viewModel.addItem(movie: $0, to: list) },
                 addTargetName: list.name
             )
+            .navigationTransition(.zoom(sourceID: transitionID(for: item), in: detailNamespace))
+            // A roomy page sheet on iPad; compact keeps the standard full-height sheet.
+            if horizontalSizeClass == .regular {
+                sheet.presentationSizing(.page)
+            } else {
+                sheet
+            }
         }
     }
 
     private func isAdded(_ type: MediaType, _ id: Int) -> Bool {
         let key = MediaIDKey.make(type, id)
         return existingIDs.contains(key) || adding.contains(key)
+    }
+
+    /// `"suggested:"`-namespaced id (see `MediaIDKey`) the detail sheet zooms from/to for one card.
+    private func transitionID(for item: ListItem) -> String {
+        if let movie = item.movie { return "suggested:" + MediaIDKey.make(.movie, movie.id) }
+        if let tvShow = item.tvShow { return "suggested:" + MediaIDKey.make(.tvShow, tvShow.id) }
+        return ""
     }
 
     private func load() async {
@@ -94,6 +124,7 @@ struct CollectionSuggestionsView: View {
         let movieIDs = RecommendationEngine.existingIDs(in: snapshot, mediaType: .movie)
         let tvIDs = RecommendationEngine.existingIDs(in: snapshot, mediaType: .tvShow)
         isLoading = true
+        defer { isLoading = false }
         // Empty collections start with movies. Otherwise respect the types already collected.
         async let movieResults = movieSeeds.isEmpty && !snapshot.isEmpty ? [] :
             service.collectionMovies(name: name, seeds: movieSeeds, excluding: movieIDs)
@@ -103,7 +134,6 @@ struct CollectionSuggestionsView: View {
         guard !Task.isCancelled else { return }
         movies = Array(newMovies.prefix(tvSeeds.isEmpty ? 12 : 6))
         shows = Array(newShows.prefix(movieSeeds.isEmpty ? 12 : 6))
-        isLoading = false
     }
 
     private func addMovie(_ result: TMDBMovieSearchResult) {

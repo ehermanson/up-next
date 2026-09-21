@@ -134,7 +134,7 @@ struct SettingsView: View {
 
     private var regionRow: some View {
         NavigationLink {
-            RegionPickerView(regions: regions, isLoading: isLoadingRegions, selection: regionSelection)
+            RegionPickerView(regions: regions, isLoading: isLoadingRegions, selection: regionSelection, onRetry: { await loadRegions() })
         } label: {
             row(icon: "globe", title: "Region", value: currentRegionLabel)
         }

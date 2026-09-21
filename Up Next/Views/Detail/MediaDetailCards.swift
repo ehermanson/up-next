@@ -1,117 +1,10 @@
 import SwiftUI
 
-/// `cardSurface` with a selected-state tint, mirroring `cellSurface(tint:)`.
-/// `tint` has no default so this never becomes ambiguous with `cardSurface(cornerRadius:)`.
-private extension View {
-    func cardSurface(cornerRadius: CGFloat, tint: Color?) -> some View {
-        background {
-            RoundedRectangle(cornerRadius: cornerRadius)
-                .fill(.fill.tertiary)
-                .overlay {
-                    if let tint {
-                        RoundedRectangle(cornerRadius: cornerRadius).fill(tint.opacity(0.2))
-                    }
-                }
-        }
-    }
-}
-
-struct WatchingToggleCard: View {
-    @ObservedObject var listItem: ListItem
-
-    var body: some View {
-        Button {
-            withAnimation { listItem.toggleWatching() }
-            PersistenceController.shared.save()
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: listItem.isWatching ? "play.circle.fill" : "play.circle")
-                    .font(.title2)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(listItem.watchingActionTitle).font(.headline)
-                    Text(listItem.isWatching ? "Keep your season progress when you move this show." : "Keep this show at the top of your TV list.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(16)
-            .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact, tint: listItem.isWatching ? Color.accentColor : nil)
-        }
-        .buttonStyle(.plain)
-        .sensoryFeedback(.selection, trigger: listItem.isWatching)
-    }
-}
-
-struct WatchedToggleCard: View {
-    @ObservedObject var listItem: ListItem
-
-    private var seasonSubtitle: String? {
-        guard let tvShow = listItem.tvShow,
-              let total = tvShow.numberOfSeasons, total > 0
-        else { return nil }
-        let count = listItem.watchedSeasons.count
-        if listItem.isWatched {
-            return "Watched"
-        } else if count > 0 {
-            return "\(count) of \(total) seasons"
-        }
-        return nil
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: listItem.isWatched ? "checkmark.circle.fill" : "circle")
-                .font(.title2)
-                .foregroundStyle(listItem.isWatched ? .green : .secondary)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Mark as Watched")
-                    .font(.headline)
-                if let subtitle = seasonSubtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                } else if listItem.isWatched {
-                    Text("Watched")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
-            }
-
-            Spacer()
-
-            Toggle("Mark as Watched", isOn: Binding(
-                get: { listItem.isWatched },
-                set: { newValue in
-                    listItem.droppedAt = nil
-                    if let tvShow = listItem.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
-                        if newValue {
-                            listItem.watchedSeasons = Array(1...total)
-                        } else {
-                            listItem.watchedSeasons = []
-                        }
-                        listItem.isWatched = newValue
-                        listItem.watchedAt = newValue ? Date.now : nil
-                    } else {
-                        listItem.isWatched = newValue
-                        listItem.watchedAt = newValue ? Date.now : nil
-                    }
-                }
-            ))
-            .labelsHidden()
-        }
-        .padding(16)
-        .cardSurface(
-            cornerRadius: DesignTokens.Radius.cardCompact,
-            tint: listItem.isWatched ? .green : nil
-        )
-        .sensoryFeedback(.selection, trigger: listItem.isWatched)
-    }
-}
-
 struct UserRatingCard: View {
     @ObservedObject var listItem: ListItem
+    /// Thumbs are a verdict, so they only appear once the title has been watched. Notes are
+    /// useful before then ("start at season 2"), so the field is always available.
+    var showsRating = true
 
     private func isSelected(_ value: Int) -> Bool {
         listItem.userRating == value
@@ -119,24 +12,26 @@ struct UserRatingCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Your Rating")
+            Text(showsRating ? "Your Rating" : "Notes")
                 .font(.headline)
 
-            HStack(spacing: 12) {
-                ratingButton(value: -1, icon: "hand.thumbsdown.fill", tint: .red, label: "Thumbs down")
-                ratingButton(value: 0, icon: "minus.circle.fill", tint: .gray, label: "Meh")
-                ratingButton(value: 1, icon: "hand.thumbsup.fill", tint: .green, label: "Thumbs up")
+            if showsRating {
+                HStack(spacing: 12) {
+                    ratingButton(value: -1, icon: "hand.thumbsdown.fill", tint: .red, label: "Thumbs down")
+                    ratingButton(value: 0, icon: "minus.circle.fill", tint: .gray, label: "Meh")
+                    ratingButton(value: 1, icon: "hand.thumbsup.fill", tint: .green, label: "Thumbs up")
+                }
+                .sensoryFeedback(.selection, trigger: listItem.userRating)
             }
-            .sensoryFeedback(.selection, trigger: listItem.userRating)
 
-            TextField("Add notes...", text: Binding(
+            TextField("Add notes…", text: Binding(
                 get: { listItem.userNotes ?? "" },
                 set: { listItem.userNotes = $0.isEmpty ? nil : $0 }
             ), axis: .vertical)
                 .lineLimit(1...5)
                 .font(.subheadline)
                 .padding(12)
-                .background(.fill.quaternary, in: .rect(cornerRadius: DesignTokens.Radius.control))
+                .cellSurface(cornerRadius: DesignTokens.Radius.control)
         }
     }
 
@@ -168,6 +63,8 @@ struct DetailSeasonsSection: View {
     @ObservedObject var tvShow: TVShow
     var ratings: [Int: Double]
     var allowsWatchedChanges: Bool
+    /// Timestamp of the last watched edit made *on this device* — see `SeasonChecklistCard`.
+    @Binding var lastLocalWatchedEdit: Date?
 
     var body: some View {
         if let total = tvShow.numberOfSeasons, total > 1 {
@@ -175,7 +72,8 @@ struct DetailSeasonsSection: View {
                 listItem: listItem,
                 tvShow: tvShow,
                 ratings: ratings,
-                allowsWatchedChanges: allowsWatchedChanges
+                allowsWatchedChanges: allowsWatchedChanges,
+                lastLocalWatchedEdit: $lastLocalWatchedEdit
             )
         } else if tvShow.numberOfSeasons == 1, let tvID = Int(tvShow.id) {
             EpisodesLinkCard(
@@ -192,6 +90,11 @@ struct SeasonChecklistCard: View {
     @ObservedObject var tvShow: TVShow
     var ratings: [Int: Double] = [:]
     var allowsWatchedChanges = true
+    /// When this device last changed watched state (a season circle here, or a state action in the
+    /// primary Add pill's menu). A partner's edit arriving through CloudKit while the sheet is open
+    /// can complete the set too, and that must not read as "you finished the show" — so the
+    /// celebration only fires when a local edit immediately preceded it.
+    @Binding var lastLocalWatchedEdit: Date?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(ToastState.self) private var toast
@@ -264,7 +167,9 @@ struct SeasonChecklistCard: View {
                 )
             }
 
-            VStack(spacing: 0) {
+            // Lazy so a long-running show only fetches episode ratings for the seasons the user
+            // actually scrolls to — see `loadEpisodeRatings(season:)`.
+            LazyVStack(spacing: 0) {
                 ForEach(1...max(totalSeasons, 1), id: \.self) { season in
                     seasonRow(season: season)
                 }
@@ -275,12 +180,17 @@ struct SeasonChecklistCard: View {
         // there. `onChange` never fires for the initial value, so reopening an already-complete
         // show stays quiet — the celebration is reserved for the check that completes the set.
         .onChange(of: isCaughtUp) { _, caughtUp in
-            guard allowsWatchedChanges, caughtUp else { return }
+            guard allowsWatchedChanges, caughtUp, isLocalWatchedEdit else { return }
+            lastLocalWatchedEdit = nil
             celebrateCatchUp()
         }
-        .task(id: "\(tvID ?? 0):\(tvShow.availableSeasonCount)") {
-            await loadEpisodeRatings()
-        }
+    }
+
+    /// True while a watched edit made on this device is recent enough to own the resulting
+    /// state change. Anything older is a remote edit landing on an open sheet.
+    private var isLocalWatchedEdit: Bool {
+        guard let lastLocalWatchedEdit else { return false }
+        return Date.now.timeIntervalSince(lastLocalWatchedEdit) < 2
     }
 
     /// Checking the last aired season: pop a contextual toast and send a wave back across every
@@ -352,12 +262,19 @@ struct SeasonChecklistCard: View {
                 .padding(.top, 6)
             }
         }
+        // Per-row rather than one sweep on open: only the seasons the user scrolls to pay for a
+        // request, and the response cache means opening the episode page next costs nothing.
+        .task(id: "\(tvID ?? 0):\(season):\(isAnnounced)") {
+            guard !isAnnounced else { return }
+            await loadEpisodeRatings(season: season)
+        }
         .padding(.leading, allowsWatchedChanges ? 56 : 0)
         .padding(.bottom, isLast ? 0 : 16)
         .overlay(alignment: .topLeading) {
             if allowsWatchedChanges {
                 // A bounded target with a separate gutter; no row-sized watched button.
                 Button {
+                    lastLocalWatchedEdit = .now
                     listItem.toggleSeason(season)
                 } label: {
                     watchedCircle(season: season, isWatched: isWatched, isAnnounced: isAnnounced)
@@ -406,23 +323,16 @@ struct SeasonChecklistCard: View {
         .contentShape(.rect)
     }
 
-    /// Optional charts load sequentially to avoid a burst of requests for long-running shows.
-    /// The service caches season responses, including when the episode page is opened next.
-    private func loadEpisodeRatings() async {
-        guard let tvID else { return }
-        let available = tvShow.availableSeasonCount
-        guard available > 0 else { return }
-        for season in 1...available {
+    /// Loads one season's episodes for its optional ratings strip. Already-loaded seasons are
+    /// skipped, and a failure just means no strip — the rest of the row stays useful.
+    private func loadEpisodeRatings(season: Int) async {
+        guard let tvID, seasonEpisodes[season] == nil else { return }
+        do {
+            let detail = try await TMDBService.shared.getSeasonDetails(tvID: tvID, season: season)
             guard !Task.isCancelled else { return }
-            if seasonEpisodes[season] != nil { continue }
-            do {
-                let detail = try await TMDBService.shared.getSeasonDetails(tvID: tvID, season: season)
-                guard !Task.isCancelled else { return }
-                seasonEpisodes[season] = detail.episodes ?? []
-            } catch {
-                // Season information remains useful when this optional chart isn't available.
-                if Task.isCancelled { return }
-            }
+            seasonEpisodes[season] = detail.episodes ?? []
+        } catch {
+            // Season information remains useful when this optional chart isn't available.
         }
     }
 
@@ -516,73 +426,44 @@ struct EpisodesLinkCard: View {
     }
 }
 
-struct DoneWatchingCard: View {
-    @ObservedObject var listItem: ListItem
+// MARK: - Collection Watched
 
-    private var totalSeasons: Int {
-        listItem.tvShow?.numberOfSeasons ?? 0
-    }
+/// Watched state for a title opened from a collection. Collections are seasonal / thematic pools
+/// with their own watched state, so this toggle stays entirely inside the collection.
+struct CollectionWatchedCard: View {
+    let collectionName: String?
+    @Binding var isWatched: Bool
 
-    /// Measured against the seasons that have actually aired — same basis as the item's watched
-    /// state, so a caught-up show with an announced season isn't offered "Drop Show".
-    private var allSeasonsWatched: Bool {
-        guard totalSeasons > 0 else { return false }
-        let available = listItem.tvShow?.availableSeasonCount ?? 0
-        guard available > 0 else { return false }
-        return (1...available).allSatisfy { listItem.watchedSeasons.contains($0) }
-    }
-
-    /// Show card when: not all seasons watched (partial/none), OR already dropped
-    private var shouldShow: Bool {
-        listItem.isDropped || !allSeasonsWatched
+    /// Spoken form carries the collection name; the visible title stays short so it never wraps.
+    private var accessibilityTitle: String {
+        guard let collectionName, !collectionName.isEmpty else { return "Watched in this collection" }
+        return "Watched in \(collectionName)"
     }
 
     var body: some View {
-        if shouldShow {
-            if listItem.isDropped {
-                Button {
-                    listItem.resumeShow()
-                } label: {
-                    cardLabel(
-                        icon: "arrow.uturn.backward.circle.fill",
-                        title: "Pick Back Up",
-                        subtitle: "Move back to your watchlist"
-                    )
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-            } else {
-                Button {
-                    listItem.dropShow()
-                } label: {
-                    cardLabel(
-                        icon: "archivebox",
-                        title: "Drop Show",
-                        subtitle: "Move to your watched list"
-                    )
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.primary)
-            }
-        }
-    }
-
-    private func cardLabel(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+            Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
+                .font(.title2)
+                .foregroundStyle(isWatched ? .green : .secondary)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: isWatched)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Watched")
+                    .font(.headline)
+                Text("In this collection only.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Spacer()
+
+            Spacer(minLength: 0)
+
+            Toggle(accessibilityTitle, isOn: $isWatched)
+                .labelsHidden()
         }
-        .padding(14)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+        .sensoryFeedback(.selection, trigger: isWatched)
     }
 }

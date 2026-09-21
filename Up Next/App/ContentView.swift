@@ -126,7 +126,7 @@ struct ContentView: View {
         // A rejected save is silent otherwise, and the user's edit is rolled back underneath them.
         .onChange(of: persistence.lastSaveError != nil) { _, failed in
             guard failed else { return }
-            toast.show("Couldn't save your changes", icon: "exclamationmark.triangle.fill")
+            toast.show("Couldn't save your changes", icon: "exclamationmark.triangle.fill", feedback: nil)
             persistence.clearLastSaveError()
         }
         // The partner's edits landing while the app is on screen: toast rather than banner.
@@ -134,10 +134,16 @@ struct ContentView: View {
             guard let first = lines.first else { return }
             toast.show(
                 lines.count > 1 ? "\(first) and \(lines.count - 1) more" : first,
-                icon: "person.2.fill"
+                icon: "person.2.fill",
+                feedback: nil
             )
             persistence.recentRemoteActivity = []
         }
+        // One haptic per toast, no matter which of the four tab roots (or the search sheet) is on
+        // screen — each previously mounted its own `.sensoryFeedback` on the same `ToastState`,
+        // firing the same haptic more than once. `lastFeedback` reflects the intent of whichever
+        // `show()` call bumped `triggerCount`.
+        .sensoryFeedback(trigger: toast.triggerCount) { _, _ in toast.lastFeedback }
         // A tapped share link waits here: joining replaces this device's own library, so say so
         // before doing it.
         //
@@ -321,8 +327,12 @@ struct ContentView: View {
         .tabViewStyle(.sidebarAdaptable)
         .tabBarMinimizeBehavior(.onScrollDown)
         .sheet(isPresented: $showingSearch) {
+            // Always `.all` with the picker visible — a type-scoped sheet let a movie get added
+            // from the TV tab (nothing about a hidden picker stopped the request). The current tab
+            // just decides which segment starts selected.
             WatchlistSearchView(
-                context: searchContext,
+                context: .all,
+                initialMediaType: selectedTab == .movies ? .movie : .tvShow,
                 existingTVShowIDs: viewModel.existingTVShowIDs,
                 existingMovieIDs: viewModel.existingMovieIDs,
                 onTVShowAdded: { viewModel.addTVShow($0) },
@@ -351,15 +361,6 @@ struct ContentView: View {
             )
         }
         #endif
-    }
-
-    private var searchContext: WatchlistSearchView.SearchContext {
-        switch selectedTab {
-        case .tvShows: .tvShows
-        case .movies: .movies
-        case .myLists: .myLists
-        default: .all
-        }
     }
 }
 

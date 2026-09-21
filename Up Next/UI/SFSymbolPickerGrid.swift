@@ -68,7 +68,7 @@ struct SFSymbolPickerGrid: View {
         "heart.circle.fill", "star.circle.fill", "burst.fill", "sparkles.rectangle.stack.fill",
     ]
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 6)
+    private let columns = [GridItem(.adaptive(minimum: 44), spacing: 12)]
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 12) {
@@ -83,10 +83,16 @@ struct SFSymbolPickerGrid: View {
                         .foregroundStyle(selectedSymbol == symbol ? Color.accentColor : .secondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(symbol)
+                .accessibilityLabel(accessibilityLabel(for: symbol))
                 .accessibilityAddTraits(selectedSymbol == symbol ? .isSelected : [])
             }
         }
+    }
+
+    /// "star.fill" -> "star", "moon.stars.fill" -> "moon stars" — SF Symbol names read as
+    /// dotted identifiers, not words; VoiceOver users shouldn't hear the punctuation.
+    private func accessibilityLabel(for symbol: String) -> String {
+        symbol.replacingOccurrences(of: ".fill", with: "").replacingOccurrences(of: ".", with: " ")
     }
 }
 

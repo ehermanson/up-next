@@ -45,7 +45,7 @@ struct DiscoverView: View {
             .refreshable {
                 await viewModel.refresh()
             }
-            .background(AppBackground())
+            .background(AppBackground(drifts: true))
             .navigationTitle("Discover")
             .searchable(text: $viewModel.searchQuery, prompt: "Search movies & TV shows")
             .toolbar {
@@ -107,7 +107,7 @@ struct DiscoverView: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, DesignTokens.Spacing.screenInset)
         .frame(maxWidth: horizontalSizeClass == .regular ? 480 : .infinity)
     }
 
@@ -126,19 +126,24 @@ struct DiscoverView: View {
                         text: "On my services",
                         isEmphasized: settings.onlyMyServicesInDiscover
                     )
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(settings.onlyMyServicesInDiscover ? .isSelected : [])
             } else {
                 Button {
                     showingProviderSettings = true
                 } label: {
                     Chip(icon: "play.tv", text: "Choose your services")
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
             }
             Spacer()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, DesignTokens.Spacing.screenInset)
         .frame(maxWidth: horizontalSizeClass == .regular ? 480 : .infinity)
     }
 
@@ -157,7 +162,7 @@ struct DiscoverView: View {
             } else if let error = viewModel.carouselError, !viewModel.hasCarouselItems {
                 EmptyStateView(
                     icon: "wifi.exclamationmark",
-                    title: "Couldn't load Discover",
+                    title: "Couldn't Load",
                     subtitle: error
                 ) {
                     Button("Try Again") {
@@ -191,10 +196,8 @@ struct DiscoverView: View {
         _ title: String, items: [DiscoverViewModel.DiscoverItem], showsAirDate: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.horizontal, 16)
+            SectionHeader(title: title, showsFilter: false)
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
 
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 12) {
@@ -202,7 +205,7 @@ struct DiscoverView: View {
                         carouselCard(item, carouselTitle: title, showsAirDate: showsAirDate)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
             }
             .scrollIndicators(.hidden)
         }
@@ -250,6 +253,7 @@ struct DiscoverView: View {
                 }
                 .buttonStyle(.plain)
                 .matchedTransitionSource(id: sourceID, in: detailNamespace)
+                .accessibilityLabel(item.title)
 
                 Button(added ? "Added" : "Add", systemImage: added ? "checkmark.circle.fill" : "plus.circle.fill") {
                     if !added { addItem(item) }
@@ -257,9 +261,10 @@ struct DiscoverView: View {
                 .labelStyle(.iconOnly)
                 .font(.title3)
                 .fontWeight(.semibold)
-                .foregroundStyle(added ? .green : .white)
-                .shadow(color: .black.opacity(0.5), radius: 4)
-                .padding(6)
+                .foregroundStyle(added ? .green : Color.accentColor)
+                .frame(width: 44, height: 44)
+                .chipSurface()
+                .padding(4)
                 .buttonStyle(.plain)
                 .checkmarkPop(isOn: added)
             }
@@ -274,6 +279,7 @@ struct DiscoverView: View {
                 await viewModel.loadAiringDate(for: item.tmdbId)
             }
 
+            // Same destination as the poster button above — VoiceOver only needs one of the two.
             Button { openDetail(for: item, sourceID: sourceID) } label: {
                 Text(item.title)
                     .font(.caption)
@@ -282,6 +288,7 @@ struct DiscoverView: View {
                     .frame(width: posterCardSize.width, alignment: .leading)
             }
             .buttonStyle(.plain)
+            .accessibilityHidden(true)
 
             if let vote = item.voteAverage, vote > 0 {
                 StarRatingLabel(vote: vote)
@@ -317,7 +324,7 @@ struct DiscoverView: View {
                     RoundedRectangle(cornerRadius: DesignTokens.Radius.control)
                         .fill(.fill.quaternary)
                         .frame(width: 120, height: 20)
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, DesignTokens.Spacing.screenInset)
 
                     ScrollView(.horizontal) {
                         HStack(spacing: 12) {
@@ -327,7 +334,7 @@ struct DiscoverView: View {
                                     .frame(width: posterCardSize.width, height: posterCardSize.height)
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, DesignTokens.Spacing.screenInset)
                     }
                     .scrollIndicators(.hidden)
                     .scrollDisabled(true)
@@ -347,10 +354,8 @@ struct DiscoverView: View {
 
     private var browseHeader: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Browse All")
-                .font(.title3)
-                .fontWeight(.bold)
-                .padding(.horizontal, 16)
+            SectionHeader(title: "Browse All", showsFilter: false)
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
 
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
@@ -369,6 +374,8 @@ struct DiscoverView: View {
                             text: viewModel.selectedGenre?.name ?? "All Genres",
                             isEmphasized: viewModel.selectedGenre != nil
                         )
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
                     }
                     // Same as `SectionHeader`'s filter: keep the Menu from tinting the chip purple.
                     .tint(.primary)
@@ -378,11 +385,13 @@ struct DiscoverView: View {
                             viewModel.selectedSort = option
                         } label: {
                             Chip(text: option.rawValue, isEmphasized: viewModel.selectedSort == option)
+                                .frame(minHeight: 44)
+                                .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
             }
             .scrollIndicators(.hidden)
         }
@@ -393,7 +402,7 @@ struct DiscoverView: View {
             if let error = viewModel.browseError, viewModel.browseItems.isEmpty {
                 EmptyStateView(
                     icon: "wifi.exclamationmark",
-                    title: "Couldn't load titles",
+                    title: "Couldn't Load",
                     subtitle: error
                 ) {
                     Button("Try Again") {
@@ -442,7 +451,7 @@ struct DiscoverView: View {
                             }
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
             }
         }
     }
@@ -481,7 +490,7 @@ struct DiscoverView: View {
             VStack(spacing: 8) {
                 ShimmerRows()
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, DesignTokens.Spacing.screenInset)
         } else if let error = viewModel.searchError {
             EmptyStateView(icon: "exclamationmark.triangle", title: "Couldn't Load", subtitle: error)
                 .padding(.vertical, 40)
@@ -491,7 +500,7 @@ struct DiscoverView: View {
                     browseRow(item)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, DesignTokens.Spacing.screenInset)
         } else {
             EmptyStateView(
                 icon: "magnifyingglass.circle",

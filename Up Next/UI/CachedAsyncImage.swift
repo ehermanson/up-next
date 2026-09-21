@@ -7,7 +7,7 @@ final class ImageCache {
     private let cache = NSCache<NSURL, UIImage>()
 
     private init() {
-        cache.countLimit = 200
+        cache.countLimit = 600
         cache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
     }
 
@@ -16,7 +16,9 @@ final class ImageCache {
     }
 
     func store(_ image: UIImage, for url: URL) {
-        let cost = Int(image.size.width * image.size.height * image.scale * 4)
+        // Pixel dimensions, not points: `size` is in points, so both axes need the scale factor
+        // to approximate the actual decoded byte size (4 bytes/pixel, RGBA) the byte limit governs.
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
         cache.setObject(image, forKey: url as NSURL, cost: cost)
     }
 }

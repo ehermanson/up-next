@@ -96,11 +96,14 @@ struct StarRatingLabel: View {
             Image(systemName: "star.fill")
                 .font(.caption2)
                 .foregroundStyle(.yellow)
+                .accessibilityHidden(true)
             Text(vote, format: .number.precision(.fractionLength(1)))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .fontDesign(.rounded)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rated \(vote.formatted(.number.precision(.fractionLength(1))))")
     }
 }
 
@@ -129,11 +132,12 @@ struct EmptyStateView<Actions: View>: View {
                 .foregroundStyle(.secondary)
                 .symbolEffect(.breathe, isActive: !reduceMotion)
                 .frame(width: iconWellSize, height: iconWellSize)
-                .background(.fill.tertiary, in: .circle)
+                .cellSurface(cornerRadius: iconWellSize / 2)
                 .accessibilityHidden(true)
             Text(title)
                 .font(.title3)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             if let subtitle {
                 Text(subtitle)
                     .font(.subheadline)
@@ -161,6 +165,12 @@ extension EmptyStateView where Actions == EmptyView {
 final class ToastState {
     private(set) var current: ToastItem?
     private(set) var triggerCount = 0
+    /// The `SensoryFeedback` for the toast that triggered the most recent `triggerCount` bump —
+    /// read by the single root `.sensoryFeedback` (see `ContentView`) rather than each of the four
+    /// tab roots + the search sheet firing their own, which used to fire the haptic multiple times
+    /// per toast. Set synchronously in `show()` so it's current by the time SwiftUI observes the
+    /// `triggerCount` change, even when the toast itself is still queued behind another one.
+    private(set) var lastFeedback: SensoryFeedback?
     private var queue: [QueuedToast] = []
     private var currentAction: (() -> Void)?
     private var dismissTask: Task<Void, Never>?
@@ -177,18 +187,23 @@ final class ToastState {
         let message: String
         let icon: String
         let actionLabel: String?
+        let feedback: SensoryFeedback?
         let action: (() -> Void)?
     }
 
     /// Shows a transient toast. Pass `actionLabel`/`action` to add a tappable button (e.g. "Undo").
+    /// `feedback` picks the haptic: `.success` for adds/watched (the default), `.impact` for
+    /// removals/undo-able deletes, `nil` for purely informational toasts (errors, partner activity).
     func show(
         _ message: String,
         icon: String = "checkmark.circle.fill",
         actionLabel: String? = nil,
+        feedback: SensoryFeedback? = .success,
         action: (() -> Void)? = nil
     ) {
         triggerCount += 1
-        queue.append(QueuedToast(message: message, icon: icon, actionLabel: actionLabel, action: action))
+        lastFeedback = feedback
+        queue.append(QueuedToast(message: message, icon: icon, actionLabel: actionLabel, feedback: feedback, action: action))
 
         if current == nil {
             advanceQueue()
@@ -217,7 +232,14 @@ final class ToastState {
         withAnimation(.spring(duration: 0.35, bounce: 0.3)) {
             current = item
         }
+        postAnnouncement(for: item)
         scheduleAutoDismiss()
+    }
+
+    /// VoiceOver doesn't otherwise learn about a toast — it's not focused content, just an overlay.
+    private func postAnnouncement(for item: ToastItem) {
+        let text = item.actionLabel != nil ? "\(item.message). Undo available." : item.message
+        AccessibilityNotification.Announcement(text).post()
     }
 
     private func quickDismissThenAdvance() {
@@ -302,6 +324,8 @@ struct ToastOverlayModifier: ViewModifier {
                             .font(.callout.weight(.bold))
                             .foregroundStyle(Color.accentColor)
                             .buttonStyle(.plain)
+                            .frame(minHeight: 44)
+                            .contentShape(.rect)
                             .padding(.leading, 4)
                         }
                     }
@@ -314,7 +338,6 @@ struct ToastOverlayModifier: ViewModifier {
                     .padding(.bottom, bottomPadding)
                 }
             }
-            .sensoryFeedback(.success, trigger: toast.triggerCount)
     }
 }
 
@@ -356,7 +379,7 @@ extension View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .toastOverlay()
         .environment(toast)
-        .onAppear { toast.show("Added to Watchlist") }
+        .onAppear { toast.show("Added Severance") }
 }
 
 // Library-only feedback shared by list actions and detail-sheet dismissal.

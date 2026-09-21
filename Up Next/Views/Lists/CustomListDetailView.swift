@@ -33,35 +33,45 @@ struct CustomListDetailView: View {
     private var rowAnimation: Animation { CustomListViewModel.rowAnimation }
 
     var body: some View {
+        // Read once per body: `watchedItems` re-filters and re-sorts on every access, and the
+        // toolbar, the confirmation prompt and both layouts all need the same snapshot.
+        let watchedItems = watchedItems
         Group {
             if viewModel.visibleItems(in: list).isEmpty {
-                VStack(spacing: 0) {
-                    header
-                    EmptyStateView(icon: list.iconName, title: "No items yet") {
-                        Button {
-                            showingAddItems = true
-                        } label: {
-                            Label("Add Items", systemImage: "plus")
+                ScrollView {
+                    VStack(spacing: 0) {
+                        header
+                            .padding(.horizontal, DesignTokens.Spacing.screenInset)
+                        EmptyStateView(icon: list.iconName, title: "No Titles Yet") {
+                            Button {
+                                showingAddItems = true
+                            } label: {
+                                Label("Add Titles", systemImage: "plus")
+                            }
+                            .buttonStyle(.glassProminent)
+                            .controlSize(.large)
                         }
-                        .buttonStyle(.glassProminent)
-                        .controlSize(.large)
+                        // Local stand-in for a `fills: Bool` param on `EmptyStateView` (owned by
+                        // workstream G): without this, the view's own `.frame(maxHeight: .infinity)`
+                        // would swallow the whole scroll viewport and push `suggestions` off screen
+                        // with nothing to scroll it into view. `.fixedSize` makes it take its ideal
+                        // (finite) height instead.
+                        .fixedSize(horizontal: false, vertical: true)
+                        suggestions
                     }
-                    suggestions
                 }
                 .background(AppBackground())
             } else if horizontalSizeClass == .regular {
-                gridLayout
+                gridLayout(watchedItems: watchedItems)
             } else {
-                listLayout
+                listLayout(watchedItems: watchedItems)
             }
         }
-        // The header already shows the name at full size, so the nav bar just keeps a back
-        // button — an inline title here would repeat it.
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(list.name)
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Add Items", systemImage: "plus") {
+                Button("Add Titles", systemImage: "plus") {
                     showingAddItems = true
                 }
             }
@@ -78,7 +88,7 @@ struct CustomListDetailView: View {
             }
         }
         .confirmationDialog(
-            markAllUnwatchedPrompt,
+            markAllUnwatchedPrompt(count: watchedItems.count),
             isPresented: $isConfirmingMarkAllUnwatched,
             titleVisibility: .visible
         ) {
@@ -117,15 +127,15 @@ struct CustomListDetailView: View {
         }
     }
 
-    private var markAllUnwatchedPrompt: String {
-        let count = watchedItems.count
-        return "Mark all \(count) \(count == 1 ? "title" : "titles") unwatched?"
+    private func markAllUnwatchedPrompt(count: Int) -> String {
+        "Mark all \(count) \(count == 1 ? "title" : "titles") unwatched?"
     }
 
     // MARK: - Header
 
-    /// Replaces the nav-bar title: the collection's icon, its name at full size, and a
-    /// "N titles · M watched" caption. Shown once above the sections (or above the empty state).
+    /// Replaces the nav-bar title's subtitle: the collection's icon and a "N titles · M watched"
+    /// caption. The name itself now lives in `.navigationTitle` — showing it here too would repeat
+    /// it under the nav bar's inline title.
     private var header: some View {
         HStack(spacing: 14) {
             Image(systemName: list.iconName)
@@ -133,20 +143,14 @@ struct CustomListDetailView: View {
                 .frame(width: 56, height: 56)
                 .cellSurface(tint: .accentColor)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(list.name)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                Text(itemSummary)
-                    .font(.subheadline)
-                    .fontDesign(.rounded)
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-            }
+            Text(itemSummary)
+                .font(.subheadline)
+                .fontDesign(.rounded)
+                .foregroundStyle(.secondary)
+                .contentTransition(.numericText())
 
             Spacer()
         }
-        .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 4)
     }
@@ -163,10 +167,13 @@ struct CustomListDetailView: View {
     // MARK: - Layouts
 
     /// The phone layout: one column of rows with swipe actions.
-    private var listLayout: some View {
+    private func listLayout(watchedItems: [CustomListItem]) -> some View {
         List {
             header
-                .listRowInsets(EdgeInsets())
+                .listRowInsets(EdgeInsets(
+                    top: 0, leading: DesignTokens.Spacing.screenInset,
+                    bottom: 0, trailing: DesignTokens.Spacing.screenInset
+                ))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
@@ -189,13 +196,12 @@ struct CustomListDetailView: View {
         }
         .scrollContentBackground(.hidden)
         .listStyle(.plain)
-        .padding(.horizontal, 12)
         .background(AppBackground())
     }
 
     /// Regular width spreads the same rows across a grid. There are no swipe actions outside a
     /// `List`, so the row's context menu is the mark-watched / remove affordance here.
-    private var gridLayout: some View {
+    private func gridLayout(watchedItems: [CustomListItem]) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
                 header
@@ -219,7 +225,7 @@ struct CustomListDetailView: View {
                 }
                 suggestions
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, DesignTokens.Spacing.screenInset)
         }
         .background(AppBackground())
     }
@@ -236,6 +242,12 @@ struct CustomListDetailView: View {
 
     private var watchedHeader: some View {
         SectionHeader(title: "Watched", count: watchedItems.count, showsFilter: false)
+            .listRowInsets(EdgeInsets(
+                top: 12, leading: DesignTokens.Spacing.screenInset,
+                bottom: 4, trailing: DesignTokens.Spacing.screenInset
+            ))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 
     private func row(for item: CustomListItem) -> some View {
@@ -251,8 +263,7 @@ struct CustomListDetailView: View {
 
     /// Type-namespaced id (see `MediaIDKey`) the detail sheet zooms from/to for one entry.
     private func transitionID(for item: CustomListItem) -> String {
-        guard let media = item.media else { return "" }
-        return MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
+        item.mediaKey ?? ""
     }
 
     /// Flips the entry between the two sections, animating the move.
@@ -300,9 +311,10 @@ private struct CustomListRow: View {
         }
         .buttonStyle(.plain)
         .matchedTransitionSource(id: transitionID, in: detailNamespace)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-        .listRowInsets(EdgeInsets())
+        .listRowInsets(EdgeInsets(
+            top: 5, leading: DesignTokens.Spacing.screenInset,
+            bottom: 5, trailing: DesignTokens.Spacing.screenInset
+        ))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing) {
@@ -370,9 +382,10 @@ extension CustomListViewModel {
         }
         guard let title = removedTitle else { return nil }
         toast.show(
-            "Removed \u{201C}\(title)\u{201D} from \u{201C}\(list.name)\u{201D}",
+            "Removed \(title) from \(list.name)",
             icon: "trash.circle.fill",
-            actionLabel: "Undo"
+            actionLabel: "Undo",
+            feedback: .impact
         ) { [weak self] in
             withAnimation(animation) {
                 self?.undoLastRemoval()
@@ -429,17 +442,13 @@ private struct CustomListItemDetailSheet: View {
 
     private func detailSheet(for detailItem: ListItem) -> some View {
         // Hoisted into typed locals — the type-checker has choked on this call site before.
-        let removeMessage: String = "This only removes it from \u{201C}\(list.name)\u{201D}."
         let collectionName: String = list.name
         let entry: CustomListItem = item
         let listVM: CustomListViewModel = listViewModel
         // Inside a collection, "+" on a similar / recommended title adds to *this* collection,
         // not to Up Next, and the checkmarks reflect this collection's membership.
         let collection: CustomList = list
-        let existingIDs: Set<String> = Set(listVM.visibleItems(in: collection).compactMap { item -> String? in
-            guard let media = item.media else { return nil }
-            return MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
-        })
+        let existingIDs: Set<String> = Set(listVM.visibleItems(in: collection).compactMap(\.mediaKey))
         let addTVShow: (TVShow) -> Void = { listVM.addItem(tvShow: $0, to: collection) }
         let addMovie: (Movie) -> Void = { listVM.addItem(movie: $0, to: collection) }
         let watchedBinding: Binding<Bool> = Binding(
@@ -462,8 +471,7 @@ private struct CustomListItemDetailSheet: View {
             addTargetName: collectionName,
             collectionWatched: watchedBinding,
             collectionName: collectionName,
-            removeLabel: "Remove from collection",
-            removeMessage: removeMessage
+            removeLabel: "Remove from \(list.name)"
         )
     }
 

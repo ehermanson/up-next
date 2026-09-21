@@ -1,3 +1,4 @@
+import CoreData
 import SwiftUI
 
 struct MediaDetailView: View {
@@ -22,17 +23,14 @@ struct MediaDetailView: View {
     var collectionWatched: Binding<Bool>?
     /// Name of the collection the sheet was opened from, for the card's title.
     var collectionName: String?
-    /// Copy for the leading destructive button and its confirmation. Defaults to the watchlist's
-    /// "delete this title" wording; collections override it with collection-scoped wording.
+    /// Copy for the pill menu's destructive row. Defaults to the watchlist's wording; collections
+    /// override it with collection-scoped wording.
     var removeLabel: String?
-    var removeMessage: String?
-
     @Environment(ToastState.self) private var toast
 
     @State private var isLoadingDetails = false
     @State private var detailError: String?
     @State private var isConfirmingRemoval = false
-    @State private var showingTMDBPage = false
     /// Set by the primary Add pill so the sheet can flip its "Add to Up Next" button to a
     /// "✓ On Up Next" status chip without waiting for the store to round-trip. Cleared when
     /// the sheet reopens on a new title.
@@ -41,7 +39,6 @@ struct MediaDetailView: View {
     /// see `mergedMoreLikeThis`.
     @State private var moreLikeThisItems: [SimilarMediaItem] = []
     @State private var trailerKey: String?
-    @State private var showingTrailer = false
     @State private var selectedSimilarItem: ListItem?
     /// The tapped poster card's zoom-transition source id, captured alongside `selectedSimilarItem`
     /// — `moreLikeThisItems`/`collectionParts` can carry the same title in both rows, so the id also
@@ -66,6 +63,9 @@ struct MediaDetailView: View {
     @State private var heroTint: DominantTint?
     /// Display-only season scores from the existing show detail response.
     @State private var seasonRatings: [Int: Double] = [:]
+    /// When this device last changed watched state from this sheet. `SeasonChecklistCard` uses it
+    /// to tell a local toggle from a partner's edit arriving while the sheet is open.
+    @State private var lastLocalWatchedEdit: Date?
 
     private let service = TMDBService.shared
 
@@ -81,12 +81,6 @@ struct MediaDetailView: View {
 
     private var backdropPath: String? {
         listItem.tvShow?.backdropPath ?? listItem.movie?.backdropPath
-    }
-
-    /// nil when the show's id isn't a TMDB int (shouldn't happen for a persisted row) — every
-    /// `EpisodesLinkCard` placement just doesn't render.
-    private var tvShowID: Int? {
-        listItem.tvShow.flatMap { Int($0.id) }
     }
 
     private var needsFullDetails: Bool {
@@ -113,6 +107,10 @@ struct MediaDetailView: View {
     }
 
     var body: some View {
+        // Everything already in the library plus everything added during this session — computed
+        // once, then handed to every carousel and the nested sheet.
+        let knownIDs = existingIDs.union(addedSimilarIDs)
+
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
@@ -143,12 +141,25 @@ struct MediaDetailView: View {
                         )
                         AddedByCaption(listItem: listItem)
 
-                        primaryAddPill
+                        PrimaryAddPill(
+                            listItem: listItem,
+                            customListViewModel: customListViewModel,
+                            existingIDs: existingIDs,
+                            addTargetName: addTargetName,
+                            collectionName: collectionName,
+                            isCollectionEntry: collectionWatched != nil,
+                            removeLabel: removeLabel,
+                            onAdd: onAdd,
+                            justAddedLocally: $justAddedLocally,
+                            isConfirmingRemoval: $isConfirmingRemoval,
+                            lastLocalWatchedEdit: $lastLocalWatchedEdit
+                        )
 
                         DescriptionSection(
                             isLoading: isLoadingDetails,
                             descriptionText: listItem.media?.descriptionText,
-                            errorMessage: detailError)
+                            errorMessage: detailError,
+                            onRetry: { Task { await fetchFullDetails() } })
 
                         CastSection(
                             cast: listItem.media?.cast ?? [],
@@ -156,12 +167,12 @@ struct MediaDetailView: View {
                             castCharacters: listItem.media?.castCharacters ?? []
                         )
 
-                        trailerButton
+                        TrailerButton(trailerKey: trailerKey)
 
-                        // State-transition controls live in `primaryAddPill`'s menu now — those
+                        // State-transition controls live in `PrimaryAddPill`'s menu — those
                         // "Move to Up Next" / "Mark as Watched" / etc. cards were duplicating what
                         // the pill's own status label reports. Cards below are content-granular
-                        // (per-season checklist, thumbs rating, episode nav), not state-toggles.
+                        // (per-season checklist, notes/rating, episode nav), not state-toggles.
                         if let collectionWatched {
                             CollectionWatchedCard(
                                 collectionName: collectionName,
@@ -171,10 +182,10 @@ struct MediaDetailView: View {
                         } else if onAdd == nil {
                             seasonContent(allowsWatchedChanges: true)
 
-                            if listItem.isWatched {
-                                UserRatingCard(listItem: listItem)
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
+                            // Notes are useful before a title is watched; thumbs are a verdict,
+                            // so they only appear once it is.
+                            UserRatingCard(listItem: listItem, showsRating: listItem.isWatched)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                         } else {
                             seasonContent(allowsWatchedChanges: false)
                         }
@@ -183,7 +194,7 @@ struct MediaDetailView: View {
                             collectionName: tmdbCollectionName,
                             parts: collectionParts,
                             currentMovieID: listItem.movie.map { Int($0.id) ?? 0 },
-                            existingIDs: existingIDs.union(addedSimilarIDs),
+                            existingIDs: knownIDs,
                             onAdd: canAddToLibrary ? { addCollectionItem($0) } : nil,
                             onTap: { openCollectionDetail($0) },
                             transitionNamespace: similarNamespace,
@@ -194,7 +205,7 @@ struct MediaDetailView: View {
                             title: "More Like This",
                             items: visibleMoreLikeThis,
                             collapsingKey: collapsingSimilarID,
-                            existingIDs: existingIDs.union(addedSimilarIDs),
+                            existingIDs: knownIDs,
                             onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
                             onTap: { openSimilarDetail($0) },
                             transitionNamespace: similarNamespace,
@@ -202,7 +213,7 @@ struct MediaDetailView: View {
                         )
 
                         if let tmdbURL {
-                            tmdbFooterLink(url: tmdbURL)
+                            TMDBFooterLink(url: tmdbURL)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -223,20 +234,21 @@ struct MediaDetailView: View {
                 ZStack(alignment: .top) {
                     AppBackground()
                     if let heroTint {
-                        GeometryReader { proxy in
-                            LinearGradient(
-                                colors: [
-                                    heroTint.color(for: colorScheme).opacity(colorScheme == .dark ? 0.55 : 0.7),
-                                    .clear,
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .frame(height: proxy.size.height * 0.45)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        }
+                        LinearGradient(
+                            colors: [
+                                heroTint.color(for: colorScheme).opacity(colorScheme == .dark ? 0.55 : 0.7),
+                                .clear,
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .containerRelativeFrame(.vertical) { height, _ in height * 0.45 }
+                        .frame(maxWidth: .infinity)
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
+                        // The header artwork eases its own fade to the same tint; without a
+                        // matching transition this wash would snap in underneath it.
+                        .transition(.opacity)
                     }
                 }
             }
@@ -251,14 +263,14 @@ struct MediaDetailView: View {
             .task {
                 await fetchFullDetails()
             }
-            .alert(removeLabel.map { "\($0)?" } ?? "Remove from watchlist?", isPresented: $isConfirmingRemoval) {
+            .alert(removalAlertTitle, isPresented: $isConfirmingRemoval) {
                 Button("Remove", role: .destructive) {
                     onRemove()
                     dismiss()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text(removeMessage ?? "This will delete this title from your watch list.")
+                Text(removalAlertMessage)
             }
             .sheet(item: $selectedSimilarItem) { item in
                 MediaDetailView(
@@ -266,7 +278,7 @@ struct MediaDetailView: View {
                     dismiss: { selectedSimilarItem = nil },
                     onRemove: { selectedSimilarItem = nil },
                     onAdd: canAddToLibrary ? { addSimilarFromDetail(item) } : nil,
-                    existingIDs: existingIDs.union(addedSimilarIDs),
+                    existingIDs: knownIDs,
                     onTVShowAdded: onTVShowAdded,
                     onMovieAdded: onMovieAdded,
                     addTargetName: addTargetName
@@ -284,391 +296,24 @@ struct MediaDetailView: View {
                 listItem: listItem,
                 tvShow: tvShow,
                 ratings: seasonRatings,
-                allowsWatchedChanges: allowsWatchedChanges
+                allowsWatchedChanges: allowsWatchedChanges,
+                lastLocalWatchedEdit: $lastLocalWatchedEdit
             )
         }
     }
 
-    // MARK: - Primary Add Pill
+    // MARK: - Removal
 
-    /// Namespaced key for the currently-open title. `MediaIDKey.make` treats TV and movie ids as
-    /// distinct namespaces so a set of these can safely mix both.
-    private var currentMediaKey: String? {
-        guard let media = listItem.media, let id = Int(media.id) else { return nil }
-        return MediaIDKey.make(listItem.tvShow != nil ? .tvShow : .movie, id)
+    /// The confirmation names the same place the menu row does, so the two never disagree about
+    /// what "remove" means here.
+    private var removalAlertTitle: String {
+        if let collectionName { return "Remove from \(collectionName)?" }
+        return "Remove from Up Next?"
     }
 
-    private var isAlreadyInLibrary: Bool {
-        guard let currentMediaKey else { return false }
-        return existingIDs.contains(currentMediaKey)
-    }
-
-    /// Human name for the primary add target: the collection name when opened in an "add to
-    /// collection" flow (Discover/similar from inside a collection), else "Up Next".
-    private var primaryAddTarget: String { addTargetName ?? "Up Next" }
-
-    private enum PillState {
-        /// Big glass "Add to <target>" pill; not yet added.
-        case addable
-        /// Big glass pill that was just tapped or is already in the target — shows the check state.
-        case added
-    }
-
-    private var pillState: PillState {
-        // Any of these mean the title is already in whatever the current target is: it's a library
-        // item (owned), a collection member (collectionWatched set), we just added it in this
-        // session, or the parent's existingIDs already flags it.
-        if collectionWatched != nil || onAdd == nil || justAddedLocally || isAlreadyInLibrary {
-            return .added
-        }
-        return .addable
-    }
-
-    /// The primary action pill shown right below metadata. Replaces the old toolbar "+" and puts
-    /// the Add verb where the eye lands. Its menu is the one place users can add/remove this
-    /// title from any collection while browsing detail.
-    @ViewBuilder
-    private var primaryAddPill: some View {
-        switch pillState {
-        case .addable:
-            addablePillView
-                .transition(Motion.morph)
-        case .added:
-            statusPillView
-                .transition(Motion.morph)
-        }
-    }
-
-    private var addablePillView: some View {
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 8) {
-                Button {
-                    performPrimaryAdd()
-                } label: {
-                    Label("Add to \(primaryAddTarget)", systemImage: "plus.circle.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(Color.accentColor)
-                .accessibilityLabel("Add to \(primaryAddTarget)")
-
-                pillMenuButton
-            }
-        }
-        .sensoryFeedback(.success, trigger: justAddedLocally)
-    }
-
-    private var statusPillView: some View {
-        HStack(spacing: 10) {
-            Image(systemName: statusPillIcon)
-                .font(.title3)
-                .foregroundStyle(statusPillIconColor)
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: statusPillIcon)
-                .accessibilityHidden(true)
-
-            Text(statusPillTitle)
-                .font(.headline)
-
-            Spacer(minLength: 0)
-
-            pillMenuButton
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .frame(minHeight: 44)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
-        .accessibilityElement(children: .combine)
-    }
-
-    /// The status pill's label reflects the *actual* library state of the title, not just "On Up
-    /// Next" — otherwise a show set to Watching reads "On Up Next" here while the card below offers
-    /// "Move to Up Next", which is confusing. Order: collection > just-added toast > library state.
-    private var statusPillTitle: String {
-        if let collectionName, collectionWatched != nil {
-            return "In \(collectionName)"
-        }
-        // Fresh-add flip in browse context: use the target we just added to, not the derived
-        // library state (the ListItem may not have picked up its list membership yet).
-        if justAddedLocally {
-            return "On \(primaryAddTarget)"
-        }
-        // Library context: reflect the actual watch state.
-        if listItem.list != nil {
-            if listItem.isDropped { return "Dropped" }
-            if listItem.isWatched { return "Watched" }
-            if listItem.isWatching { return "Watching" }
-            return "On Up Next"
-        }
-        // Browse context where the title was already in the parent's existingIDs — the transient
-        // ListItem carries no library state, so "In Library" is the honest label.
-        return "In Library"
-    }
-
-    private var statusPillIcon: String {
-        if collectionWatched != nil { return "checkmark.circle.fill" }
-        if justAddedLocally { return "checkmark.circle.fill" }
-        if listItem.list != nil {
-            if listItem.isDropped { return "xmark.circle.fill" }
-            if listItem.isWatched { return "checkmark.circle.fill" }
-            if listItem.isWatching { return "play.circle.fill" }
-            return "bookmark.circle.fill"
-        }
-        return "checkmark.circle.fill"
-    }
-
-    private var statusPillIconColor: Color {
-        if collectionWatched != nil { return .green }
-        if justAddedLocally { return .green }
-        if listItem.list != nil {
-            if listItem.isDropped { return .orange }
-            if listItem.isWatched { return .green }
-            if listItem.isWatching { return Color.accentColor }
-            return Color.accentColor
-        }
-        return .green
-    }
-
-    private var pillMenuButton: some View {
-        Menu {
-            pillMenuContent
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.headline)
-                .frame(width: 44, height: 44)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("More options")
-    }
-
-    @ViewBuilder
-    private var pillMenuContent: some View {
-        libraryStateActions
-
-        if !collectionMenuEntries.isEmpty {
-            Section("Collections") {
-                ForEach(collectionMenuEntries) { entry in
-                    Button(action: entry.toggle) {
-                        if entry.isMember {
-                            Label(entry.name, systemImage: "checkmark")
-                        } else {
-                            Text(entry.name)
-                        }
-                    }
-                }
-            }
-        }
-
-        if canRemoveFromPill {
-            // Plain Text (no `Label` with icon) so the destructive item renders on one line at
-            // any menu width — the icon+text pair wrapped in narrow menus.
-            Button(role: .destructive) {
-                isConfirmingRemoval = true
-            } label: {
-                Text(destructiveMenuLabel)
-            }
-        }
-    }
-
-    private var destructiveMenuLabel: String {
-        if let removeLabel { return removeLabel }
-        return "Remove from Up Next"
-    }
-
-    /// State-transition actions for library-owned titles — the pill's menu is the one place
-    /// these live now (`WatchingToggleCard` / `WatchedToggleCard` / `DoneWatchingCard` are gone).
-    @ViewBuilder
-    private var libraryStateActions: some View {
-        // Only library-owned items get state actions. Browse/add and collection contexts skip.
-        if listItem.list != nil, collectionWatched == nil {
-            Section {
-                if listItem.tvShow != nil {
-                    tvStateActions
-                } else if listItem.movie != nil {
-                    movieStateActions
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var tvStateActions: some View {
-        if listItem.isDropped {
-            Button {
-                withAnimation { listItem.resumeShow() }
-                persistence.save()
-            } label: { Label("Pick Back Up", systemImage: "arrow.uturn.forward.circle") }
-            Button {
-                markLibraryWatched()
-            } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
-        } else if listItem.isWatched {
-            Button {
-                markLibraryUnwatched()
-            } label: { Label("Mark as Unwatched", systemImage: "arrow.uturn.backward.circle") }
-        } else if listItem.isWatching {
-            Button {
-                withAnimation { listItem.toggleWatching() }
-                persistence.save()
-            } label: { Label("Move to Up Next", systemImage: "list.bullet.circle") }
-            Button {
-                markLibraryWatched()
-            } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
-        } else {
-            // On Up Next
-            Button {
-                withAnimation { listItem.toggleWatching() }
-                persistence.save()
-            } label: { Label("Start Watching", systemImage: "play.circle") }
-            Button {
-                markLibraryWatched()
-            } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
-        }
-    }
-
-    @ViewBuilder
-    private var movieStateActions: some View {
-        if listItem.isWatched {
-            Button {
-                markLibraryUnwatched()
-            } label: { Label("Mark as Unwatched", systemImage: "arrow.uturn.backward.circle") }
-        } else {
-            Button {
-                markLibraryWatched()
-            } label: { Label("Mark as Watched", systemImage: "checkmark.circle") }
-        }
-    }
-
-    /// Marks the current library item watched: seasons filled, `isWatched` on, `watchedAt` now.
-    /// Also finalises Watching (clears `watchingStartedAt`) and reverses any drop, so the state
-    /// ends cleanly at "Watched" instead of the "watching+watched" limbo.
-    private func markLibraryWatched() {
-        withAnimation {
-            listItem.droppedAt = nil
-            listItem.watchingStartedAt = nil
-            if let tvShow = listItem.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
-                listItem.watchedSeasons = Array(1...total)
-            }
-            listItem.isWatched = true
-            listItem.watchedAt = .now
-        }
-        persistence.save()
-    }
-
-    private func markLibraryUnwatched() {
-        withAnimation {
-            listItem.droppedAt = nil
-            if let tvShow = listItem.tvShow, (tvShow.numberOfSeasons ?? 0) > 0 {
-                listItem.watchedSeasons = []
-            }
-            listItem.isWatched = false
-            listItem.watchedAt = nil
-        }
-        persistence.save()
-    }
-
-    private var persistence: PersistenceController { PersistenceController.shared }
-
-    /// Present a Remove menu item whenever there's something to remove: a library-owned title, a
-    /// collection member, or a title we just added in this session (so the same tap can undo).
-    private var canRemoveFromPill: Bool {
-        if collectionWatched != nil { return true }        // collection detail
-        if onAdd == nil { return true }                     // library detail
-        return false                                        // browse/add context: nothing to remove
-    }
-
-    private struct PillCollectionEntry: Identifiable {
-        /// The `CustomList`'s stable UUID (`CustomList.id`) — no CoreData types leak into this view.
-        let id: String
-        let name: String
-        let isMember: Bool
-        let toggle: () -> Void
-    }
-
-    private var collectionMenuEntries: [PillCollectionEntry] {
-        guard let vm = customListViewModel else { return [] }
-        guard let mediaID = listItem.media?.id else { return [] }
-        // Read changeToken so the menu re-derives its check marks when collections mutate.
-        _ = vm.changeToken
-        return vm.customLists.map { list in
-            let isMember = vm.containsItem(mediaID: mediaID, mediaType: listItem.tvShow == nil ? .movie : .tvShow, in: list)
-            return PillCollectionEntry(
-                id: list.id.uuidString,
-                name: list.name,
-                isMember: isMember
-            ) {
-                toggleCollectionMembership(mediaID: mediaID, list: list, currentlyMember: isMember)
-            }
-        }
-    }
-
-    private func toggleCollectionMembership(mediaID: String, list: CustomList, currentlyMember: Bool) {
-        guard let vm = customListViewModel else { return }
-        if currentlyMember {
-            if let item = vm.item(mediaID: mediaID, mediaType: listItem.tvShow == nil ? .movie : .tvShow, in: list) {
-                let title = vm.removeItem(item, from: list) ?? listItem.media?.title ?? "Title"
-                toast.show("\(title) removed from \(list.name)", icon: "trash")
-            }
-        } else {
-            vm.addItem(movie: listItem.movie, tvShow: listItem.tvShow, to: list)
-            let title = listItem.media?.title ?? "Title"
-            toast.show("\(title) added to \(list.name)")
-        }
-    }
-
-    /// The pill's primary-tap action for the addable state. Fires the parent's `onAdd`, shows a
-    /// confirmation toast, and flips the pill to its status style in place — the sheet stays open
-    /// so the user can keep reading and/or add to collections.
-    private func performPrimaryAdd() {
-        guard let onAdd else { return }
-        onAdd()
-        if let title = listItem.media?.title {
-            toast.show(addedMessage(for: title))
-        }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            justAddedLocally = true
-        }
-    }
-
-    // MARK: - Trailer
-
-    @ViewBuilder
-    private var trailerButton: some View {
-        if let trailerKey {
-            Button { showingTrailer = true } label: {
-                Label("Trailer", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.glass)
-            .labelStyle(StackedLabelStyle())
-            .controlSize(.large)
-            .sheet(isPresented: $showingTrailer) {
-                if let url = URL(string: "https://www.youtube.com/watch?v=\(trailerKey)") {
-                    SafariView(url: url)
-                        .ignoresSafeArea()
-                }
-            }
-        }
-    }
-
-    /// Small caption-style link at the very bottom of the content column — the TMDB page is a
-    /// reference, not an action, so it doesn't belong in the glass control row.
-    private func tmdbFooterLink(url: URL) -> some View {
-        Button {
-            showingTMDBPage = true
-        } label: {
-            Text("View on TMDB")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-        .sheet(isPresented: $showingTMDBPage) {
-            SafariView(url: url)
-                .ignoresSafeArea()
-        }
+    private var removalAlertMessage: String {
+        if collectionName != nil { return "It stays in Up Next if it's there." }
+        return "This removes it from your Up Next. Notes and ratings go with it."
     }
 
     // MARK: - Data Fetching
@@ -697,13 +342,19 @@ struct MediaDetailView: View {
             if let tvShow = listItem.tvShow {
                 let previousSeasonCount = tvShow.numberOfSeasons
                 let detail = try await service.getTVShowDetails(id: id)
+                guard !Task.isCancelled else { return }
                 seasonRatings = (detail.seasons ?? []).reduce(into: [:]) { ratings, season in
                     guard season.seasonNumber > 0, let rating = season.voteAverage,
                           rating.isFinite, rating > 0, rating <= 10 else { return }
                     ratings[season.seasonNumber] = rating
                 }
                 let providers = detail.watchProviders?.results?[service.currentRegion]
-                tvShow.update(from: await service.mapToTVShow(detail, providers: providers))
+                let mapped = await service.mapToTVShow(detail, providers: providers)
+                guard !Task.isCancelled else { return }
+                // A deferred delete may have committed while the fetch was in flight; writing to a
+                // deleted or detached row would fault.
+                guard isUsable(tvShow) else { return }
+                tvShow.update(from: mapped)
 
                 // Always re-derive, not just when the season count grew: an announced season
                 // becoming watchable changes availability without changing the count, and the
@@ -711,10 +362,10 @@ struct MediaDetailView: View {
                 onSeasonCountChanged?(listItem, previousSeasonCount)
 
                 let similar = (detail.similar?.results ?? []).map {
-                    SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)
+                    SimilarMediaItem(tmdbID: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)
                 }
                 let recommended = (detail.recommendations?.results ?? []).map {
-                    SimilarMediaItem(id: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)
+                    SimilarMediaItem(tmdbID: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)
                 }
                 moreLikeThisItems = Self.mergedMoreLikeThis(
                     recommended: recommended,
@@ -725,14 +376,18 @@ struct MediaDetailView: View {
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
             } else if let movie = listItem.movie {
                 let detail = try await service.getMovieDetails(id: id)
+                guard !Task.isCancelled else { return }
                 let providers = detail.watchProviders?.results?[service.currentRegion]
-                movie.update(from: await service.mapToMovie(detail, providers: providers))
+                let mapped = await service.mapToMovie(detail, providers: providers)
+                guard !Task.isCancelled else { return }
+                guard isUsable(movie) else { return }
+                movie.update(from: mapped)
 
                 let similar = (detail.similar?.results ?? []).map {
-                    SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
+                    SimilarMediaItem(tmdbID: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
                 }
                 let recommended = (detail.recommendations?.results ?? []).map {
-                    SimilarMediaItem(id: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
+                    SimilarMediaItem(tmdbID: $0.id, title: $0.title, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .movie)
                 }
                 moreLikeThisItems = Self.mergedMoreLikeThis(
                     recommended: recommended,
@@ -746,6 +401,7 @@ struct MediaDetailView: View {
                     tmdbCollectionName = collection.name
                     do {
                         let collectionDetail = try await service.getCollectionDetails(id: collection.id)
+                        guard !Task.isCancelled else { return }
                         collectionParts = collectionDetail.parts.sorted {
                             ($0.releaseDate ?? "") < ($1.releaseDate ?? "")
                         }
@@ -755,12 +411,19 @@ struct MediaDetailView: View {
                 }
             }
         } catch {
+            guard !Task.isCancelled else { return }
             if showLoading {
                 detailError = error.localizedDescription
             }
         }
 
         isLoadingDetails = false
+    }
+
+    /// A media row is safe to write to only while it's still attached and undeleted — the sheet
+    /// can outlive a deferred removal committing underneath it.
+    private func isUsable(_ object: NSManagedObject) -> Bool {
+        object.managedObjectContext != nil && !object.isDeleted
     }
 
     // MARK: - Similar / Collection Actions
@@ -772,8 +435,7 @@ struct MediaDetailView: View {
     }
 
     private func addedMessage(for title: String) -> String {
-        if let addTargetName { return "\(title) added to \(addTargetName)" }
-        return "\(title) has been added"
+        addedToastMessage(title, target: addTargetName)
     }
 
     /// The "More Like This" cards actually shown: the merged pool minus anything added this session,
@@ -781,14 +443,14 @@ struct MediaDetailView: View {
     /// than leaving a checked-off card sitting in the row.
     private var visibleMoreLikeThis: [SimilarMediaItem] {
         moreLikeThisItems
-            .filter { !addedSimilarIDs.contains(MediaIDKey.make($0.mediaType, $0.id)) }
+            .filter { !addedSimilarIDs.contains($0.transitionKey) }
             .prefix(12)
             .map { $0 }
     }
 
     private func addSimilarItem(_ item: SimilarMediaItem) {
-        let stringID = String(item.id)
-        let key = MediaIDKey.make(item.mediaType, stringID)
+        let stringID = String(item.tmdbID)
+        let key = item.transitionKey
         guard !existingIDs.contains(key), !addedSimilarIDs.contains(key), collapsingSimilarID != key else { return }
         toast.show(addedMessage(for: item.title))
         if reduceMotion {
@@ -810,7 +472,7 @@ struct MediaDetailView: View {
             if item.mediaType == .tvShow {
                 let tvShow: TVShow
                 do {
-                    let d = try await service.getTVShowDetails(id: item.id)
+                    let d = try await service.getTVShowDetails(id: item.tmdbID)
                     let p = d.watchProviders?.results?[service.currentRegion]
                     tvShow = await service.mapToTVShow(d, providers: p)
                 } catch {
@@ -820,7 +482,7 @@ struct MediaDetailView: View {
             } else {
                 let movie: Movie
                 do {
-                    let d = try await service.getMovieDetails(id: item.id)
+                    let d = try await service.getMovieDetails(id: item.tmdbID)
                     let p = d.watchProviders?.results?[service.currentRegion]
                     movie = await service.mapToMovie(d, providers: p)
                 } catch {
@@ -832,13 +494,13 @@ struct MediaDetailView: View {
     }
 
     private func openSimilarDetail(_ item: SimilarMediaItem) {
-        selectedSimilarSourceID = "similar:" + MediaIDKey.make(item.mediaType, item.id)
+        selectedSimilarSourceID = "similar:" + item.transitionKey
         let posterURL = service.imageURL(path: item.posterPath)
         if item.mediaType == .tvShow {
-            let tvShow = TVShow(id: String(item.id), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
+            let tvShow = TVShow(id: String(item.tmdbID), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
             selectedSimilarItem = ListItem(tvShow: tvShow)
         } else {
-            let movie = Movie(id: String(item.id), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
+            let movie = Movie(id: String(item.tmdbID), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
             selectedSimilarItem = ListItem(movie: movie)
         }
     }
@@ -887,580 +549,4 @@ struct MediaDetailView: View {
         }
     }
 
-}
-
-// MARK: - Collection Watched
-
-/// Watched state for a title opened from a collection. Collections are seasonal / thematic pools
-/// with their own watched state, so this toggle stays entirely inside the collection.
-private struct CollectionWatchedCard: View {
-    let collectionName: String?
-    @Binding var isWatched: Bool
-
-    /// Spoken form carries the collection name; the visible title stays short so it never wraps.
-    private var accessibilityTitle: String {
-        guard let collectionName, !collectionName.isEmpty else { return "Watched in this collection" }
-        return "Watched in \(collectionName)"
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
-                .font(.title2)
-                .foregroundStyle(isWatched ? .green : .secondary)
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: isWatched)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Watched")
-                    .font(.headline)
-                Text("In this collection only.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 0)
-
-            Toggle(accessibilityTitle, isOn: $isWatched)
-                .labelsHidden()
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
-        .sensoryFeedback(.selection, trigger: isWatched)
-    }
-}
-
-/// Icon over a one-line caption — keeps three glass buttons on one row at any label length.
-private struct StackedLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(spacing: 4) {
-            configuration.icon
-                .font(.body)
-            configuration.title
-                .font(.caption2)
-                .fontWeight(.medium)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-    }
-}
-
-// MARK: - Shared Detail Components
-
-/// Detail-sheet header. With a TMDB backdrop it renders full-bleed 16:9 artwork with the poster
-/// floating over its bottom-leading edge; without one it falls back to the poster as the header.
-struct HeaderImageView: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let backdropPath: String?
-    let posterURL: URL?
-    let title: String
-    /// Reports the artwork's dominant color upward whenever it's computed, so the presenting
-    /// sheet can wash the same tint over its own background. Nil until the first image loads.
-    var onTintChange: ((DominantTint?) -> Void)? = nil
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    /// Width of the view itself — only consulted at regular width, to scale the backdrop.
-    @State private var availableWidth: CGFloat = 0
-    /// Dominant color of whichever image is showing (backdrop, or poster in the fallback
-    /// header) — drives `bottomFade` here and is mirrored to `onTintChange`.
-    @State private var tint: DominantTint?
-
-    private let compactBackdropHeight: CGFloat = 260
-    /// Ceiling for the backdrop at regular width. Letting 16:9 run free in a 1000pt-wide page
-    /// sheet would hand back a 560pt hero and push everything else below the fold.
-    private let maxBackdropHeight: CGFloat = 420
-    private let posterWidth: CGFloat = 100
-    private let posterHeight: CGFloat = 150
-    /// How far the floating poster hangs below the backdrop.
-    private let posterOverhang: CGFloat = 60
-    private let posterHeaderHeight: CGFloat = 420
-
-    /// Fixed on iPhone; on wider layouts the artwork grows toward 16:9 but stops at the cap.
-    private var backdropHeight: CGFloat {
-        guard horizontalSizeClass == .regular, availableWidth > 0 else { return compactBackdropHeight }
-        return min(availableWidth * 9 / 16, maxBackdropHeight)
-    }
-
-    private var backdropURL: URL? {
-        TMDBService.shared.imageURL(path: backdropPath, size: .w780)
-    }
-
-    var body: some View {
-        Group {
-            if let backdropURL {
-                backdropHeader(url: backdropURL)
-            } else {
-                posterHeader
-            }
-        }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            availableWidth = width
-        }
-    }
-
-    // MARK: - Backdrop layout
-
-    private func backdropHeader(url: URL) -> some View {
-        ZStack(alignment: .topLeading) {
-            parallaxImage(url: url, height: backdropHeight)
-                .overlay(alignment: .bottom) { bottomFade(height: 170) }
-
-            VStack(alignment: .leading, spacing: 0) {
-                // Reserve the backdrop's height minus the overlap, so the poster row lands
-                // across the header's bottom edge without an offset hack.
-                Color.clear
-                    .frame(height: backdropHeight - posterOverhang)
-
-                HStack(alignment: .bottom, spacing: 14) {
-                    posterThumbnail
-
-                    Text(title)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .lineLimit(3)
-                        .padding(.bottom, 6)
-
-                    Spacer(minLength: 0)
-                }
-            }
-            .padding(.horizontal, 20)
-        }
-    }
-
-    // MARK: - Poster-only fallback
-
-    private var posterHeader: some View {
-        Group {
-            if let posterURL {
-                parallaxImage(url: posterURL, height: posterHeaderHeight)
-            } else {
-                imagePlaceholder
-                    .frame(height: posterHeaderHeight)
-            }
-        }
-        .overlay(alignment: .bottom) { bottomFade(height: 260) }
-        .overlay(alignment: .bottomLeading) {
-            Text(title)
-                .font(.title)
-                .fontWeight(.bold)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 4)
-        }
-    }
-
-    // MARK: - Pieces
-
-    @ViewBuilder
-    private func parallaxImage(url: URL, height: CGFloat) -> some View {
-        CachedAsyncImage(url: url, onLoad: applyTint) { phase in
-            switch phase {
-            case .empty:
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: height)
-            case .success(let image):
-                if reduceMotion {
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: height)
-                        .clipped()
-                } else {
-                    GeometryReader { geo in
-                        let minY = geo.frame(in: .scrollView).minY
-                        let overscroll = max(minY, 0)
-                        let scrollOffset = max(-minY, 0)
-
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(
-                                width: geo.size.width,
-                                height: height + overscroll,
-                                alignment: .top
-                            )
-                            .clipped()
-                            .offset(y: -scrollOffset * 0.3 - overscroll)
-                    }
-                    .frame(height: height)
-                }
-            case .failure:
-                imagePlaceholder
-                    .frame(height: height)
-            @unknown default:
-                EmptyView()
-            }
-        }
-    }
-
-    private var posterThumbnail: some View {
-        Group {
-            if let posterURL {
-                CachedAsyncImage(url: posterURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        imagePlaceholder
-                    }
-                }
-            } else {
-                imagePlaceholder
-            }
-        }
-        .frame(width: posterWidth, height: posterHeight)
-        .clipShape(.rect(cornerRadius: DesignTokens.Radius.poster))
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.18), radius: 10, y: 6)
-    }
-
-    private var imagePlaceholder: some View {
-        Rectangle()
-            .fill(.fill.tertiary)
-            .overlay {
-                Image(systemName: "film")
-                    .font(.title)
-                    .foregroundStyle(.tertiary)
-            }
-    }
-
-    /// Runs off the main actor (dominant-color extraction renders through a `CIContext`), then
-    /// applies the result to `tint` and reports it to the presenting sheet. Animated unless
-    /// Reduce Motion is on — the tint value itself is unaffected, only how it arrives.
-    private func applyTint(from image: UIImage) {
-        let animated = !reduceMotion
-        Task.detached(priority: .utility) {
-            let color = image.dominantTint()
-            await MainActor.run {
-                if animated {
-                    withAnimation(.easeInOut(duration: 0.6)) {
-                        tint = color
-                    }
-                } else {
-                    tint = color
-                }
-                onTintChange?(color)
-            }
-        }
-    }
-
-    /// Fades the artwork into the app background so the header has no hard edge. The middle
-    /// stops blend toward the artwork's dominant color when known; the final stop is always the
-    /// exact sheet background so the fade never shows a seam against it.
-    private func bottomFade(height: CGFloat) -> some View {
-        let base = DesignTokens.Colors.backgroundBase(for: colorScheme)
-        let mid = tint.map { base.mixed(with: $0.color(for: colorScheme), amount: colorScheme == .dark ? 0.75 : 0.6) } ?? base
-        return LinearGradient(
-            stops: [
-                .init(color: base.opacity(0), location: 0.0),
-                .init(color: mid.opacity(0.45), location: 0.4),
-                .init(color: mid.opacity(0.88), location: 0.75),
-                .init(color: base, location: 1.0),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(height: height)
-        .allowsHitTesting(false)
-    }
-}
-
-struct DescriptionSection: View {
-    let isLoading: Bool
-    let descriptionText: String?
-    let errorMessage: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if isLoading {
-                HStack {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Loading details...")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-            } else if let errorMessage {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                    Text(errorMessage)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-            } else if let descriptionText, !descriptionText.isEmpty {
-                ClampedDescriptionText(text: descriptionText)
-            } else {
-                Text("No description available.")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-/// A soft line limit: reveal the full passage if it needs only one extra line.
-/// Longer passages keep the original limit and offer expansion. Measurements share
-/// the rendered font and width, so the decision adapts to Dynamic Type and iPad layouts.
-struct ClampedDescriptionText: View {
-    let text: String
-    var lineLimit: Int = 4
-    var font: Font = .body
-    var color: Color = .secondary
-    /// Previews inside navigation buttons get the same soft limit without a nested button.
-    var allowsExpansion = true
-
-    @State private var isExpanded = false
-    @State private var fullHeight: CGFloat = 0
-    @State private var relaxedHeight: CGFloat = 0
-
-    private var needsExpansion: Bool {
-        fullHeight > relaxedHeight + 1 && relaxedHeight > 0
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            description
-
-            if needsExpansion && allowsExpansion {
-                Button(isExpanded ? "less" : "more") {
-                    isExpanded.toggle()
-                }
-                .buttonStyle(.plain)
-                .font(font)
-                .foregroundStyle(Color.accentColor)
-                .accessibilityLabel(isExpanded ? "Show less description" : "Show full description")
-            }
-        }
-        .onChange(of: text) { isExpanded = false }
-    }
-
-    private var description: some View {
-        Text(text)
-            .font(font)
-            .foregroundStyle(color)
-            .lineLimit(needsExpansion && !(isExpanded && allowsExpansion) ? lineLimit : nil)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(alignment: .topLeading) {
-                // Separate backgrounds prevent one measuring copy from widening the other.
-                Text(text)
-                    .font(font)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .hidden()
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
-                    .accessibilityHidden(true)
-            }
-            .background(alignment: .topLeading) {
-                Text(text)
-                    .font(font)
-                    .lineLimit(lineLimit + 1)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .hidden()
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { relaxedHeight = $0 }
-                    .accessibilityHidden(true)
-            }
-    }
-}
-
-struct GenreSection: View {
-    let genres: [String]
-
-    var body: some View {
-        if !genres.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(genres, id: \.self) { genre in
-                        Chip(text: genre)
-                    }
-                }
-                .padding(.horizontal, 1)
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-}
-
-struct CastSection: View {
-    let cast: [String]
-    let castImagePaths: [String]
-    let castCharacters: [String]
-
-    private let imageSize: CGFloat = 64
-    private let itemWidth: CGFloat = 80
-
-    var body: some View {
-        if cast.isEmpty {
-            EmptyView()
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Cast")
-                    .font(.headline)
-                ScrollView(.horizontal) {
-                    HStack(alignment: .top, spacing: 12) {
-                        ForEach(Array(cast.prefix(10).enumerated()), id: \.offset) { index, member in
-                            castItem(index: index, name: member)
-                        }
-                    }
-                    .padding(.horizontal, 1)
-                    .padding(.vertical, 2)
-                }
-                .scrollIndicators(.hidden)
-            }
-        }
-    }
-
-    private func castItem(index: Int, name: String) -> some View {
-        VStack(spacing: 6) {
-            castImage(index: index)
-                .frame(width: imageSize, height: imageSize)
-                .clipShape(Circle())
-
-            Text(name)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-
-            let character = index < castCharacters.count ? castCharacters[index] : ""
-            if !character.isEmpty {
-                Text(character)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .frame(width: itemWidth)
-    }
-
-    @ViewBuilder
-    private func castImage(index: Int) -> some View {
-        let path = index < castImagePaths.count ? castImagePaths[index] : ""
-        if let url = TMDBService.shared.imageURL(path: path.isEmpty ? nil : path, size: .w185) {
-            CachedAsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                default:
-                    castPlaceholder
-                }
-            }
-        } else {
-            castPlaceholder
-        }
-    }
-
-    private var castPlaceholder: some View {
-        Image(systemName: "person.fill")
-            .font(.title2)
-            .foregroundStyle(.tertiary)
-            .frame(width: imageSize, height: imageSize)
-            .background(.fill.tertiary, in: .circle)
-    }
-}
-
-// MARK: - Preview
-
-private enum MediaDetailViewPreviewData {
-    static let list = MediaList(name: "My Watchlist", createdAt: Date.now, context: nil)
-
-    static let netflix = Network(
-        id: 8,
-        name: "Netflix",
-        logoPath: "/pbpMk2JmcoNnQwx5JGpXngfoWtp.png",
-        originCountry: "US"
-    )
-
-    static let hboMax = Network(
-        id: 1899,
-        name: "HBO Max",
-        logoPath: "/6Q3ZYUNA9Hsgj6iWnVsw2gR5V77.png",
-        originCountry: "US"
-    )
-
-    static func movieItem() -> ListItem {
-        let movie = Movie(
-            id: "603692",
-            title: "John Wick: Chapter 4",
-            thumbnailURL: URL(
-                string: "https://image.tmdb.org/t/p/w500/vZloFAK7NmvMGKE7VkF5UHaz0I.jpg"),
-            backdropPath: "/h8gHn0OzBoaefsYseUByqsmEDMY.jpg",
-            networks: [netflix],
-            descriptionText:
-                "With the price on his head ever increasing, John Wick uncovers a path to defeating the High Table.",
-            cast: ["Keanu Reeves", "Donnie Yen", "Bill Skarsgard", "Ian McShane"],
-            providerCategories: [8: "stream"],
-            releaseDate: "2023-03-24",
-            runtime: 169
-        )
-
-        return ListItem(
-            movie: movie,
-            list: list,
-            addedAt: Date.now,
-            isWatched: true,
-            watchedAt: Date.now,
-            order: 0,
-            userRating: 1,
-            userNotes: "Incredible action sequences. Best one in the series."
-        )
-    }
-
-    static func tvShowItem() -> ListItem {
-        let show = TVShow(
-            id: "1399",
-            title: "Game of Thrones",
-            thumbnailURL: URL(
-                string: "https://image.tmdb.org/t/p/w500/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg"),
-            networks: [hboMax],
-            descriptionText:
-                "Nine noble families wage war against each other to gain control over the mythical land of Westeros.",
-            cast: ["Emilia Clarke", "Kit Harington", "Peter Dinklage", "Lena Headey"],
-            providerCategories: [1899: "stream"],
-            numberOfSeasons: 8,
-            numberOfEpisodes: 73
-        )
-
-        return ListItem(
-            tvShow: show,
-            list: list,
-            addedAt: Date.now,
-            isWatched: true,
-            watchedAt: Date.now,
-            order: 1,
-            userRating: 0,
-            userNotes: "Great first 4 seasons, fell off hard at the end."
-        )
-    }
-}
-
-private struct MediaDetailPreviewContainer: View {
-    let listItem: ListItem
-
-    var body: some View {
-        MediaDetailView(
-            listItem: listItem,
-            dismiss: {},
-            onRemove: {}
-        )
-    }
-}
-
-#Preview("Movie") {
-    MediaDetailPreviewContainer(listItem: MediaDetailViewPreviewData.movieItem())
-}
-
-#Preview("TV Show") {
-    MediaDetailPreviewContainer(listItem: MediaDetailViewPreviewData.tvShowItem())
 }

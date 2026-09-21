@@ -187,7 +187,7 @@ struct MetadataRow: View {
                 Chip(text: runtime)
             }
             if let nextEpisodeText {
-                Chip(icon: "calendar", iconColor: .blue, text: nextEpisodeText)
+                Chip(icon: "calendar", iconColor: Color.accentColor, text: nextEpisodeText)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(nextEpisodeAccessibilityText ?? nextEpisodeText)
             }
@@ -223,7 +223,9 @@ struct AddedByCaption: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .task(id: listItem.objectID) {
+        // `attribution(for:)` is a main-actor CloudKit record read, so it only runs for a real
+        // library row and at utility priority — the sheet's first render never waits on it.
+        .task(id: listItem.objectID, priority: .utility) {
             guard listItem.list != nil else { return }
             attribution = PersistenceController.shared.attribution(for: listItem)
         }

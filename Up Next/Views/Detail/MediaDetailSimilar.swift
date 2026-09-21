@@ -1,15 +1,20 @@
 import SwiftUI
 
 struct SimilarMediaItem: Identifiable {
-    let id: Int
+    /// TMDB's numeric id, valid only within its own media-type namespace.
+    let tmdbID: Int
     let title: String
     let posterPath: String?
     let voteAverage: Double?
     let mediaType: MediaType
 
     /// Type-namespaced key (`"tv:123"` / `"movie:456"`) — stable ForEach identity and animation key,
-    /// since TMDB gives movies and shows overlapping numeric ids that `id` alone can't tell apart.
-    var transitionKey: String { MediaIDKey.make(mediaType, id) }
+    /// since TMDB gives movies and shows overlapping numeric ids that the raw id can't tell apart.
+    var transitionKey: String { MediaIDKey.make(mediaType, tmdbID) }
+
+    /// `Identifiable` conformance has to carry the namespace too: a movie and a show sharing a
+    /// numeric id would otherwise collide in any collection holding both.
+    var id: String { transitionKey }
 }
 
 /// TMDB gives movies and TV shows separate ID namespaces, so any set holding both
@@ -54,7 +59,7 @@ extension MediaDetailView {
         var seenKeys: Set<String> = []
         var merged: [SimilarMediaItem] = []
         for item in recommended + similar {
-            let key = MediaIDKey.make(item.mediaType, item.id)
+            let key = item.transitionKey
             guard key != currentKey, !existingIDs.contains(key), !seenKeys.contains(key) else { continue }
             seenKeys.insert(key)
             merged.append(item)
@@ -105,7 +110,7 @@ struct PosterCard: View {
 
                 if let onAdd {
                     Button {
-                        if !isAdded { onAdd() }
+                        onAdd()
                     } label: {
                         // Drawn over artwork, so the white tint and shadow are intentional.
                         Image(systemName: isAdded ? "checkmark.circle.fill" : "plus.circle.fill")
@@ -117,6 +122,10 @@ struct PosterCard: View {
                             .checkmarkPop(isOn: isAdded)
                     }
                     .buttonStyle(.plain)
+                    // Disabled once added so VoiceOver doesn't offer a no-op action; the check is
+                    // status, not an affordance, so it keeps full opacity.
+                    .disabled(isAdded)
+                    .opacity(1)
                     .accessibilityLabel(isAdded ? "\(title) is already added" : "Add \(title)")
                 }
             }
@@ -284,6 +293,6 @@ struct SimilarSection: View {
     }
 
     private func isAdded(_ item: SimilarMediaItem) -> Bool {
-        existingIDs.contains(MediaIDKey.make(item.mediaType, item.id))
+        existingIDs.contains(item.transitionKey)
     }
 }

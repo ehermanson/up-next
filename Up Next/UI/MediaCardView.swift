@@ -31,7 +31,7 @@ struct MediaCardView: View {
         return AirDateFormat.nextLabel(from: nextAirDate)
     }
 
-    /// `networks` in a stable display order. `networks` itself comes from an unordered SwiftData
+    /// `networks` in a stable display order. `networks` itself comes from an unordered Core Data
     /// relationship, so every other derived property here reads from this instead of `networks`
     /// directly — otherwise the logos would reshuffle on every render.
     private var orderedNetworks: [Network] {
@@ -196,7 +196,7 @@ struct MediaCardView: View {
         }
         .foregroundStyle(.secondary)
         .padding(6)
-        .background(.fill.tertiary, in: .circle)
+        .cellSurface()
         .accessibilityLabel(watchedBadgeLabel)
     }
 }
@@ -205,17 +205,39 @@ private struct SeasonProgressBar: View {
     let watchedSeasons: [Int]
     let total: Int
 
+    /// Above this many seasons, individual 12pt segments would overflow a card's width — a single
+    /// capsule with a fill fraction reads the same information without spilling.
+    private static let maxSegments = 12
+
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(1...total, id: \.self) { season in
-                let isWatched = watchedSeasons.contains(season)
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(isWatched ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.fill.secondary))
-                    .frame(width: 12, height: 4)
+        Group {
+            if total <= Self.maxSegments {
+                HStack(spacing: 4) {
+                    ForEach(1...total, id: \.self) { season in
+                        let isWatched = watchedSeasons.contains(season)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(isWatched ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.fill.secondary))
+                            .frame(width: 12, height: 4)
+                    }
+                }
+            } else {
+                Capsule()
+                    .fill(.fill.secondary)
+                    .frame(height: 4)
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .scaleEffect(x: fillFraction, y: 1, anchor: .leading)
+                    }
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(watchedSeasons.count) of \(total) seasons watched")
+    }
+
+    private var fillFraction: CGFloat {
+        guard total > 0 else { return 0 }
+        return CGFloat(watchedSeasons.count) / CGFloat(total)
     }
 }
 

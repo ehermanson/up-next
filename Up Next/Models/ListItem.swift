@@ -205,7 +205,9 @@ final class ListItem: NSManagedObject, Identifiable {
         isWatched.toggle()
         watchedAt = isWatched ? Date.now : nil
         if let tvShow, let total = tvShow.numberOfSeasons, total > 0 {
-            watchedSeasons = isWatched ? Array(1...total) : []
+            // Only seasons that have actually aired get checked — an announced season isn't
+            // something the user can be behind on, and a check on a "Premieres …" row is a lie.
+            watchedSeasons = isWatched ? Array(1...max(1, tvShow.availableSeasonCount)) : []
         }
     }
 

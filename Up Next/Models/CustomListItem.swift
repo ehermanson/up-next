@@ -26,6 +26,16 @@ final class CustomListItem: NSManagedObject, Identifiable {
         movie ?? tvShow
     }
 
+    /// Type-namespaced key (`"tv:123"` / `"movie:456"`, see `MediaIDKey`) for this entry's media,
+    /// or nil if both `movie` and `tvShow` are nil. Callers used to derive this inline from
+    /// `item.tvShow != nil ? .tvShow : .movie` + `media.id`; centralizing it here means the
+    /// derivation only has one place to get right.
+    var mediaKey: String? {
+        if let movie { return MediaIDKey.make(.movie, movie.id) }
+        if let tvShow { return MediaIDKey.make(.tvShow, tvShow.id) }
+        return nil
+    }
+
     convenience init(
         movie: Movie? = nil,
         tvShow: TVShow? = nil,

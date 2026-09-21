@@ -80,7 +80,12 @@ struct ShimmerRows: View {
     var body: some View {
         ForEach(0..<count, id: \.self) { index in
             ShimmerRow(fadeOpacity: Self.fadeOpacity(for: index, count: count))
-                .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+                .listRowInsets(EdgeInsets(
+                    top: 5,
+                    leading: DesignTokens.Spacing.screenInset,
+                    bottom: 5,
+                    trailing: DesignTokens.Spacing.screenInset
+                ))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
         }
@@ -157,8 +162,11 @@ struct SearchResultRowWithImage: View {
     /// (e.g. this row is only ever a plain "add" affordance).
     var transitionSource: (id: String, namespace: Namespace.ID)?
 
-    @State private var imageURL: URL?
     private let service = TMDBService.shared
+
+    private var imageURL: URL? {
+        service.imageURL(path: posterPath)
+    }
 
     var body: some View {
         SearchResultRow(
@@ -172,12 +180,6 @@ struct SearchResultRowWithImage: View {
             year: year,
             transitionSource: transitionSource
         )
-        .task {
-            if let path = posterPath {
-                let url = service.imageURL(path: path)
-                imageURL = url
-            }
-        }
     }
 }
 
@@ -218,7 +220,12 @@ struct SearchResultRow: View {
             }
         }
         .padding(10)
-        .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+        .listRowInsets(EdgeInsets(
+            top: 5,
+            leading: DesignTokens.Spacing.screenInset,
+            bottom: 5,
+            trailing: DesignTokens.Spacing.screenInset
+        ))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .cardSurface()

@@ -140,7 +140,7 @@ struct SeasonComparisonChart: View {
     }
 
     private var chartTitle: some View {
-        Text("Season ratings")
+        Text("Season Ratings")
             .font(.subheadline.weight(.semibold))
             .accessibilityLabel("TMDB season ratings out of 10")
     }
@@ -155,7 +155,7 @@ struct SeasonComparisonChart: View {
                 }
                 .stroke(.secondary, style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [1, 3]))
                 .frame(width: 18, height: 8)
-                Text("Season avg \(seasonAverage.formatted(.number.precision(.fractionLength(1))))")
+                Text("Season Avg \(seasonAverage.formatted(.number.precision(.fractionLength(1))))")
                     .monospacedDigit()
             }
             .font(.caption)
@@ -198,12 +198,12 @@ struct SeasonRatingsSnapshot: View {
             VStack(alignment: .leading, spacing: 10) {
                 ViewThatFits(in: .horizontal) {
                     HStack {
-                        Text("Episode ratings").font(.subheadline.weight(.semibold))
+                        Text("Episode Ratings").font(.subheadline.weight(.semibold))
                         Spacer(minLength: 12)
                         averageLabel(average)
                     }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Episode ratings").font(.subheadline.weight(.semibold))
+                        Text("Episode Ratings").font(.subheadline.weight(.semibold))
                         averageLabel(average)
                     }
                 }
@@ -248,7 +248,7 @@ struct SeasonRatingsSnapshot: View {
             Image(systemName: "star.fill").foregroundStyle(.yellow)
             Text(average, format: .number.precision(.fractionLength(1)))
                 .monospacedDigit()
-            Text("episode avg").foregroundStyle(.secondary)
+            Text("Episode Avg").foregroundStyle(.secondary)
         }
         .font(.caption)
         .fixedSize()

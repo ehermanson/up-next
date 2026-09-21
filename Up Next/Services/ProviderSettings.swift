@@ -1,6 +1,15 @@
 import Foundation
 import SwiftUI
 
+/// `@AppStorage` key constants for the watchlist tabs' device-local view preferences. Kept next to
+/// `ProviderSettings`' own keys so every persisted-preference string in the app lives in one file.
+enum StorageKey {
+    static let tvOnlyMyServices = "tvShows.onlyMyServices"
+    static let movieOnlyMyServices = "movies.onlyMyServices"
+    static let tvWatchedExpanded = "tvShows.watchedExpanded"
+    static let movieWatchedExpanded = "movies.watchedExpanded"
+}
+
 @MainActor @Observable
 final class ProviderSettings {
     static let shared = ProviderSettings()

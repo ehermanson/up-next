@@ -26,6 +26,10 @@ nonisolated struct DominantTint: Equatable, Sendable {
 }
 
 extension UIImage {
+    /// `CIContext` is expensive to build and documented as thread-safe, so every extraction shares
+    /// one instead of spinning up a render context per poster.
+    private nonisolated static let dominantTintContext = CIContext(options: [.workingColorSpace: NSNull()])
+
     /// Dominant color of the image for use as a per-title accent tint (see `HeaderImageView`).
     /// `CIAreaAverage` over the image extent is the cheap, standard approach to a "dominant"
     /// color — good enough for a background wash, not a palette.
@@ -49,8 +53,7 @@ extension UIImage {
         else { return nil }
 
         var bitmap = [UInt8](repeating: 0, count: 4)
-        let context = CIContext(options: [.workingColorSpace: NSNull()])
-        context.render(
+        Self.dominantTintContext.render(
             outputImage,
             toBitmap: &bitmap,
             rowBytes: 4,

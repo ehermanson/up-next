@@ -16,6 +16,12 @@ struct SectionHeader: View {
     @Binding var selectedProviderCategory: String?
     @Binding var onlyMyServices: Bool
     var showsMyServicesFilter: Bool = false
+    /// Non-nil turns the whole header into a disclosure control — a full-width button that toggles
+    /// this binding, with a trailing chevron that rotates to reflect state (the watchlist's
+    /// "Watched" header). `nil` (the default) renders a plain, non-interactive header.
+    var isExpanded: Binding<Bool>? = nil
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(
         title: String,
@@ -27,7 +33,8 @@ struct SectionHeader: View {
         availableProviderCategories: [String] = [],
         selectedProviderCategory: Binding<String?> = .constant(nil),
         onlyMyServices: Binding<Bool> = .constant(false),
-        showsMyServicesFilter: Bool = false
+        showsMyServicesFilter: Bool = false,
+        isExpanded: Binding<Bool>? = nil
     ) {
         self.title = title
         self.count = count
@@ -39,6 +46,7 @@ struct SectionHeader: View {
         self._selectedProviderCategory = selectedProviderCategory
         self._onlyMyServices = onlyMyServices
         self.showsMyServicesFilter = showsMyServicesFilter
+        self.isExpanded = isExpanded
     }
 
     private var hasActiveFilter: Bool {
@@ -50,7 +58,46 @@ struct SectionHeader: View {
         showsMyServicesFilter || !availableGenres.isEmpty || !availableProviderCategories.isEmpty
     }
 
+    private var disclosureAnimation: Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.35)
+    }
+
     var body: some View {
+        Group {
+            if let isExpanded {
+                Button {
+                    withAnimation(disclosureAnimation) {
+                        isExpanded.wrappedValue.toggle()
+                    }
+                } label: {
+                    headerRow(chevronExpanded: isExpanded.wrappedValue)
+                }
+                .buttonStyle(.plain)
+                .frame(minHeight: 44)
+                .contentShape(.rect)
+                .animation(disclosureAnimation, value: isExpanded.wrappedValue)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(count.map { "\(title), \($0) titles" } ?? title)
+                .accessibilityValue(isExpanded.wrappedValue ? "Expanded" : "Collapsed")
+                .accessibilityHint(isExpanded.wrappedValue ? "Hide \(title.lowercased()) titles" : "Show \(title.lowercased()) titles")
+            } else {
+                headerRow(chevronExpanded: nil)
+            }
+        }
+        .padding(.vertical, 4)
+        .textCase(nil)
+        .listRowInsets(EdgeInsets(
+            top: 8,
+            leading: DesignTokens.Spacing.screenInset,
+            bottom: 4,
+            trailing: DesignTokens.Spacing.screenInset
+        ))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+    }
+
+    @ViewBuilder
+    private func headerRow(chevronExpanded: Bool?) -> some View {
         HStack(spacing: 8) {
             if let icon {
                 Image(systemName: icon)
@@ -69,6 +116,13 @@ struct SectionHeader: View {
             Spacer()
             if showsFilter, hasFilterOptions {
                 Menu {
+                    if hasActiveFilter {
+                        Button("Clear Filters", systemImage: "xmark.circle") {
+                            onlyMyServices = false
+                            selectedProviderCategory = nil
+                            selectedGenre = nil
+                        }
+                    }
                     if showsMyServicesFilter {
                         Section {
                             Button {
@@ -145,12 +199,25 @@ struct SectionHeader: View {
                 // would resolve to "secondary purple"; pin the tint so it reads like every other chip.
                 .tint(.primary)
                 .accessibilityLabel("Filter")
+                .accessibilityValue(activeFilterDescription)
+            }
+            if let chevronExpanded {
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .rotationEffect(.degrees(chevronExpanded ? 90 : 0))
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
-        .textCase(nil)
-        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
+        .foregroundStyle(.primary)
+    }
+
+    /// Read by VoiceOver as the filter button's `accessibilityValue` — "None" when nothing's
+    /// active, else the applied filters in the same order the Menu lists its sections.
+    private var activeFilterDescription: String {
+        var parts: [String] = []
+        if onlyMyServices { parts.append("On my services") }
+        if let selectedProviderCategory { parts.append(selectedProviderCategory) }
+        if let selectedGenre { parts.append(selectedGenre) }
+        return parts.isEmpty ? "None" : parts.joined(separator: ", ")
     }
 }

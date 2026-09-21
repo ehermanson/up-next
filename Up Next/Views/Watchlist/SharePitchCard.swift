@@ -38,7 +38,7 @@ struct SharePitchCard: View {
                     Image(systemName: "xmark")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 44, height: 44)
                         .contentShape(.rect)
                 }
                 .accessibilityLabel("Dismiss")

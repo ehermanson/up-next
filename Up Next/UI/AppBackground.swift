@@ -4,6 +4,11 @@ struct AppBackground: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Only the active tab's root background should drift — the four tab roots pass `true`; every
+    /// sheet and pushed screen keeps the default `false` (a static mesh) so more than one instance
+    /// isn't animating on screen at once.
+    var drifts: Bool = false
+
     /// Toggled once on appear under a slow, autoreversing forever-animation. `MeshGradient`
     /// interpolates its control points, so nudging the interior points between two positions makes
     /// the whole background breathe quietly behind the glass. Reduce Motion pins it to the resting
@@ -14,12 +19,11 @@ struct AppBackground: View {
     private var points: [SIMD2<Float>] {
         let d: Float = (reduceMotion || !drift) ? 0 : 1
         // Corners stay pinned to the edges (moving them would open gaps); the edge-mid and centre
-        // points swing on differing offsets so the whole field visibly churns. These amplitudes
-        // are intentionally strong so the motion is obvious — dial them back once the feel is right.
+        // points swing on differing offsets so the whole field visibly churns.
         return [
-            [0.0, 0.0], [0.5 + 0.10 * d, 0.0], [1.0, 0.0],
-            [0.0, 0.5 - 0.12 * d], [0.5 + 0.14 * d, 0.5 + 0.12 * d], [1.0, 0.5 + 0.14 * d],
-            [0.0, 1.0], [0.5 - 0.12 * d, 1.0], [1.0, 1.0],
+            [0.0, 0.0], [0.5 + 0.06 * d, 0.0], [1.0, 0.0],
+            [0.0, 0.5 - 0.07 * d], [0.5 + 0.08 * d, 0.5 + 0.07 * d], [1.0, 0.5 + 0.08 * d],
+            [0.0, 1.0], [0.5 - 0.07 * d, 1.0], [1.0, 1.0],
         ]
     }
 
@@ -59,7 +63,7 @@ struct AppBackground: View {
         )
         .ignoresSafeArea()
         .onAppear {
-            guard !reduceMotion else { return }
+            guard drifts, !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                 drift = true
             }

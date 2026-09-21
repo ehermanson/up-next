@@ -5,12 +5,32 @@ struct CreateListView: View {
     var existingList: CustomList?
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name: String = ""
-    @State private var iconName: String = "list.bullet"
+    @State private var name: String
+    @State private var iconName: String
+    @FocusState private var isNameFocused: Bool
 
     private var isEditing: Bool { existingList != nil }
     private let cardRadius: CGFloat = 24
     @ScaledMetric private var iconSize: CGFloat = 40
+
+    init(viewModel: CustomListViewModel, existingList: CustomList? = nil) {
+        self.viewModel = viewModel
+        self.existingList = existingList
+        // Seeded here (not `onAppear`) so the fields never flash empty before filling in on edit.
+        _name = State(initialValue: existingList?.name ?? "")
+        _iconName = State(initialValue: existingList?.iconName ?? "list.bullet")
+    }
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// A soft nudge, not a block — collections are allowed to share a name (e.g. two "Favorites").
+    private var duplicateNameHint: String? {
+        guard !trimmedName.isEmpty else { return nil }
+        let hasDuplicate = viewModel.customLists.contains {
+            $0 !== existingList && $0.name.localizedCaseInsensitiveCompare(trimmedName) == .orderedSame
+        }
+        return hasDuplicate ? "You already have a collection named \u{201C}\(trimmedName)\u{201D}." : nil
+    }
 
     var body: some View {
         NavigationStack {
@@ -21,7 +41,7 @@ struct CreateListView: View {
                             .font(.system(size: iconSize))
                             .foregroundStyle(Color.accentColor)
                             .frame(width: 80, height: 80)
-                            .background(.fill.tertiary, in: .circle)
+                            .cellSurface(cornerRadius: 40)
 
                         TextField("Collection Name", text: $name)
                             .font(.title3)
@@ -29,7 +49,17 @@ struct CreateListView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
-                            .background(.fill.quaternary, in: .rect(cornerRadius: DesignTokens.Radius.control))
+                            .cellSurface(cornerRadius: DesignTokens.Radius.control)
+                            .focused($isNameFocused)
+                            .submitLabel(.done)
+                            .onSubmit(commit)
+
+                        if let duplicateNameHint {
+                            Text(duplicateNameHint)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .multilineTextAlignment(.center)
+                        }
 
                         Text("Titles in a collection stay out of Up Next, and watching them here doesn't change your Movies or TV Shows tabs.")
                             .font(.caption)
@@ -45,11 +75,7 @@ struct CreateListView: View {
                             .font(.headline)
                             .padding(.horizontal, 4)
 
-                        ScrollView {
-                            SFSymbolPickerGrid(selectedSymbol: $iconName)
-                                .padding(.bottom, 8)
-                        }
-                        .frame(maxHeight: 400)
+                        SFSymbolPickerGrid(selectedSymbol: $iconName)
                     }
                     .padding(20)
                     .cardSurface(cornerRadius: cardRadius)
@@ -65,25 +91,21 @@ struct CreateListView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isEditing ? "Save" : "Create") {
-                        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        if let existing = existingList {
-                            viewModel.updateList(existing, name: trimmed, iconName: iconName)
-                        } else {
-                            viewModel.createList(name: trimmed, iconName: iconName)
-                        }
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Button(isEditing ? "Save" : "Create", action: commit)
+                        .disabled(trimmedName.isEmpty)
                 }
             }
-            .onAppear {
-                if let existing = existingList {
-                    name = existing.name
-                    iconName = existing.iconName
-                }
-            }
+            .onAppear { isNameFocused = true }
         }
+    }
+
+    private func commit() {
+        guard !trimmedName.isEmpty else { return }
+        if let existing = existingList {
+            viewModel.updateList(existing, name: trimmedName, iconName: iconName)
+        } else {
+            viewModel.createList(name: trimmedName, iconName: iconName)
+        }
+        dismiss()
     }
 }

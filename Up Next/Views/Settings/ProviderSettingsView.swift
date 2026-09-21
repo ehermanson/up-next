@@ -18,8 +18,6 @@ struct ProviderSettingsView: View {
         GridItem(.adaptive(minimum: 80, maximum: 100), spacing: 16)
     ]
 
-    @ScaledMetric private var errorIconSize: CGFloat = 36
-
     var body: some View {
         if isRoot {
             NavigationStack {
@@ -46,6 +44,13 @@ struct ProviderSettingsView: View {
                     errorView(message: error)
                 } else {
                     providerGrid
+                }
+
+                if isRoot {
+                    Text("You can change this anytime in Settings.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
                 }
             }
             .padding(.horizontal, 20)
@@ -77,7 +82,7 @@ struct ProviderSettingsView: View {
     private var loadingView: some View {
         VStack(spacing: 16) {
             ProgressView()
-            Text("Loading providers...")
+            Text("Loading providers…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -88,24 +93,16 @@ struct ProviderSettingsView: View {
     // MARK: - Error
 
     private func errorView(message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: errorIconSize))
-                .foregroundStyle(.orange)
-
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
+        EmptyStateView(
+            icon: "wifi.exclamationmark",
+            title: "Couldn't load streaming services",
+            subtitle: message
+        ) {
             Button("Try Again") {
-                Task {
-                    await loadProviders()
-                }
+                Task { await loadProviders() }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glassProminent)
         }
-        .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
     }
 
@@ -150,6 +147,9 @@ struct RegionPickerView: View {
     let regions: [TMDBWatchProviderRegion]
     let isLoading: Bool
     @Binding var selection: String?
+    /// Re-runs the fetch that populated `regions`. Optional so existing call sites (owned
+    /// elsewhere) keep compiling until they're updated to wire this up.
+    var onRetry: (() async -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
@@ -169,8 +169,15 @@ struct RegionPickerView: View {
                     }
                     .listRowBackground(Color.clear)
                 } else if regions.isEmpty {
-                    EmptyStateView(icon: "wifi.exclamationmark", title: "Couldn't load regions")
-                        .listRowBackground(Color.clear)
+                    EmptyStateView(icon: "wifi.exclamationmark", title: "Couldn't load regions") {
+                        if let onRetry {
+                            Button("Try Again") {
+                                Task { await onRetry() }
+                            }
+                            .buttonStyle(.glassProminent)
+                        }
+                    }
+                    .listRowBackground(Color.clear)
                 } else {
                     ForEach(filteredRegions) { region in
                         regionRow(region)
@@ -291,7 +298,7 @@ private struct ProviderGridCell: View {
                     .foregroundStyle(isSelected ? .primary : .secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .frame(height: 32)
+                    .frame(minHeight: 32)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)

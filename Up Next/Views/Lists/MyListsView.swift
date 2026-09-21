@@ -32,7 +32,7 @@ struct MyListsView: View {
                         }
                         .buttonStyle(.glassProminent)
                     }
-                    .background(AppBackground())
+                    .background(AppBackground(drifts: true))
                 } else {
                     List {
                         ForEach(viewModel.customLists, id: \.id) { list in
@@ -40,7 +40,12 @@ struct MyListsView: View {
                                 viewModel.activeListID = list.id
                                 navigationPath.append(list.id)
                             }
-                            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                            .listRowInsets(EdgeInsets(
+                                top: 6,
+                                leading: DesignTokens.Spacing.screenInset,
+                                bottom: 6,
+                                trailing: DesignTokens.Spacing.screenInset
+                            ))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .cardSurface()
@@ -61,12 +66,11 @@ struct MyListsView: View {
                     }
                     .scrollContentBackground(.hidden)
                     .listStyle(.plain)
-                    .padding(.horizontal, 12)
                     // One row card stretched across an iPad reads as a banner; cap the column and
                     // center it, letting the background still fill the window.
                     .frame(maxWidth: horizontalSizeClass == .regular ? 720 : .infinity)
                     .frame(maxWidth: .infinity)
-                    .background(AppBackground())
+                    .background(AppBackground(drifts: true))
                 }
             }
             .navigationTitle("Collections")
@@ -93,6 +97,11 @@ struct MyListsView: View {
                                 viewModel.activeListID = nil
                             }
                         }
+                } else {
+                    // The partner deleted this collection (or stopped sharing) while it was on
+                    // screen or in the nav stack — the id no longer resolves to anything.
+                    EmptyStateView(icon: "tray", title: "This Collection Was Removed")
+                        .background(AppBackground())
                 }
             }
             .sheet(isPresented: $showingCreateList) {
@@ -153,6 +162,10 @@ private struct MyListsRow: View {
         viewModel.visibleItems(in: list).sorted { $0.addedAt < $1.addedAt }.prefix(4).map { $0 }
     }
 
+    /// `visibleItems(in:)`, not `list.items?.count`, so a pending swipe-delete (Undo window)
+    /// disappears from the count immediately instead of lagging behind the mosaic/detail view.
+    private var itemCount: Int { viewModel.visibleItems(in: list).count }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
@@ -169,7 +182,7 @@ private struct MyListsRow: View {
                             .font(.body)
                             .fontWeight(.medium)
                     }
-                    Text("\(list.items?.count ?? 0) title\((list.items?.count ?? 0) == 1 ? "" : "s")")
+                    Text("\(itemCount) title\(itemCount == 1 ? "" : "s")")
                         .font(.caption)
                         .fontDesign(.rounded)
                         .foregroundStyle(.secondary)
