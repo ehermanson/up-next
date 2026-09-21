@@ -174,8 +174,17 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Appearance", systemImage: "circle.lefthalf.filled")
-                .font(.subheadline.weight(.semibold))
+            // Same glyph treatment as the pushable rows above, so the card reads as a peer.
+            HStack(spacing: 12) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 24)
+                Text("Appearance")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+            }
             Picker("Appearance", selection: $appearance) {
                 ForEach(AppAppearance.allCases) { option in
                     Text(option.title).tag(option)
