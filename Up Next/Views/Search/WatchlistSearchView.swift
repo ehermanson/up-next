@@ -427,8 +427,21 @@ struct WatchlistSearchView: View {
         return "Recommended For You"
     }
 
+    /// The heading is a plain row, not a `Section` header: `.plain` list headers pin under the
+    /// nav bar and this one has no background, so scrolled rows showed through it.
+    @ViewBuilder
     private var recommendationsSection: some View {
-        Section {
+        Label(recommendationHeaderText, systemImage: "sparkles")
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 2, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .id("recommendationsHeader")
+
+        Group {
             if effectiveMediaType == .tvShow {
                 ForEach(tvRecommendations) { result in
                     SearchResultRowWithImage(
@@ -462,12 +475,6 @@ struct WatchlistSearchView: View {
                     )
                 }
             }
-        } header: {
-            Label(recommendationHeaderText, systemImage: "sparkles")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-                .textCase(nil)
         }
     }
 
