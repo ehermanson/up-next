@@ -1,25 +1,35 @@
+import OSLog
 import SwiftUI
 
 @main
 struct Watch_ListApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-    private func loadRocketSimConnect() {
+    /// Non-nil when the Core Data stack couldn't be opened. There is nothing the app can usefully
+    /// do in that state — and nothing it should do automatically, since deleting or recreating a
+    /// store would throw away local edits that haven't synced — so it says so and stops.
+    private let bootstrapError: Error?
+
+    // `static` because `init` calls it before `bootstrapError` is assigned, and an instance method
+    // can't run on a partly-initialized value.
+    private static func loadRocketSimConnect() {
         #if DEBUG
         guard (Bundle(path: "/Applications/RocketSim.app/Contents/Frameworks/RocketSimConnectLinker.nocache.framework")?.load() == true) else {
-            print("Failed to load linker framework")
+            AppLog.app.debug("RocketSim Connect linker framework not loaded")
             return
         }
-        print("RocketSim Connect successfully linked")
+        AppLog.app.debug("RocketSim Connect successfully linked")
         #endif
     }
 
     init() {
-        loadRocketSimConnect()
+        Self.loadRocketSimConnect()
         do {
             try PersistenceController.shared.bootstrap()
+            bootstrapError = nil
         } catch {
-            print("⚠️ Watch_ListApp: PersistenceController bootstrap failed: \(error)")
+            AppLog.persistence.error("bootstrap failed: \(error)")
+            bootstrapError = error
         }
     }
 
@@ -29,12 +39,27 @@ struct Watch_ListApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(toastState)
-                .environment(\.managedObjectContext, PersistenceController.shared.viewContext)
-                .preferredColorScheme(appearance.colorScheme)
-                // Default font design app-wide; .fontDesign(.rounded) is opted into
-                // per-component for chips, badges, counts and small metadata captions.
+            Group {
+                if bootstrapError == nil {
+                    ContentView()
+                        .environment(toastState)
+                        .environment(\.managedObjectContext, PersistenceController.shared.viewContext)
+                } else {
+                    storeFailurePlaceholder
+                }
+            }
+            .preferredColorScheme(appearance.colorScheme)
+            // Default font design app-wide; .fontDesign(.rounded) is opted into
+            // per-component for chips, badges, counts and small metadata captions.
         }
+    }
+
+    private var storeFailurePlaceholder: some View {
+        EmptyStateView(
+            icon: "externaldrive.badge.exclamationmark",
+            title: "Couldn't Open Your Library",
+            subtitle: "Restart the app. If this keeps happening, reinstall Up Next — your data is safe in iCloud."
+        )
+        .background(AppBackground())
     }
 }

@@ -34,9 +34,10 @@ enum SearchRanking {
             matchScore(title: normalized(signals.title), query: query),
             signals.alternateTitle.map { matchScore(title: normalized($0), query: query) } ?? 0
         )
-        // Popularity is capped so a single viral title can't outrank an exact match by volume
-        // alone; vote count is a slower-moving "people have actually seen this" signal.
-        let popularity = 0.6 * log1p(min(signals.popularity ?? 0, 1000))
+        // Popularity is capped below the exact-match tier (4.0) so a single viral title can never
+        // outrank a cold exact match by volume alone: 0.6·log1p(400) ≈ 3.6. Vote count is a
+        // slower-moving "people have actually seen this" signal.
+        let popularity = 0.6 * log1p(min(signals.popularity ?? 0, 400))
         let votes = 0.2 * log1p(Double(signals.voteCount ?? 0))
         return titleMatch + popularity + votes
     }

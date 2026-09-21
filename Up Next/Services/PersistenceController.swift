@@ -1,6 +1,7 @@
 import CloudKit
 import CoreData
 import Foundation
+import OSLog
 
 /// Owns the single `NSPersistentCloudKitContainer` for the shared-library store (see
 /// `docs/v2-shared-library-plan.md`). Two stores live under one container: `private.sqlite`
@@ -39,8 +40,19 @@ final class PersistenceController {
     private var initialImportWaiter: Task<Void, Never>?
     private var importEventToken: NSObjectProtocol?
 
+    // Implicitly unwrapped rather than plain optionals so `activeStore` (read from every insert
+    // and from `MediaItem.swift`'s canonical-row lookups) stays non-optional. The guarantee that
+    // makes that safe: `bootstrap()` throws `PersistenceError.storeUnavailable` before touching
+    // either store when `storeLoadError` is set, and `Watch_ListApp` then renders a failure screen
+    // instead of `ContentView`, so nothing that dereferences a store is ever constructed.
     private(set) var privateStore: NSPersistentStore!
     private(set) var sharedStore: NSPersistentStore!
+
+    /// Non-nil when a persistent store could not be opened (a failed migration, a corrupt file, a
+    /// full disk). The stack is unusable in that state, but nothing here deletes or recreates a
+    /// store: the user's data is still in iCloud and a reinstall recovers it.
+    private(set) var storeLoadError: Error?
+
     private(set) var role: Role = .owner
     private(set) var group: WatchListGroup!
     // `fileprivate(set)` rather than `private(set)` so `RemoteChangeObserver` (a separate type
@@ -139,7 +151,7 @@ final class PersistenceController {
 
         container.persistentStoreDescriptions = [privateDescription, sharedDescription]
 
-        Self.loadStores(container: container, screenshotMode: screenshotMode)
+        let loadError = Self.loadStores(container: container)
 
         self.container = container
         self.isCloudKitEnabled = cloudKitEnabled
@@ -147,6 +159,9 @@ final class PersistenceController {
         let coordinator = container.persistentStoreCoordinator
         self.privateStore = coordinator.persistentStore(for: privateDescription.url!)
         self.sharedStore = coordinator.persistentStore(for: sharedDescription.url!)
+        if privateStore == nil || sharedStore == nil {
+            self.storeLoadError = loadError ?? PersistenceError.storeUnavailable(nil)
+        }
 
         let viewContext = container.viewContext
         viewContext.automaticallyMergesChangesFromParent = true
@@ -157,46 +172,56 @@ final class PersistenceController {
 
     /// Loads both persistent stores synchronously. If a CloudKit-backed load fails, retries once
     /// per description with CloudKit options removed (local-only fallback) — mirrors the spirit
-    /// of the previous `Watch_ListApp` SwiftData fallback.
-    private static func loadStores(container: NSPersistentCloudKitContainer, screenshotMode: Bool) {
+    /// of the previous `Watch_ListApp` SwiftData fallback. Returns the last error still standing
+    /// after the fallback, so `init` can record it instead of leaving a store silently missing.
+    private static func loadStores(container: NSPersistentCloudKitContainer) -> Error? {
         // `loadPersistentStores` invokes its completion once per description in
         // `persistentStoreDescriptions` — potentially concurrently, on background queues — so
         // mutations to `pendingRetries` are serialized with a lock rather than called in a loop
         // (which would instead reload every description N times).
         let lock = NSLock()
         var pendingRetries: [NSPersistentStoreDescription] = []
+        // Keyed by store URL so a description that loads on the local-only retry drops its entry
+        // and only genuinely unusable stores are reported back.
+        var failures: [URL: Error] = [:]
         let group = DispatchGroup()
 
         for _ in container.persistentStoreDescriptions {
             group.enter()
         }
         container.loadPersistentStores { loadedDescription, error in
-            if let error {
-                print("⚠️ PersistenceController: failed to load store at \(loadedDescription.url?.path ?? "?"): \(error)")
+            if let error, let url = loadedDescription.url {
+                AppLog.persistence.error("failed to load store at \(url.lastPathComponent, privacy: .public): \(error)")
+                lock.lock()
+                failures[url] = error
                 if loadedDescription.cloudKitContainerOptions != nil {
-                    lock.lock()
                     pendingRetries.append(loadedDescription)
-                    lock.unlock()
                 }
+                lock.unlock()
             }
             group.leave()
         }
         group.wait()
 
-        guard !pendingRetries.isEmpty else { return }
-
         for description in pendingRetries {
-            print("⚠️ PersistenceController: retrying \(description.url?.path ?? "?") as local-only (CloudKit disabled)")
+            guard let url = description.url else { continue }
+            AppLog.persistence.notice("retrying \(url.lastPathComponent, privacy: .public) as local-only (CloudKit disabled)")
             description.cloudKitContainerOptions = nil
             group.enter()
             container.persistentStoreCoordinator.addPersistentStore(with: description) { _, error in
+                lock.lock()
                 if let error {
-                    print("⚠️ PersistenceController: local-only fallback also failed for \(description.url?.path ?? "?"): \(error)")
+                    AppLog.persistence.error("local-only fallback also failed for \(url.lastPathComponent, privacy: .public): \(error)")
+                    failures[url] = error
+                } else {
+                    failures[url] = nil
                 }
+                lock.unlock()
                 group.leave()
             }
             group.wait()
         }
+        return failures.values.first
     }
 
     private static func applicationSupportDirectory() -> URL {
@@ -221,7 +246,17 @@ final class PersistenceController {
     /// untouched on purpose: it's a few MB, this stack never opens it, and leaving it means putting
     /// a 1.x build back on the device restores that data instantly and offline.
     func bootstrap() throws {
+        // Nothing below this line may run with a missing store: `applyRoleRule` fetches with
+        // `affectedStores` and `activeStore` force-unwraps. Throwing here is what makes the
+        // implicitly-unwrapped `privateStore`/`sharedStore` safe everywhere else.
+        if privateStore == nil || sharedStore == nil {
+            throw PersistenceError.storeUnavailable(storeLoadError)
+        }
+
         try applyRoleRule()
+        sweepOrphanedDetailWrappers()
+        refreshLiveShare()
+        Task { await refreshAccountStatus() }
 
         if remoteChangeObserver == nil {
             remoteChangeObserver = RemoteChangeObserver(persistence: self)
@@ -229,11 +264,38 @@ final class PersistenceController {
         }
     }
 
+    /// Deletes `ListItem`s that were left behind by a detail sheet. Discover and collection detail
+    /// sheets wrap a media row in a transient `ListItem` with `list == nil` and delete it on
+    /// disappear; a background save followed by a kill persists (and syncs) that wrapper instead.
+    /// Safe to run here because live wrappers are only created from a view's `.task`, which is
+    /// always after bootstrap.
+    private func sweepOrphanedDetailWrappers() {
+        let request = NSFetchRequest<ListItem>(entityName: "ListItem")
+        request.predicate = NSPredicate(format: "list == nil AND (movie != nil OR tvShow != nil)")
+        request.affectedStores = [activeStore]
+        guard let orphans = try? viewContext.fetch(request), !orphans.isEmpty else { return }
+        for orphan in orphans {
+            viewContext.delete(orphan)
+        }
+        AppLog.persistence.notice("swept \(orphans.count) orphaned detail-sheet list items")
+        save()
+    }
+
     private func applyRoleRule() throws {
         if let existing = try reconciledRoot(in: sharedStore) {
+            if isJoiningSharedLibrary {
+                // The shared zone's first import just landed. `RemoteActivityNotifier` stays quiet
+                // for a moment afterwards: the rest of that bulk import is the library arriving,
+                // not the partner making changes.
+                joinCompletedAt = .now
+            }
             role = .participant
             group = existing
             isJoiningSharedLibrary = false
+            // A join that was interrupted between `acceptShareInvitations` and the private purge
+            // leaves rows in the inactive store; a `ListItem` related to one of those would fail
+            // the next save with a cross-store reference.
+            purgeLeftoverPrivateData()
             settleInitialImport()
             // Sharing is live on this device (including participants who joined before the
             // app could notify, or whose library arrived via account sync) — worth a ping.
@@ -264,6 +326,26 @@ final class PersistenceController {
             return
         }
         try seedOwnerRoot()
+    }
+
+    /// Participant only: drops anything still sitting in the private store. A join purges it, but
+    /// `acceptShareInvitations` and the purge aren't atomic — a crash or a kill in between leaves
+    /// the old library behind, unreachable from any group yet still matched by the canonical-row
+    /// lookups in `MediaItem.swift`.
+    private func purgeLeftoverPrivateData() {
+        let leftovers = ["WatchListGroup", "ListItem", "CustomList"].contains { name in
+            let request = NSFetchRequest<NSFetchRequestResult>(entityName: name)
+            request.affectedStores = [privateStore]
+            return ((try? viewContext.count(for: request)) ?? 0) > 0
+        }
+        guard leftovers else { return }
+        AppLog.persistence.notice("purging leftover private-store data after an interrupted join")
+        do {
+            try purgeAllObjects(in: privateStore)
+            save()
+        } catch {
+            AppLog.persistence.error("failed to purge leftover private-store data: \(error)")
+        }
     }
 
     /// Seeds a fresh group + default lists into the private store.
@@ -368,7 +450,11 @@ final class PersistenceController {
                     as? NSPersistentCloudKitContainer.Event,
                   event.type == .import, event.endDate != nil
             else { return }
-            Task { @MainActor in self?.finishInitialImportWait() }
+            // Strengthened here rather than inside the `Task`: a weakly captured `self` is a
+            // mutable binding, and referencing one from a concurrently-executing closure is an
+            // error under the Swift 6 language mode. This type is `@MainActor`, so `Sendable`.
+            guard let self else { return }
+            Task { @MainActor in self.finishInitialImportWait() }
         }
 
         initialImportWaiter = Task { @MainActor [weak self] in
@@ -383,6 +469,7 @@ final class PersistenceController {
         initialImportSettled = true
         cancelInitialImportWait()
         try? applyRoleRule()
+        refreshLiveShare()
         remoteChangeCount += 1
     }
 
@@ -397,20 +484,32 @@ final class PersistenceController {
         viewContext.assign(object, to: activeStore)
     }
 
+    /// The last failed `save()`, for `ContentView` to toast once. Cleared by
+    /// `clearLastSaveError()` as soon as it has been shown.
+    private(set) var lastSaveError: Error?
+
     func save() {
         guard viewContext.hasChanges else { return }
         do {
             try viewContext.save()
         } catch {
-            print("⚠️ PersistenceController: save failed: \(error)")
+            // Rolling back matters more than the message: a rejected change left in the context
+            // fails every subsequent save too, so one bad edit would silently stop all persistence.
+            AppLog.persistence.error("save failed: \(error)")
+            viewContext.rollback()
+            lastSaveError = error
         }
+    }
+
+    func clearLastSaveError() {
+        lastSaveError = nil
     }
 
     func fetch<T: NSManagedObject>(_ request: NSFetchRequest<T>) -> [T] {
         do {
             return try viewContext.fetch(request)
         } catch {
-            print("⚠️ PersistenceController: fetch failed: \(error)")
+            AppLog.persistence.error("fetch failed: \(error)")
             return []
         }
     }
@@ -423,11 +522,44 @@ final class PersistenceController {
         CKContainer(identifier: containerIdentifier)
     }
 
-    /// The single share on `group`, if one exists.
+    /// The single share on `group`, if one exists. A synchronous store round-trip — never call it
+    /// from a view `body`; read `liveShare` instead.
     func existingShare() -> CKShare? {
         guard let group else { return nil }
         guard let shares = try? container.fetchShares(matching: [group.objectID]) else { return nil }
         return shares[group.objectID]
+    }
+
+    /// Observable mirror of `existingShare()`. Refreshed on bootstrap, after every remote-change
+    /// batch, after join/leave, and on demand via `refreshLiveShare()` (call that when a system
+    /// sharing sheet closes, since those are presented outside SwiftUI). Views and toolbar
+    /// buttons read this instead of fetching shares in `body`.
+    private(set) var liveShare: CKShare?
+
+    func refreshLiveShare() {
+        liveShare = existingShare()
+    }
+
+    /// True once sharing is actually live on this device: a participant, or an owner whose share
+    /// has at least one non-owner participant. A `CKShare` nobody has been invited to (the share
+    /// sheet was cancelled after the share was created) counts as *not* shared.
+    var isSharingLive: Bool {
+        if role == .participant { return true }
+        return liveShare?.participants.contains { $0.role != .owner } ?? false
+    }
+
+    /// Whether the iCloud account can back CloudKit (`CKAccountStatus.available`). `nil` until the
+    /// first check completes; `false` when CloudKit is disabled for this run (`--no-cloudkit`,
+    /// screenshot mode) or the user is signed out / restricted.
+    private(set) var isCloudAccountAvailable: Bool?
+
+    func refreshAccountStatus() async {
+        guard isCloudKitEnabled else {
+            isCloudAccountAvailable = false
+            return
+        }
+        let status = try? await Self.ckContainer.accountStatus()
+        isCloudAccountAvailable = status == .available
     }
 
     /// Creates (and returns) the single `CKShare` rooted at `group`.
@@ -440,8 +572,39 @@ final class PersistenceController {
     }
 
     /// A share link that was opened but not yet accepted. Joining replaces this device's own
-    /// library, so `ContentView` asks first and then calls `acceptPendingShareInvitation()`.
+    /// library, so `ContentView` asks first and then calls `switchShare(to:)` with the metadata it
+    /// captured synchronously — see the alert's comment for why it can't read this property later.
     private(set) var pendingShareInvitation: CKShare.Metadata?
+
+    /// Non-nil when `pendingShareInvitation` belongs to a *different* share than the one this
+    /// device is already in: the owner's name, for the "this replaces the library you're in"
+    /// wording. Nil for the ordinary case (an owner joining their first shared library).
+    private(set) var pendingInvitationCurrentOwnerName: String?
+
+    /// A share link tapped by an owner who is already sharing their own library with someone.
+    /// Accepting would purge the private store — which holds the share root — and CloudKit would
+    /// delete the zone out from under the partner, so the invitation is refused rather than parked.
+    private(set) var blockedShareInvitation: CKShare.Metadata?
+
+    /// The name to put in the "Stop Sharing First" alert; nil when CloudKit withheld it.
+    var blockedShareInvitationOwnerName: String? {
+        blockedShareInvitation?.ownerIdentity.displayName
+    }
+
+    /// Set to "the owner stopped sharing and this device fell back to a fresh, empty library of its
+    /// own" so `ContentView` can say so instead of the library silently emptying. Nil otherwise.
+    var sharingEndedByOwnerName: String?
+
+    /// True while `leaveShare()` is tearing the shared zone down. The purge arrives as a remote
+    /// change, and the role rule flipping to owner in the middle of it is indistinguishable from
+    /// the owner having revoked the share — without this the user gets told their partner stopped
+    /// sharing immediately after they chose to leave.
+    private var isLeavingShare = false
+
+    /// When the shared library's first import landed. `RemoteActivityNotifier` suppresses
+    /// announcements for a minute afterwards — the bulk import is the library arriving, and the
+    /// `isJoiningSharedLibrary` flag clears on the very first transaction of it.
+    private(set) var joinCompletedAt: Date?
 
     /// The partner's latest changes, phrased for people ("Sarah added Elf to Movies"), set by
     /// `RemoteActivityNotifier` when they land while the app is on screen so `ContentView` can
@@ -450,17 +613,15 @@ final class PersistenceController {
 
     /// The other person's name for notifications and toasts: the owner's name for a participant,
     /// the first non-owner participant's for an owner. iOS may withhold names from apps without
-    /// the extended share-access entitlement, hence the fallback.
+    /// the extended share-access entitlement, hence the fallback (`CloudKitNames.swift` owns the
+    /// formatting).
     func partnerDisplayName() -> String {
         let fallback = "Your partner"
         guard let share = existingShare() else { return fallback }
-        let identity: CKUserIdentity? = role == .participant
-            ? share.owner.userIdentity
-            : share.participants.first { $0.role != .owner }?.userIdentity
-        guard let components = identity?.nameComponents else { return fallback }
-        let name = PersonNameComponentsFormatter().string(from: components)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? fallback : name
+        let name = role == .participant
+            ? share.ownerDisplayName
+            : share.partnerParticipant?.displayName
+        return name ?? fallback
     }
 
     /// "Added by" attribution for the detail sheet, sourced entirely from the CloudKit record
@@ -480,40 +641,64 @@ final class PersistenceController {
             return ("you", record.creationDate)
         }
 
-        let identity = share?.participants
+        let name = share?.participants
             .first { $0.userIdentity.userRecordID?.recordName == creator.recordName }?
-            .userIdentity
-        let name = identity?.nameComponents
-            .map { PersonNameComponentsFormatter().string(from: $0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .flatMap { $0.isEmpty ? nil : $0 }
+            .displayName
         return (name ?? "your partner", record.creationDate)
     }
 
-    /// Entry point for share links (both the running-app and cold-launch paths). Owners are asked
-    /// before their library is replaced; a device that's already a participant has nothing to
-    /// lose (re-tapping the same link), so it accepts straight away.
+    /// Entry point for share links (both the running-app and cold-launch paths). Three outcomes:
+    /// an owner who is already sharing is told to stop sharing first (accepting would purge the
+    /// private store, and with it the share root, emptying the partner's library); a participant
+    /// re-tapping the link for the share they're already in accepts silently, having nothing to
+    /// lose; everything else is parked for `ContentView` to confirm.
     func receiveShareInvitation(_ metadata: CKShare.Metadata) {
-        guard role == .owner else {
+        if role == .owner {
+            guard !isSharingLive else {
+                blockedShareInvitation = metadata
+                return
+            }
+            pendingShareInvitation = metadata
+            return
+        }
+
+        // Participant, or mid-join. The same link again (or a join whose share isn't readable
+        // yet) is a no-op worth accepting straight away; a *different* owner's link replaces the
+        // shared library this device is in, which needs the same confirmation an owner gets.
+        let currentShare = liveShare ?? existingShare()
+        guard let currentShareID = currentShare?.recordID, currentShareID != metadata.share.recordID else {
             Task { @MainActor in
                 do {
                     try await acceptShare(metadata: metadata)
                 } catch {
-                    print("⚠️ PersistenceController: failed to accept CloudKit share: \(error)")
+                    AppLog.sharing.error("failed to accept CloudKit share: \(error)")
                 }
             }
             return
         }
-        pendingShareInvitation = metadata
-    }
 
-    func acceptPendingShareInvitation() async throws {
-        guard let metadata = pendingShareInvitation else { return }
-        pendingShareInvitation = nil
-        try await acceptShare(metadata: metadata)
+        pendingInvitationCurrentOwnerName = currentShare?.ownerDisplayName ?? "your partner"
+        pendingShareInvitation = metadata
     }
 
     func declinePendingShareInvitation() {
         pendingShareInvitation = nil
+        pendingInvitationCurrentOwnerName = nil
+    }
+
+    func clearBlockedShareInvitation() {
+        blockedShareInvitation = nil
+    }
+
+    /// The single "Join" path. Leaves the shared library this device is currently in first —
+    /// accepting a second share would land two zones in `sharedStore`, and `reconciledRoot` would
+    /// then try to merge across zones this device doesn't own.
+    func switchShare(to metadata: CKShare.Metadata) async throws {
+        declinePendingShareInvitation()
+        if role == .participant {
+            try await leaveShare()
+        }
+        try await acceptShare(metadata: metadata)
     }
 
     /// What this device's own library holds — shown in the join confirmation so the user knows
@@ -534,7 +719,14 @@ final class PersistenceController {
     /// role to participant. The shared zone is imported asynchronously afterwards, so `group`
     /// stays nil (and `isJoiningSharedLibrary` true) until `RemoteChangeObserver` sees it land.
     func acceptShare(metadata: CKShare.Metadata) async throws {
+        guard privateStore != nil, sharedStore != nil else {
+            throw PersistenceError.storeUnavailable(storeLoadError)
+        }
         try await container.acceptShareInvitations(from: [metadata], into: sharedStore)
+        // Flipped (and `group` dropped by the role rule) *before* `remoteChangeCount` is bumped,
+        // so the view models see "joining, no group" in the same pass and cancel their in-flight
+        // work rather than reloading against a store that's being purged underneath them.
+        joinCompletedAt = nil
         isJoiningSharedLibrary = true
 
         // The device is joining someone else's library — anything it had in its own private
@@ -543,6 +735,7 @@ final class PersistenceController {
         save()
 
         try applyRoleRule()
+        refreshLiveShare()
         remoteChangeCount += 1
         // Sharing is live from here on — the partner's edits are worth a ping.
         RemoteActivityNotifier.requestPermissionIfNeeded()
@@ -563,7 +756,23 @@ final class PersistenceController {
             needsRerun = count != 1
         }
         guard needsRerun else { return }
-        try? applyRoleRule()
+
+        // The owner stopping sharing deletes the whole graph out of a participant's shared store,
+        // so the rule below quietly reseeds this device as a fresh owner. Capture who it was
+        // first — once the share is gone there's nothing left to read the name from.
+        let wasParticipant = role == .participant
+        let ownerName = liveShare?.ownerDisplayName
+
+        do {
+            try applyRoleRule()
+        } catch {
+            AppLog.persistence.error("role rule failed after a remote change: \(error)")
+            return
+        }
+
+        if wasParticipant, role == .owner, !isJoiningSharedLibrary, !isLeavingShare {
+            sharingEndedByOwnerName = ownerName ?? "Your partner"
+        }
     }
 
     /// Participant only: leaves the share by purging its zone from the shared store, then
@@ -574,6 +783,8 @@ final class PersistenceController {
     /// is still local and start over.
     func leaveShare() async throws {
         guard role == .participant else { throw PersistenceError.notParticipant }
+        isLeavingShare = true
+        defer { isLeavingShare = false }
         if let zoneID = existingShare()?.recordID.zoneID {
             try await container.purgeObjectsAndRecordsInZone(with: zoneID, in: sharedStore)
         } else {
@@ -599,10 +810,24 @@ final class PersistenceController {
         }
     }
 
-    enum PersistenceError: Error {
+    enum PersistenceError: LocalizedError {
         case noGroup
         case noShare
         case notParticipant
+        case storeUnavailable(Error?)
+
+        var errorDescription: String? {
+            switch self {
+            case .noGroup:
+                "Your library hasn't finished loading yet. Try again in a moment."
+            case .noShare:
+                "This library isn't shared."
+            case .notParticipant:
+                "Only someone who joined a shared library can leave it."
+            case .storeUnavailable:
+                "Up Next couldn't open your library on this device."
+            }
+        }
     }
 }
 
@@ -617,6 +842,9 @@ private final class RemoteChangeObserver {
     private unowned let persistence: PersistenceController
     private var notificationTokens: [NSObjectProtocol] = []
     private var debounceTask: Task<Void, Never>?
+    /// Stores whose history has already been pruned this launch — once is plenty, and the delete
+    /// is a full table scan of the transaction log.
+    private var prunedStores: Set<String> = []
 
     init(persistence: PersistenceController) {
         self.persistence = persistence
@@ -631,8 +859,11 @@ private final class RemoteChangeObserver {
             object: persistence.container.persistentStoreCoordinator,
             queue: nil
         ) { [weak self] _ in
+            // See the matching note in `awaitInitialImportThenRetry`: the weak binding can't be
+            // referenced from inside the `Task` under the Swift 6 language mode.
+            guard let self else { return }
             Task { @MainActor in
-                self?.handleRemoteChange()
+                self.handleRemoteChange()
             }
         }
         notificationTokens.append(token)
@@ -652,7 +883,7 @@ private final class RemoteChangeObserver {
             do {
                 foreignTransactions += try processHistory(for: store)
             } catch {
-                print("⚠️ PersistenceController: failed to process history for \(store): \(error)")
+                AppLog.sync.error("failed to process history for \(store.identifier, privacy: .public): \(error)")
             }
         }
 
@@ -661,6 +892,7 @@ private final class RemoteChangeObserver {
         // (a join in progress suppresses the bulk import), then let the role rule catch up.
         RemoteActivityNotifier.announce(foreignTransactions, persistence: persistence)
         persistence.refreshRoleAfterRemoteChange()
+        persistence.refreshLiveShare()
         scheduleRemoteChangeBump()
     }
 
@@ -716,8 +948,27 @@ private final class RemoteChangeObserver {
         // fetch doesn't re-scan transactions we've already accounted for.
         if let latestToken = allTransactions.last?.token {
             storeToken(latestToken, for: store)
+            pruneHistory(for: store)
         }
 
         return foreignTransactions
+    }
+
+    /// Drops transaction history this device has long since merged. Core Data never prunes it on
+    /// its own, so without this the log grows for the life of the install. The window is generous
+    /// because `NSPersistentCloudKitContainer` finds *its* exports through the same history and
+    /// exposes no token to check against: a device that sat offline for a couple of weeks must
+    /// still be able to push what it changed. Never fatal — a failed prune just means the log
+    /// stays large.
+    private func pruneHistory(for store: NSPersistentStore) {
+        guard prunedStores.insert(store.identifier).inserted else { return }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
+        let request = NSPersistentHistoryChangeRequest.deleteHistory(before: cutoff)
+        request.affectedStores = [store]
+        do {
+            try persistence.viewContext.execute(request)
+        } catch {
+            AppLog.sync.error("failed to prune history for \(store.identifier, privacy: .public): \(error)")
+        }
     }
 }

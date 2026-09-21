@@ -1,4 +1,5 @@
 import CloudKit
+import os
 import SwiftUI
 import UIKit
 
@@ -9,12 +10,18 @@ struct CloudSharingView: UIViewControllerRepresentable {
     let share: CKShare
     let container: CKContainer
     /// Called after the sheet is dismissed (save or stop-sharing) so the caller can re-read
-    /// `PersistenceController.existingShare()` and refresh its UI.
+    /// `PersistenceController.liveShare` and refresh its UI.
     var onChange: () -> Void = {}
+    /// Called when the system controller fails to save the share (e.g. a network error while
+    /// updating permissions) so the caller can surface it instead of the failure going silent.
+    var onError: (Error) -> Void = { _ in }
 
     func makeUIViewController(context: Context) -> UICloudSharingController {
         let controller = UICloudSharingController(share: share, container: container)
-        controller.availablePermissions = [.allowReadWrite, .allowPrivate]
+        // Matches the options the share was created with (`allowedParticipantAccessOptions: .any`
+        // in `LibraryShareItem`) — otherwise the manage sheet offers a narrower set than the
+        // original invite did.
+        controller.availablePermissions = [.allowReadWrite, .allowPrivate, .allowPublic]
         controller.delegate = context.coordinator
         return controller
     }
@@ -22,14 +29,16 @@ struct CloudSharingView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UICloudSharingController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onChange: onChange)
+        Coordinator(onChange: onChange, onError: onError)
     }
 
     final class Coordinator: NSObject, UICloudSharingControllerDelegate {
         let onChange: () -> Void
+        let onError: (Error) -> Void
 
-        init(onChange: @escaping () -> Void) {
+        init(onChange: @escaping () -> Void, onError: @escaping (Error) -> Void) {
             self.onChange = onChange
+            self.onError = onError
         }
 
         func itemTitle(for csc: UICloudSharingController) -> String? {
@@ -41,7 +50,8 @@ struct CloudSharingView: UIViewControllerRepresentable {
         }
 
         func cloudSharingController(_ csc: UICloudSharingController, failedToSaveShareWithError error: Error) {
-            print("⚠️ CloudSharingView: failed to save share: \(error)")
+            AppLog.sharing.error("failed to save share: \(error)")
+            onError(error)
         }
 
         func cloudSharingControllerDidSaveShare(_ csc: UICloudSharingController) {

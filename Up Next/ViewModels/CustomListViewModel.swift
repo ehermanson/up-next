@@ -28,26 +28,42 @@ final class CustomListViewModel {
     private var pendingRemoval: PendingRemoval?
     private var pendingRemovalCommit: Task<Void, Never>?
 
-    func configure(persistence: PersistenceController = .shared) {
+    // `PersistenceController.shared` is main-actor isolated, so it can't be a default argument on a
+    // nonisolated declaration — resolved inside instead, leaving `configure()` call sites unchanged.
+    func configure(persistence: PersistenceController? = nil) {
         guard self.persistence == nil else { return }
-        self.persistence = persistence
+        self.persistence = persistence ?? .shared
         loadLists()
     }
 
     /// Re-fetches `customLists` from the store — called by `ContentView` when
-    /// `PersistenceController.remoteChangeCount` changes (a remote peer's edit landed).
+    /// `PersistenceController.remoteChangeCount` changes (a remote peer's edit landed), and when a
+    /// share is joined or left, which purges a whole store out from under these objects.
     func reloadFromStore() {
+        guard let persistence else { return }
+        guard persistence.group != nil else {
+            // Joining or leaving a share: every collection this view model held was purged, so the
+            // deferred removal has nothing left to commit either.
+            pendingRemovalCommit?.cancel()
+            pendingRemovalCommit = nil
+            pendingRemoval = nil
+            customLists = []
+            changeToken += 1
+            return
+        }
         loadLists()
         changeToken += 1
     }
 
     func createList(name: String, iconName: String) {
-        guard let persistence else { return }
+        // No root while a join is still importing: a list created now would be an orphan in the
+        // active store, unreachable from the share and invisible to the partner. `ContentView`
+        // shows the joining placeholder instead of the tabs in that state, so this is only a guard.
+        guard let persistence, persistence.group != nil else { return }
         // `group:` is passed into the init (rather than assigned after a context-less init) so the
         // list joins the group's context/store up front — relating a context-less object to a
         // stored one raises a Core Data exception. `persistence.insert` is a harmless no-op when
-        // that succeeded, and the fallback that actually attaches the list if `group` was nil
-        // (joining state).
+        // that succeeded.
         let list = CustomList(name: name, iconName: iconName, group: persistence.group)
         persistence.insert(list)
         persistence.save()
@@ -60,7 +76,17 @@ final class CustomListViewModel {
         // A deferred removal from this list can't outlive it.
         commitPendingRemoval()
         customLists.removeAll { $0 === list }
-        persistence.viewContext.delete(list)
+        let context = persistence.viewContext
+        // The cascade takes the `CustomListItem`s, but not the `Movie` / `TVShow` (and `Network`)
+        // rows they were the last referrer of — those would leak, and keep their CloudKit records.
+        for item in list.items ?? [] {
+            let movie = item.movie
+            let tvShow = item.tvShow
+            let itemID = item.objectID
+            context.delete(item)
+            deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: context)
+        }
+        context.delete(list)
         persistence.save()
         changeToken += 1
     }
@@ -129,6 +155,14 @@ final class CustomListViewModel {
         pendingRemovalCommit = nil
         guard let pending = pendingRemoval else { return }
         pendingRemoval = nil
+        // A remote merge (or a store purge) can delete either side inside the undo window; there's
+        // nothing to restore then, but the rows still have to re-derive.
+        guard pending.item.managedObjectContext != nil, !pending.item.isDeleted,
+              pending.list.managedObjectContext != nil, !pending.list.isDeleted
+        else {
+            changeToken += 1
+            return
+        }
         // Defensive re-attach — the relationship is never actually broken during the pending
         // window (only `visibleItems(in:)` hides it), but this keeps undo correct even if
         // something else (a remote merge) touched it in the meantime.
@@ -144,6 +178,12 @@ final class CustomListViewModel {
         guard let pending = pendingRemoval else { return }
         pendingRemoval = nil
         guard let persistence else { return }
+        // Already gone (a remote merge deleted it, or its store was purged) — deleting it again
+        // would fault on a dead object.
+        guard pending.item.managedObjectContext != nil, !pending.item.isDeleted else {
+            changeToken += 1
+            return
+        }
         let context = persistence.viewContext
         let movie = pending.item.movie
         let tvShow = pending.item.tvShow

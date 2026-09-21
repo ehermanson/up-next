@@ -21,6 +21,9 @@ struct ContentView: View {
     /// before the library loads, not a tour of every settings row.
     @State private var showingOnboarding = false
     @State private var showingSearch = false
+    /// One-time offer to bring a 1.x library over (`LegacyImporter.isOfferPending`).
+    @State private var showingLegacyImport = false
+    @State private var joinErrorMessage: String?
 
     #if DEBUG
     /// Set once seeding finishes when launched with `--open <tmdbID>` (screenshot mode). Presented
@@ -55,10 +58,14 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showingSettings) {
-            SettingsView()
+            SettingsView(library: viewModel, lists: customListViewModel)
         }
-        .sheet(isPresented: $showingOnboarding) {
+        // Only one sheet can be up at a time, so the import offer waits for onboarding to close.
+        .sheet(isPresented: $showingOnboarding, onDismiss: { presentLegacyImportIfNeeded() }) {
             ProviderSettingsView()
+        }
+        .sheet(isPresented: $showingLegacyImport) {
+            LegacyImportView(library: viewModel, lists: customListViewModel)
         }
         .task {
             #if DEBUG
@@ -76,6 +83,7 @@ struct ContentView: View {
             }
             await viewModel.configure()
             customListViewModel.configure()
+            presentLegacyImportIfNeeded()
             #if DEBUG
             if ScreenshotMode.isEnabled {
                 await ScreenshotMode.seed(library: viewModel, lists: customListViewModel)
@@ -109,6 +117,18 @@ struct ContentView: View {
         .onChange(of: persistence.pendingShareInvitation == nil) { _, decided in
             if decided { presentOnboardingIfNeeded() }
         }
+        // Joining or leaving swaps the whole store out from under the view models: the library is
+        // gone for the duration and `group` is nil, so they have to drop what they're holding.
+        .onChange(of: persistence.isJoiningSharedLibrary) {
+            viewModel.reloadFromStore()
+            customListViewModel.reloadFromStore()
+        }
+        // A rejected save is silent otherwise, and the user's edit is rolled back underneath them.
+        .onChange(of: persistence.lastSaveError != nil) { _, failed in
+            guard failed else { return }
+            toast.show("Couldn't save your changes", icon: "exclamationmark.triangle.fill")
+            persistence.clearLastSaveError()
+        }
         // The partner's edits landing while the app is on screen: toast rather than banner.
         .onChange(of: persistence.recentRemoteActivity) { _, lines in
             guard let first = lines.first else { return }
@@ -119,18 +139,26 @@ struct ContentView: View {
             persistence.recentRemoteActivity = []
         }
         // A tapped share link waits here: joining replaces this device's own library, so say so
-        // before doing it. Dismissing any other way (swipe, Cancel) declines.
+        // before doing it.
+        //
+        // Ordering trap, do not reintroduce: SwiftUI writes `false` into `isPresented` as soon as
+        // *any* button is tapped, before that button's action runs. A setter that declined on
+        // `false` therefore cleared `pendingShareInvitation` out from under the Join action, which
+        // then had nothing to accept. The setter is a no-op and each button clears the invitation
+        // itself — Join after capturing the metadata synchronously.
         .alert(
             joinInvitationTitle,
             isPresented: Binding(
                 get: { persistence.pendingShareInvitation != nil },
-                set: { if !$0 { persistence.declinePendingShareInvitation() } }
+                set: { _ in }
             )
         ) {
             Button("Join", role: .destructive) {
+                guard let metadata = persistence.pendingShareInvitation else { return }
+                persistence.declinePendingShareInvitation()
                 Task {
                     do {
-                        try await persistence.acceptPendingShareInvitation()
+                        try await persistence.switchShare(to: metadata)
                     } catch {
                         joinErrorMessage = error.localizedDescription
                     }
@@ -141,6 +169,35 @@ struct ContentView: View {
             }
         } message: {
             Text(joinInvitationMessage)
+        }
+        // An owner who is already sharing can't join: accepting purges the private store, which
+        // holds the share root, and CloudKit would delete the zone out from under their partner.
+        .alert(
+            "Stop Sharing First",
+            isPresented: Binding(
+                get: { persistence.blockedShareInvitation != nil },
+                set: { _ in }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                persistence.clearBlockedShareInvitation()
+            }
+        } message: {
+            Text(blockedInvitationMessage)
+        }
+        // The owner stopped sharing: the participant's library is gone and they're an owner again.
+        .alert(
+            "\(persistence.sharingEndedByOwnerName ?? "Your partner") Stopped Sharing",
+            isPresented: Binding(
+                get: { persistence.sharingEndedByOwnerName != nil },
+                set: { _ in }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                persistence.sharingEndedByOwnerName = nil
+            }
+        } message: {
+            Text("You now have an empty library of your own. Anything you add from here on is just yours.")
         }
         .alert(
             "Couldn't Join Shared Library",
@@ -155,6 +212,20 @@ struct ContentView: View {
         }
     }
 
+    /// A library from Up Next 1.x is still on disk: offer to bring it over, once. Gated on the
+    /// watchlists having loaded — until they do, `addTVShow` queues rows and there'd be no
+    /// `ListItem` to copy the old watched state onto — and on nothing else owning the sheet slot
+    /// (the provider onboarding sheet re-checks this when it closes).
+    private func presentLegacyImportIfNeeded() {
+        guard !showingOnboarding, !showingSettings, !showingSearch,
+              !persistence.isJoiningSharedLibrary,
+              persistence.pendingShareInvitation == nil,
+              viewModel.isLoaded,
+              LegacyImporter.isOfferPending
+        else { return }
+        showingLegacyImport = true
+    }
+
     private func presentOnboardingIfNeeded() {
         guard !settings.hasSelectedProviders && !settings.hasCompletedProviderOnboarding else { return }
         showingOnboarding = true
@@ -163,13 +234,8 @@ struct ContentView: View {
 
     // MARK: - Join confirmation
 
-    @State private var joinErrorMessage: String?
-
     private var invitationOwnerName: String? {
-        guard let components = persistence.pendingShareInvitation?.ownerIdentity.nameComponents else { return nil }
-        let name = PersonNameComponentsFormatter().string(from: components)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? nil : name
+        persistence.pendingShareInvitation?.ownerIdentity.displayName
     }
 
     private var joinInvitationTitle: String {
@@ -180,8 +246,14 @@ struct ContentView: View {
     }
 
     private var joinInvitationMessage: String {
-        let counts = persistence.ownedLibraryCounts()
         let shared = "You'll both see and edit the same watchlist and collections."
+        // Already in someone else's library: nothing of this device's own is at stake, but the
+        // library they're in right now is.
+        if let currentOwner = persistence.pendingInvitationCurrentOwnerName {
+            return "You're currently in \(currentOwner)'s shared library. Joining replaces it on this device. You can rejoin later from the original link."
+        }
+
+        let counts = persistence.ownedLibraryCounts()
         guard counts.titles > 0 || counts.collections > 0 else { return shared }
         var parts: [String] = []
         if counts.titles > 0 {
@@ -191,6 +263,12 @@ struct ContentView: View {
             parts.append("\(counts.collections) \(counts.collections == 1 ? "collection" : "collections")")
         }
         return "Your own \(parts.joined(separator: " and ")) on this device will be removed and replaced by the shared library. \(shared)"
+    }
+
+    private var blockedInvitationMessage: String {
+        let partner = persistence.liveShare?.partnerParticipant?.displayName ?? "your partner"
+        let library = persistence.blockedShareInvitationOwnerName.map { "\($0)'s library" } ?? "this library"
+        return "You're sharing your library with \(partner). To join \(library) instead, stop sharing yours first in Settings → Sharing."
     }
 
     private var joiningPlaceholder: some View {
@@ -287,4 +365,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .environment(ToastState())
 }

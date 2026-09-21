@@ -6,9 +6,21 @@ import SwiftUI
 /// until the system share sheet actually needs it, matching Apple's Core Data + CloudKit sharing
 /// sample ("Sharing Core Data objects between iCloud users").
 struct LibraryShareItem: Transferable {
+    /// Snapshot of any existing share, passed in by the caller — on the main actor, from
+    /// `PersistenceController.liveShare` — when the `ShareLink` is built. A `Transferable`'s
+    /// default member values must themselves be non-isolated (it has to be constructible from any
+    /// actor), so this can't default to calling `PersistenceController` itself; callers supply it.
+    var existingShare: CKShare?
+
     static var transferRepresentation: some TransferRepresentation {
-        CKShareTransferRepresentation { _ in
-            .prepareShare(
+        CKShareTransferRepresentation { item in
+            // A `CKShare` may already exist with nobody invited yet (the system share sheet was
+            // cancelled after `createShare()` ran) — hand that one to the sheet instead of minting
+            // a second, orphaned share.
+            if let share = item.existingShare {
+                return .existing(share, container: PersistenceController.ckContainer)
+            }
+            return .prepareShare(
                 container: PersistenceController.ckContainer,
                 // Read/write only (a read-only partner defeats the point). Access defaults to
                 // "only people you invite" in the share sheet, but "anyone with the link" stays
@@ -25,18 +37,18 @@ struct LibraryShareItem: Transferable {
     }
 }
 
-/// The sharing block at the top of `ProviderSettingsView`. Exactly one `CKShare` ever exists,
-/// rooted at the app's single `WatchListGroup` — this renders whichever of four states applies:
-/// owner-unshared, owner-shared, participant, or joining (see `docs/v2-shared-library-plan.md`,
-/// "Sharing (Task F)").
+/// The sharing block pushed from `SettingsView`'s Sharing row. Exactly one `CKShare` ever exists,
+/// rooted at the app's single `WatchListGroup` — this renders whichever state applies: iCloud off,
+/// owner-unshared, owner-shared (including a pending invite), participant, or joining (see
+/// `docs/v2-shared-library-plan.md`, "Sharing (Task F)").
 struct SharingSection: View {
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var share: CKShare?
     @State private var showingManageSheet = false
     @State private var showingLeaveConfirmation = false
     @State private var isLeaving = false
     @State private var leaveErrorMessage: String?
+    @State private var manageErrorMessage: String?
 
     private let persistence = PersistenceController.shared
 
@@ -44,9 +56,11 @@ struct SharingSection: View {
         Group {
             if persistence.isJoiningSharedLibrary {
                 joiningRow
+            } else if persistence.isCloudAccountAvailable == false {
+                iCloudUnavailableCard
             } else if persistence.role == .participant {
                 participantCard
-            } else if let share {
+            } else if persistence.isSharingLive, let share = persistence.liveShare {
                 sharedCard(share: share)
             } else {
                 unsharedCard
@@ -54,19 +68,24 @@ struct SharingSection: View {
         }
         .onAppear(perform: refresh)
         // The system share sheet and `UICloudSharingController` are both presented outside
-        // SwiftUI's view hierarchy, so re-check `existingShare()` whenever the app comes back to
-        // the foreground — that's the only reliable signal either one has been dismissed.
+        // SwiftUI's view hierarchy, so re-check `liveShare` whenever the app comes back to the
+        // foreground — that's the only reliable signal either one has been dismissed.
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             refresh()
         }
         .sheet(isPresented: $showingManageSheet, onDismiss: refresh) {
-            if let share {
-                CloudSharingView(share: share, container: PersistenceController.ckContainer, onChange: refresh)
+            if let share = persistence.liveShare {
+                CloudSharingView(
+                    share: share,
+                    container: PersistenceController.ckContainer,
+                    onChange: refresh,
+                    onError: { manageErrorMessage = $0.localizedDescription }
+                )
             }
         }
         .confirmationDialog(
-            "Leave Shared Library?",
+            leaveDialogTitle,
             isPresented: $showingLeaveConfirmation,
             titleVisibility: .visible
         ) {
@@ -88,6 +107,17 @@ struct SharingSection: View {
         } message: {
             Text(leaveErrorMessage ?? "")
         }
+        .alert(
+            "Couldn't Update Sharing",
+            isPresented: Binding(
+                get: { manageErrorMessage != nil },
+                set: { if !$0 { manageErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(manageErrorMessage ?? "")
+        }
     }
 
     // MARK: - Owner, not yet shared
@@ -104,7 +134,7 @@ struct SharingSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            ShareLink(item: LibraryShareItem(), preview: SharePreview("Up Next library")) {
+            ShareLink(item: LibraryShareItem(existingShare: persistence.liveShare), preview: SharePreview("Up Next library")) {
                 Label("Share with a partner", systemImage: "person.2")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
@@ -119,8 +149,13 @@ struct SharingSection: View {
 
     // MARK: - Owner, shared
 
+    /// `isSharingLive` already guarantees a non-owner participant exists (invited or accepted) by
+    /// the time this renders — see the state list in `body`.
     private func sharedCard(share: CKShare) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let partner = share.partnerParticipant
+        let isPending = partner?.acceptanceStatus == .pending
+
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
@@ -130,7 +165,9 @@ struct SharingSection: View {
                     .foregroundStyle(.primary)
             }
 
-            Text(participantsSummary(for: share))
+            Text(isPending
+                 ? "Invited \(partner?.displayName ?? "your partner") — waiting for them to accept."
+                 : "Shared with \(partner?.displayName ?? "your partner").")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -150,27 +187,27 @@ struct SharingSection: View {
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
-    /// Non-owner participants, each rendered as a display name when CloudKit will give us one.
-    /// iOS may withhold `nameComponents` for apps without the contacts entitlement, so a
-    /// nameless participant still reads as "Invited" (pending) or "1 person" (accepted).
-    private func participantsSummary(for share: CKShare) -> String {
-        let participants = share.participants.filter { $0.role != .owner }
-        guard !participants.isEmpty else {
-            return "Invite a partner to start sharing your library."
-        }
-        let names = participants.map(displayName)
-        return "Shared with " + names.joined(separator: ", ")
-    }
+    // MARK: - iCloud unavailable
 
-    private func displayName(for participant: CKShare.Participant) -> String {
-        if let components = participant.userIdentity.nameComponents {
-            let name = PersonNameComponentsFormatter().string(from: components)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !name.isEmpty {
-                return name
+    private var iCloudUnavailableCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "icloud.slash")
+                    .foregroundStyle(.secondary)
+                Text("iCloud Is Off")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
             }
+
+            Text("Sign in to iCloud on this device to share your library with a partner.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        return participant.acceptanceStatus == .pending ? "Invited" : "1 person"
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
     // MARK: - Participant
@@ -215,10 +252,13 @@ struct SharingSection: View {
     }
 
     private var ownerName: String {
-        guard let components = share?.owner.userIdentity.nameComponents else { return "your partner" }
-        let name = PersonNameComponentsFormatter().string(from: components)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "your partner" : name
+        persistence.liveShare?.ownerDisplayName ?? "your partner"
+    }
+
+    /// "Leave Sarah's Library?" when CloudKit gave us the owner's name, else a generic fallback.
+    private var leaveDialogTitle: String {
+        guard let name = persistence.liveShare?.ownerDisplayName else { return "Leave Shared Library?" }
+        return "Leave \(name)'s Library?"
     }
 
     // MARK: - Joining
@@ -238,10 +278,10 @@ struct SharingSection: View {
     // MARK: - Actions
 
     private func refresh() {
-        share = persistence.existingShare()
+        persistence.refreshLiveShare()
         // Sharing is live on this device, whichever side it's on: ask for notification
         // permission (the system only ever prompts once).
-        if share != nil {
+        if persistence.liveShare != nil {
             RemoteActivityNotifier.requestPermissionIfNeeded()
         }
     }

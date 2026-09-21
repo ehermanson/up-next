@@ -1,4 +1,3 @@
-import CloudKit
 import SwiftUI
 
 /// Settings root, reached from every tab via `SettingsToolbarButton`. Rows push their own
@@ -6,7 +5,13 @@ import SwiftUI
 /// scroll, the way `ProviderSettingsView` used to before Sharing became the release's headline
 /// feature and needed real prominence.
 struct SettingsView: View {
+    /// Passed through to `LegacyImportView`, which adds through the view-model APIs.
+    let library: MediaLibraryViewModel
+    let lists: CustomListViewModel
+
     @Environment(\.dismiss) private var dismiss
+
+    @State private var showingLegacyImport = false
 
     @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .dark
 
@@ -22,6 +27,7 @@ struct SettingsView: View {
                     sharingRow
                     streamingServicesRow
                     regionRow
+                    if LegacyStoreReader.storeExists() { legacyImportRow }
                     appearanceSection
                     aboutSection
 
@@ -47,6 +53,24 @@ struct SettingsView: View {
         .task {
             await loadRegions()
         }
+        .sheet(isPresented: $showingLegacyImport) {
+            LegacyImportView(library: library, lists: lists)
+        }
+    }
+
+    // MARK: - Import from 1.x
+
+    /// Only shown while a 1.x store is still on disk. Stays available after "Not Now" or a
+    /// finished run — importing again skips anything already there.
+    private var legacyImportRow: some View {
+        Button {
+            showingLegacyImport = true
+        } label: {
+            row(icon: "arrow.down.doc", title: "Import from Up Next 1.7",
+                value: LegacyImporter.isOfferPending ? "Not imported" : "Imported")
+        }
+        .buttonStyle(.plain)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
     // MARK: - Sharing
@@ -58,44 +82,35 @@ struct SettingsView: View {
             row(icon: "person.2", title: "Sharing", value: sharingStatus)
         }
         .buttonStyle(.plain)
-        .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
-    /// Mirrors `SharingSection`'s four states without duplicating its participant-name logic —
-    /// a short summary is enough here, the pushed screen has the full picture.
+    /// Mirrors `SharingSection`'s states without duplicating its participant-name logic — a short
+    /// summary is enough here, the pushed screen has the full picture. Reads `PersistenceController`'s
+    /// observable sharing state directly rather than fetching a `CKShare` in `body`.
     private var sharingStatus: String {
         let persistence = PersistenceController.shared
         if persistence.isJoiningSharedLibrary {
             return "Joining…"
         }
-        if persistence.role == .participant {
-            return "Shared by \(ownerName)"
+        if persistence.isCloudAccountAvailable == false {
+            return "iCloud unavailable"
         }
-        if let share = persistence.existingShare() {
-            let partners = share.participants.filter { $0.role != .owner }
-            if let name = partners.first.flatMap(participantName) {
-                return "Shared with \(name)"
-            }
-            return partners.isEmpty ? "Not shared yet" : "Shared"
+        if persistence.role == .participant {
+            return "Shared with you by \(ownerName)"
+        }
+        if persistence.isSharingLive {
+            return "Shared with \(partnerName)"
         }
         return "Not shared yet"
     }
 
     private var ownerName: String {
-        guard let components = PersistenceController.shared.existingShare()?.owner.userIdentity.nameComponents else {
-            return "your partner"
-        }
-        let name = PersonNameComponentsFormatter().string(from: components)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "your partner" : name
+        PersistenceController.shared.liveShare?.ownerDisplayName ?? "your partner"
     }
 
-    private func participantName(_ participant: CKShare.Participant) -> String? {
-        guard let components = participant.userIdentity.nameComponents else { return nil }
-        let name = PersonNameComponentsFormatter().string(from: components)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? nil : name
+    private var partnerName: String {
+        PersistenceController.shared.liveShare?.partnerParticipant?.displayName ?? "your partner"
     }
 
     // MARK: - Streaming Services
@@ -107,7 +122,6 @@ struct SettingsView: View {
             row(icon: "play.tv", title: "Streaming Services", value: streamingServicesStatus)
         }
         .buttonStyle(.plain)
-        .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
@@ -125,7 +139,6 @@ struct SettingsView: View {
             row(icon: "globe", title: "Region", value: currentRegionLabel)
         }
         .buttonStyle(.plain)
-        .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
@@ -140,7 +153,11 @@ struct SettingsView: View {
     }
 
     private var currentRegionLabel: String {
-        guard let code = settings.regionOverride else { return "Automatic" }
+        guard let code = settings.regionOverride else {
+            let deviceRegionName = Locale.current.localizedString(forRegionCode: ProviderSettings.effectiveRegion)
+                ?? ProviderSettings.effectiveRegion
+            return "Automatic (\(deviceRegionName))"
+        }
         return regions.first { $0.iso31661 == code }?.englishName
             ?? Locale.current.localizedString(forRegionCode: code) ?? code
     }
@@ -224,6 +241,9 @@ struct SettingsView: View {
             }
             .layoutPriority(1)
         }
+        .frame(maxWidth: .infinity)
+        .contentShape(.rect)
+        .padding(16)
     }
 
     // MARK: - Debug
@@ -261,18 +281,12 @@ struct SettingsView: View {
 
 // MARK: - Sharing Screen
 
-/// The Sharing row's destination: `SharingSection` unchanged, with a short intro paragraph above
-/// it when nothing is shared yet (mirrors the copy `SharingSection.unsharedCard` already shows,
-/// so this doesn't repeat it — the card speaks for itself once shared).
+/// The Sharing row's destination: just `SharingSection` — its own `unsharedCard` already carries
+/// the "invite one person" pitch, so this screen doesn't repeat it above.
 private struct SharingScreen: View {
-    private let persistence = PersistenceController.shared
-
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                if !isSharingLive {
-                    introSection
-                }
                 SharingSection()
             }
             .padding(.horizontal, 20)
@@ -281,18 +295,5 @@ private struct SharingScreen: View {
         .background(AppBackground())
         .navigationTitle("Sharing")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var isSharingLive: Bool {
-        persistence.role == .participant || persistence.existingShare() != nil
-    }
-
-    private var introSection: some View {
-        Text("Invite one person with an Apple Account. You'll both see and edit the same watchlist and collections.")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 }

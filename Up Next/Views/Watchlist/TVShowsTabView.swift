@@ -1,4 +1,3 @@
-import CloudKit
 import SwiftUI
 
 struct TVShowsTabView: View {
@@ -9,7 +8,6 @@ struct TVShowsTabView: View {
 
     @Environment(ToastState.self) private var toast
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.scenePhase) private var scenePhase
 
     @State private var detailWatchState: (item: ListItem, state: ListItem.WatchState)?
     @State private var expandedItemID: String? = nil
@@ -23,11 +21,6 @@ struct TVShowsTabView: View {
     /// Held (not read through the singleton inline) so `@Observable` tracks provider changes.
     private let settings = ProviderSettings.shared
     private let persistence = PersistenceController.shared
-
-    /// Live share state for `showsSharePitch` below. Like `SharingSection`/`SettingsToolbarButton`,
-    /// `existingShare()` isn't itself observable, so it's refreshed explicitly on appear, on
-    /// returning to the foreground, and whenever a remote change might have made sharing live.
-    @State private var liveShare: CKShare?
 
     private var selectedItem: ListItem? {
         guard let id = expandedItemID else { return nil }
@@ -49,37 +42,24 @@ struct TVShowsTabView: View {
         )
     }
 
-    /// See the "Sharing" section of CLAUDE.md for the full rule. Re-checked whenever `liveShare`,
-    /// `settings`, or `persistence`'s observed properties change.
+    /// See the "Sharing" section of CLAUDE.md for the full rule. `persistence.isSharingLive` and
+    /// `isCloudAccountAvailable` are both observable, so this re-derives automatically — no local
+    /// state or manual refresh needed (contrast the old `existingShare()`-based check, which had
+    /// to poll on appear/foreground/remote-change to stay current).
     private var showsSharePitch: Bool {
         guard !settings.hasDismissedSharePitch,
               persistence.role != .participant,
               !persistence.isJoiningSharedLibrary,
+              persistence.isCloudAccountAvailable == true,
+              !persistence.isSharingLive,
               viewModel.isLoaded,
               viewModel.tvShows.count + viewModel.movies.count >= 3
         else { return false }
-        // "Not live" mirrors `SettingsToolbarButton.participantPair`: a share with no accepted (or
-        // even invited) non-owner participant hasn't actually started a partnership yet.
-        if let liveShare, liveShare.participants.contains(where: { $0.role != .owner }) {
-            return false
-        }
         return true
-    }
-
-    private func refreshShareState() {
-        liveShare = persistence.existingShare()
     }
 
     var body: some View {
         listView
-        .onAppear(perform: refreshShareState)
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else { return }
-            refreshShareState()
-        }
-        .onChange(of: persistence.remoteChangeCount) {
-            refreshShareState()
-        }
         .sheet(
             item: Binding(
                 get: { selectedItem },

@@ -1,10 +1,6 @@
 import CloudKit
 import UIKit
 
-// NOTE: Not wired up yet. Task E adds `@UIApplicationDelegateAdaptor(AppDelegate.self)` to
-// `Watch_ListApp` when it swaps the app over to `PersistenceController`. Until then this file
-// compiles standalone but isn't part of the running app.
-
 /// App delegate whose only job is to hand scene configuration to `SceneDelegate`, so
 /// `windowScene(_:userDidAcceptCloudKitShareWith:)` can accept incoming CloudKit share
 /// invitations (tapping a share link / accepting from Messages, Mail, etc.).

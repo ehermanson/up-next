@@ -6,6 +6,7 @@ import SwiftUI
 /// — the close button sets it; the card also retires itself once a partner has joined.
 struct SharePitchCard: View {
     private let settings = ProviderSettings.shared
+    private let persistence = PersistenceController.shared
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -43,7 +44,7 @@ struct SharePitchCard: View {
                 .accessibilityLabel("Dismiss")
             }
 
-            ShareLink(item: LibraryShareItem(), preview: SharePreview("Up Next library")) {
+            ShareLink(item: LibraryShareItem(existingShare: persistence.liveShare), preview: SharePreview("Up Next library")) {
                 Label("Share with a partner", systemImage: "square.and.arrow.up")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)

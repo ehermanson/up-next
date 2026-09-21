@@ -19,6 +19,13 @@ enum RemoteActivityNotifier {
     private static let detailLimit = 3
     /// History older than this (app was closed for a while) is merged silently.
     private static let staleAfter: TimeInterval = 10 * 60
+    /// A join's first import arrives as one bulk transaction, but the `isJoiningSharedLibrary`
+    /// flag clears on the very first one — the rest of the same import would otherwise read as
+    /// "Sarah made 200 changes". Stay quiet for a moment after the library lands.
+    private static let quietAfterJoin: TimeInterval = 60
+    /// Entities whose changes are never announced: a metadata refresh rewrites every media row.
+    /// Checked before the (comparatively expensive) CloudKit record lookup.
+    private static let ignoredEntities: Set<String> = ["Movie", "TVShow", "Network"]
 
     /// Asks for notification permission once sharing is actually in use. Safe to call repeatedly —
     /// the system only prompts the first time.
@@ -38,6 +45,10 @@ enum RemoteActivityNotifier {
     ) {
         // The first import after joining is the whole library landing — not "N changes".
         guard !persistence.isJoiningSharedLibrary else { return }
+        if let joinedAt = persistence.joinCompletedAt,
+           Date.now.timeIntervalSince(joinedAt) < quietAfterJoin {
+            return
+        }
         // Only meaningful once there's someone on the other end.
         guard persistence.role == .participant || persistence.existingShare() != nil else { return }
 
@@ -49,11 +60,12 @@ enum RemoteActivityNotifier {
                 guard let activity = activity(for: change, actor: actor, persistence: persistence),
                       !messages.contains(activity.message)
                 else { continue }
-                // In the background, only announce edits the partner made recently. History
-                // timestamps say when the import ran, not when the edit happened, so the
-                // record's own modification date is the one that matters — a day-old edit that
-                // only synced now shouldn't buzz the phone. On screen, catching up is fine.
-                if !isActive, Date.now.timeIntervalSince(activity.modifiedAt) > staleAfter { continue }
+                // Only announce edits the partner actually made recently. History timestamps say
+                // when the import ran, not when the edit happened, so the record's own
+                // modification date is the one that matters — a day-old edit that only synced
+                // now shouldn't buzz the phone, and on a reinstall the first history fetch
+                // returns everything the account ever did.
+                if Date.now.timeIntervalSince(activity.modifiedAt) > staleAfter { continue }
                 messages.append(activity.message)
             }
         }
@@ -97,10 +109,13 @@ enum RemoteActivityNotifier {
     ) -> Activity? {
         let objectID = change.changedObjectID
         guard change.changeType != .delete else { return nil }
+        // Cheap rejections first: `container.record(for:)` is a store round-trip, and a metadata
+        // refresh dirties every `Movie`/`TVShow`/`Network` row in the library.
+        guard let entityName = objectID.entity.name, !ignoredEntities.contains(entityName) else { return nil }
         guard let object = try? persistence.viewContext.existingObject(with: objectID),
               !object.isDeleted,
-              let record = recordModifiedBySomeoneElse(objectID, persistence: persistence),
-              let message = message(for: change, object: object, actor: actor)
+              let message = message(for: change, object: object, actor: actor),
+              let record = recordModifiedBySomeoneElse(objectID, persistence: persistence)
         else { return nil }
         return Activity(message: message, modifiedAt: record.modificationDate ?? .now)
     }

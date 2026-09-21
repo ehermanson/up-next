@@ -3,19 +3,21 @@ import Foundation
 // MARK: - Search Response Models
 
 /// One page of a paginated TMDB list response. Lets `TMDBService` fetch and merge the first
-/// pages of `/search/{tv,movie}` generically.
-protocol TMDBSearchPage: Decodable {
+/// pages of `/search/{tv,movie}` generically. `nonisolated` (like the other model types below)
+/// so its `Decodable` conformance can be decoded inside `searchPages`'s `async let` pair without
+/// the compiler treating a generic `Page: TMDBSearchPage` as possibly main-actor-isolated.
+nonisolated protocol TMDBSearchPage: Decodable {
     associatedtype Result: Identifiable where Result.ID == Int
     var results: [Result] { get }
     var totalPages: Int? { get }
 }
 
-struct TMDBTVShowSearchResponse: Codable, TMDBSearchPage {
+nonisolated struct TMDBTVShowSearchResponse: Codable, TMDBSearchPage, Sendable {
     let results: [TMDBTVShowSearchResult]
     let totalPages: Int?
 }
 
-struct TMDBMovieSearchResponse: Codable, TMDBSearchPage {
+nonisolated struct TMDBMovieSearchResponse: Codable, TMDBSearchPage, Sendable {
     let results: [TMDBMovieSearchResult]
     let totalPages: Int?
 }
@@ -28,7 +30,7 @@ struct TMDBGenreListResponse: Codable {
 
 // MARK: - TV Show Models
 
-struct TMDBTVShowSearchResult: Codable, Identifiable {
+nonisolated struct TMDBTVShowSearchResult: Codable, Identifiable, Sendable {
     let id: Int
     let name: String
     let overview: String?
@@ -122,7 +124,7 @@ struct TMDBSeasonEpisode: Codable, Identifiable {
 
 // MARK: - Movie Models
 
-struct TMDBMovieSearchResult: Codable, Identifiable {
+nonisolated struct TMDBMovieSearchResult: Codable, Identifiable, Sendable {
     let id: Int
     let title: String
     let overview: String?
@@ -308,17 +310,4 @@ nonisolated struct TMDBWatchProviderRegion: Codable, Identifiable, Sendable, Has
     let nativeName: String
 
     var id: String { iso31661 }
-}
-
-// Movies use `keywords`; TV and keyword search use `results`.
-struct TMDBKeyword: Codable, Hashable, Sendable {
-    let id: Int
-    let name: String
-}
-
-struct TMDBKeywordResponse: Codable {
-    let keywords: [TMDBKeyword]?
-    let results: [TMDBKeyword]?
-
-    var values: [TMDBKeyword] { keywords ?? results ?? [] }
 }

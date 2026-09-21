@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24A335" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithCloudKit="YES" userDefinedModelVersionIdentifier="">
+    <entity name="CustomList" representedClassName=".CustomList" syncable="YES">
+        <attribute name="createdAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="iconName" attributeType="String" defaultValueString="list.bullet"/>
+        <attribute name="idRaw" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" attributeType="String" defaultValueString=""/>
+        <relationship name="group" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="WatchListGroup" inverseName="customListSet" inverseEntity="WatchListGroup"/>
+        <relationship name="itemSet" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CustomListItem" inverseName="customList" inverseEntity="CustomListItem"/>
+    </entity>
+    <entity name="CustomListItem" representedClassName=".CustomListItem" syncable="YES">
+        <attribute name="addedAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="watchedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="customList" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CustomList" inverseName="itemSet" inverseEntity="CustomList"/>
+        <relationship name="movie" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Movie" inverseName="customListItemSet" inverseEntity="Movie"/>
+        <relationship name="tvShow" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="TVShow" inverseName="customListItemSet" inverseEntity="TVShow"/>
+    </entity>
+    <entity name="ListItem" representedClassName=".ListItem" syncable="YES">
+        <attribute name="addedAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="droppedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="isWatched" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="order" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userNotes" optional="YES" attributeType="String"/>
+        <attribute name="userRatingNumber" optional="YES" attributeType="Integer 64" usesScalarValueType="NO"/>
+        <attribute name="watchedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="watchedSeasonsRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <relationship name="list" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="MediaList" inverseName="itemSet" inverseEntity="MediaList"/>
+        <relationship name="movie" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Movie" inverseName="listItemSet" inverseEntity="Movie"/>
+        <relationship name="tvShow" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="TVShow" inverseName="listItemSet" inverseEntity="TVShow"/>
+    </entity>
+    <entity name="MediaList" representedClassName=".MediaList" syncable="YES">
+        <attribute name="createdAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="idRaw" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" attributeType="String" defaultValueString=""/>
+        <relationship name="group" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="WatchListGroup" inverseName="listSet" inverseEntity="WatchListGroup"/>
+        <relationship name="itemSet" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ListItem" inverseName="list" inverseEntity="ListItem"/>
+    </entity>
+    <entity name="Movie" representedClassName=".Movie" syncable="YES">
+        <attribute name="backdropPath" optional="YES" attributeType="String"/>
+        <attribute name="castCharactersRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="castImagePathsRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="castRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="contentRating" optional="YES" attributeType="String"/>
+        <attribute name="descriptionText" optional="YES" attributeType="String"/>
+        <attribute name="genresRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="id" attributeType="String" defaultValueString=""/>
+        <attribute name="providerCategoriesRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSDictionary"/>
+        <attribute name="releaseDate" optional="YES" attributeType="String"/>
+        <attribute name="runtimeNumber" optional="YES" attributeType="Integer 64" usesScalarValueType="NO"/>
+        <attribute name="thumbnailURL" optional="YES" attributeType="URI"/>
+        <attribute name="title" attributeType="String" defaultValueString=""/>
+        <attribute name="voteAverageNumber" optional="YES" attributeType="Double" usesScalarValueType="NO"/>
+        <relationship name="customListItemSet" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CustomListItem" inverseName="movie" inverseEntity="CustomListItem"/>
+        <relationship name="listItemSet" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="ListItem" inverseName="movie" inverseEntity="ListItem"/>
+        <relationship name="networkSet" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Network" inverseName="movieSet" inverseEntity="Network"/>
+    </entity>
+    <entity name="Network" representedClassName=".Network" syncable="YES">
+        <attribute name="id" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="logoPath" optional="YES" attributeType="String"/>
+        <attribute name="name" attributeType="String" defaultValueString=""/>
+        <attribute name="originCountry" optional="YES" attributeType="String"/>
+        <relationship name="movieSet" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Movie" inverseName="networkSet" inverseEntity="Movie"/>
+        <relationship name="tvShowSet" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="TVShow" inverseName="networkSet" inverseEntity="TVShow"/>
+    </entity>
+    <entity name="TVShow" representedClassName=".TVShow" syncable="YES">
+        <attribute name="backdropPath" optional="YES" attributeType="String"/>
+        <attribute name="castCharactersRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="castImagePathsRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="castRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="contentRating" optional="YES" attributeType="String"/>
+        <attribute name="descriptionText" optional="YES" attributeType="String"/>
+        <attribute name="episodeRunTimeNumber" optional="YES" attributeType="Integer 64" usesScalarValueType="NO"/>
+        <attribute name="genresRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="id" attributeType="String" defaultValueString=""/>
+        <attribute name="nextEpisodeAirDate" optional="YES" attributeType="String"/>
+        <attribute name="nextEpisodeName" optional="YES" attributeType="String"/>
+        <attribute name="nextEpisodeNumberNumber" optional="YES" attributeType="Integer 64" usesScalarValueType="NO"/>
+        <attribute name="nextEpisodeSeasonNumber" optional="YES" attributeType="Integer 64" usesScalarValueType="NO"/>
+        <attribute name="numberOfEpisodesNumber" optional="YES" attributeType="Integer 64" usesScalarValueType="NO"/>
+        <attribute name="numberOfSeasonsNumber" optional="YES" attributeType="Integer 64" usesScalarValueType="NO"/>
+        <attribute name="providerCategoriesRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSDictionary"/>
+        <attribute name="seasonDescriptionsRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="seasonEpisodeCountsRaw" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="status" optional="YES" attributeType="String"/>
+        <attribute name="thumbnailURL" optional="YES" attributeType="URI"/>
+        <attribute name="title" attributeType="String" defaultValueString=""/>
+        <attribute name="voteAverageNumber" optional="YES" attributeType="Double" usesScalarValueType="NO"/>
+        <relationship name="customListItemSet" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CustomListItem" inverseName="tvShow" inverseEntity="CustomListItem"/>
+        <relationship name="listItemSet" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="ListItem" inverseName="tvShow" inverseEntity="ListItem"/>
+        <relationship name="networkSet" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Network" inverseName="tvShowSet" inverseEntity="Network"/>
+    </entity>
+    <entity name="WatchListGroup" representedClassName=".WatchListGroup" syncable="YES">
+        <attribute name="createdAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="idRaw" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <relationship name="customListSet" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CustomList" inverseName="group" inverseEntity="CustomList"/>
+        <relationship name="listSet" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="MediaList" inverseName="group" inverseEntity="MediaList"/>
+    </entity>
+    <elements>
+        <element name="CustomList" positionX="-63" positionY="-18" width="128" height="89"/>
+        <element name="CustomListItem" positionX="-45" positionY="0" width="128" height="89"/>
+        <element name="ListItem" positionX="-27" positionY="18" width="128" height="164"/>
+        <element name="MediaList" positionX="-9" positionY="36" width="128" height="74"/>
+        <element name="Movie" positionX="9" positionY="54" width="128" height="269"/>
+        <element name="Network" positionX="27" positionY="72" width="128" height="89"/>
+        <element name="TVShow" positionX="45" positionY="90" width="128" height="374"/>
+        <element name="WatchListGroup" positionX="63" positionY="108" width="128" height="59"/>
+    </elements>
+</model>

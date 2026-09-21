@@ -1,9 +1,9 @@
 import Foundation
 
-/// Service for interacting with The Movie Database (TMDB) API
-/// All stored properties are either `let` values or actor-isolated caches,
-/// so cross-isolation capture is safe.
-final class TMDBService: @unchecked Sendable {
+/// Service for interacting with The Movie Database (TMDB) API.
+/// The class is implicitly `@MainActor` (the project's default actor isolation), which is what
+/// makes its mutable cache (`canonicalLogoPaths`) safe without any locking.
+final class TMDBService {
     static let shared = TMDBService()
 
     private let baseURL = "https://api.themoviedb.org/3"
@@ -70,10 +70,10 @@ final class TMDBService: @unchecked Sendable {
     /// (TMDB pagination can repeat a row across the page boundary). Page 2 is requested up
     /// front rather than after page 1 reports `totalPages` so a multi-page query doesn't pay a
     /// second round trip; a failed or empty page 2 just yields page 1.
-    private func searchPages<Page: TMDBSearchPage>(
+    private nonisolated func searchPages<Page: TMDBSearchPage>(
         _ page: Page.Type, endpoint: String, query: String
     ) async throws -> [Page.Result] {
-        func items(page: Int) -> [URLQueryItem] {
+        @Sendable func items(page: Int) -> [URLQueryItem] {
             [URLQueryItem(name: "query", value: query), URLQueryItem(name: "page", value: "\(page)")]
         }
         async let first: Page = performRequest(endpoint: endpoint, queryItems: items(page: 1))
@@ -156,6 +156,28 @@ final class TMDBService: @unchecked Sendable {
         return try await performRequest(endpoint: endpoint, queryItems: [])
     }
 
+    /// Lean TV metadata: the same `/tv/{id}` endpoint as `getTVShowDetails`, but appending only
+    /// what a background library refresh or the Discover airing-date chip reads (watch providers
+    /// and the region content rating) instead of credits/videos/similar/recommendations. The URL
+    /// differs from the full-detail call, so it's cached under its own key.
+    func getTVShowMetadata(id: Int) async throws -> TMDBTVShowDetail {
+        let endpoint = "/tv/\(id)"
+        return try await performRequest(
+            endpoint: endpoint,
+            queryItems: [URLQueryItem(name: "append_to_response", value: "watch/providers,content_ratings")]
+        )
+    }
+
+    /// Lean movie metadata — see `getTVShowMetadata`. `mapToMovie(detail:)` reads `releaseDates`
+    /// for the certification, so that's appended alongside watch providers.
+    func getMovieMetadata(id: Int) async throws -> TMDBMovieDetail {
+        let endpoint = "/movie/\(id)"
+        return try await performRequest(
+            endpoint: endpoint,
+            queryItems: [URLQueryItem(name: "append_to_response", value: "watch/providers,release_dates")]
+        )
+    }
+
     // MARK: - Recommendations
 
     /// Get recommended TV shows based on a specific TV show
@@ -172,21 +194,6 @@ final class TMDBService: @unchecked Sendable {
             endpoint: "/movie/\(id)/recommendations", queryItems: []
         )
         return response.results
-    }
-
-    func fetchKeywords(id: Int, mediaType: MediaType) async throws -> [TMDBKeyword] {
-        let path = mediaType == .movie ? "movie" : "tv"
-        let response: TMDBKeywordResponse = try await performRequest(
-            endpoint: "/\(path)/\(id)/keywords", queryItems: []
-        )
-        return response.values
-    }
-
-    func searchKeywords(query: String) async throws -> [TMDBKeyword] {
-        let response: TMDBKeywordResponse = try await performRequest(
-            endpoint: "/search/keyword", queryItems: [URLQueryItem(name: "query", value: query)]
-        )
-        return response.values
     }
 
     func collectionMovies(name: String, seeds: [Int], excluding ids: Set<String>) async -> [TMDBMovieSearchResult] {
@@ -231,32 +238,6 @@ final class TMDBService: @unchecked Sendable {
     func getCollectionDetails(id: Int) async throws -> TMDBCollectionDetail {
         let endpoint = "/collection/\(id)"
         return try await performRequest(endpoint: endpoint, queryItems: [])
-    }
-
-    /// Get watch providers for a movie (per country). Uses device locale by default.
-    func getMovieWatchProviders(id: Int, countryCode: String? = nil) async throws
-        -> TMDBWatchProviderCountry?
-    {
-        let region = countryCode ?? currentRegion
-        let endpoint = "/movie/\(id)/watch/providers"
-        let response: TMDBWatchProvidersResponse = try await performRequest(
-            endpoint: endpoint,
-            queryItems: []
-        )
-        return response.results?[region]
-    }
-
-    /// Get watch providers for a TV show (per country). Uses device locale by default.
-    func getTVShowWatchProviders(id: Int, countryCode: String? = nil) async throws
-        -> TMDBWatchProviderCountry?
-    {
-        let region = countryCode ?? currentRegion
-        let endpoint = "/tv/\(id)/watch/providers"
-        let response: TMDBWatchProvidersResponse = try await performRequest(
-            endpoint: endpoint,
-            queryItems: []
-        )
-        return response.results?[region]
     }
 
     /// Fetch all available watch providers for a region, merged from movie and TV endpoints.
@@ -361,11 +342,6 @@ final class TMDBService: @unchecked Sendable {
         }
     }
 
-    /// Clear the response cache to force fresh data on next request
-    func clearResponseCache() async {
-        await deduplicator.clearCache()
-    }
-
     /// Drop cached responses for the given API-relative path prefixes (e.g. `"/discover/"`),
     /// leaving the rest of the cache intact. A screen's pull-to-refresh uses this to refetch the
     /// endpoints it owns without throwing away detail responses the rest of the app still wants.
@@ -396,16 +372,6 @@ final class TMDBService: @unchecked Sendable {
     }
 
     // MARK: - Mapping Helpers
-
-    /// Convert TMDB network to Network model
-    func mapToNetwork(_ network: TMDBNetwork) -> Network {
-        Network(
-            id: network.id,
-            name: network.name,
-            logoPath: network.logoPath,
-            originCountry: network.originCountry
-        )
-    }
 
     /// Convert TMDB TV show search result to TVShow model
     func mapToTVShow(_ result: TMDBTVShowSearchResult) -> TVShow {
@@ -668,7 +634,7 @@ final class TMDBService: @unchecked Sendable {
                     id: canonicalID,
                     name: canonicalName,
                     logoPath: logoPath,
-                    originCountry: "US"
+                    originCountry: currentRegion
                 ))
                 categories[canonicalID] = category
             }
@@ -718,7 +684,6 @@ final class TMDBService: @unchecked Sendable {
         page: Int = 1,
         sortBy: String = "popularity.desc",
         withGenres: String? = nil,
-        withKeywords: String? = nil,
         withWatchProviders: String? = nil,
         watchRegion: String? = nil,
         voteCountGte: Int? = nil,
@@ -730,9 +695,6 @@ final class TMDBService: @unchecked Sendable {
             URLQueryItem(name: "page", value: String(page)),
             URLQueryItem(name: "sort_by", value: sortBy),
         ]
-        if let withKeywords {
-            queryItems.append(URLQueryItem(name: "with_keywords", value: withKeywords))
-        }
         if let withGenres {
             queryItems.append(URLQueryItem(name: "with_genres", value: withGenres))
         }
@@ -764,7 +726,6 @@ final class TMDBService: @unchecked Sendable {
         page: Int = 1,
         sortBy: String = "popularity.desc",
         withGenres: String? = nil,
-        withKeywords: String? = nil,
         withWatchProviders: String? = nil,
         watchRegion: String? = nil,
         voteCountGte: Int? = nil,
@@ -774,9 +735,6 @@ final class TMDBService: @unchecked Sendable {
             URLQueryItem(name: "page", value: String(page)),
             URLQueryItem(name: "sort_by", value: sortBy),
         ]
-        if let withKeywords {
-            queryItems.append(URLQueryItem(name: "with_keywords", value: withKeywords))
-        }
         if let withGenres {
             queryItems.append(URLQueryItem(name: "with_genres", value: withGenres))
         }
@@ -814,7 +772,7 @@ final class TMDBService: @unchecked Sendable {
 
     private let deduplicator = RequestDeduplicator()
 
-    private func performRequest<T: Decodable>(
+    private nonisolated func performRequest<T: Decodable>(
         endpoint: String,
         queryItems: [URLQueryItem]
     ) async throws -> T {
@@ -822,29 +780,80 @@ final class TMDBService: @unchecked Sendable {
         var items = queryItems
         items.append(URLQueryItem(name: "api_key", value: apiKey))
         components?.queryItems = items
+        // `URLComponents` percent-encodes query values with `.urlQueryAllowed`, which leaves '+'
+        // unescaped; TMDB decodes an unescaped '+' as a space, so "Paramount+" would search as
+        // "Paramount ". Escape it explicitly after the fact — the only place any URL gets built.
+        if let escaped = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B") {
+            components?.percentEncodedQuery = escaped
+        }
 
         guard let url = components?.url else {
             throw TMDBError.invalidURL
         }
 
-        let data = try await deduplicator.deduplicated(for: url) {
-            let (data, response) = try await URLSession.shared.data(from: url)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw TMDBError.invalidResponse
+        let data: Data
+        do {
+            data = try await deduplicator.deduplicated(for: url) {
+                try await Self.fetchWithRetry(url: url)
             }
-
-            guard (200...299).contains(httpResponse.statusCode) else {
-                throw TMDBError.httpError(statusCode: httpResponse.statusCode)
-            }
-
-            return data
+        } catch {
+            throw Self.mapTransportError(error)
         }
 
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
             throw TMDBError.decodingError(error)
+        }
+    }
+
+    /// Fetches once, retrying a single time for transient server trouble (rate limiting or a
+    /// momentary outage) before giving up. Honors `Retry-After` when TMDB sends one, capped at 3s
+    /// so a misbehaving header can't stall the UI; otherwise a flat 0.8s backoff.
+    private nonisolated static func fetchWithRetry(url: URL) async throws -> Data {
+        do {
+            return try await fetchOnce(url: url)
+        } catch let error as TMDBError {
+            guard case .httpError(let statusCode, let retryAfter) = error, isRetryableStatus(statusCode) else {
+                throw error
+            }
+            try Task.checkCancellation()
+            let delaySeconds = min(retryAfter ?? 0.8, 3.0)
+            try await Task.sleep(for: .milliseconds(Int(delaySeconds * 1000)))
+            return try await fetchOnce(url: url)
+        }
+    }
+
+    private nonisolated static func isRetryableStatus(_ statusCode: Int) -> Bool {
+        statusCode == 429 || (502...504).contains(statusCode)
+    }
+
+    private nonisolated static func fetchOnce(url: URL) async throws -> Data {
+        let (data, response) = try await URLSession.shared.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TMDBError.invalidResponse
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap(Double.init)
+            throw TMDBError.httpError(statusCode: httpResponse.statusCode, retryAfter: retryAfter)
+        }
+
+        return data
+    }
+
+    /// Wraps the handful of `URLError`s a person should hear about differently than "HTTP error:
+    /// nnn" — everything else (including cancellation) passes through unchanged.
+    private nonisolated static func mapTransportError(_ error: any Error) -> any Error {
+        guard let urlError = error as? URLError else { return error }
+        switch urlError.code {
+        case .notConnectedToInternet, .networkConnectionLost:
+            return TMDBError.offline
+        case .timedOut:
+            return TMDBError.timedOut
+        default:
+            return error
         }
     }
 }
@@ -855,15 +864,18 @@ private actor RequestDeduplicator {
 
     private struct CachedResponse {
         let data: Data
-        let timestamp: Date
+        let insertedAt: Date
     }
 
     /// Default time-to-live for cached responses (10 minutes)
     private let ttl: TimeInterval = 600
+    /// Upper bound on cached responses — otherwise a long session's cache grows unbounded since
+    /// TTL is only ever checked on read, never proactively swept.
+    private let maxEntries = 300
 
     func deduplicated(for url: URL, perform: @Sendable @escaping () async throws -> Data) async throws -> Data {
         // Return cached response if within TTL
-        if let cached = cache[url], Date.now.timeIntervalSince(cached.timestamp) < ttl {
+        if let cached = cache[url], Date.now.timeIntervalSince(cached.insertedAt) < ttl {
             return cached.data
         }
 
@@ -877,12 +889,19 @@ private actor RequestDeduplicator {
         defer { inFlight.removeValue(forKey: url) }
 
         let data = try await task.value
-        cache[url] = CachedResponse(data: data, timestamp: Date.now)
+        store(data, for: url)
         return data
     }
 
-    func clearCache() {
-        cache.removeAll()
+    /// Inserts a fresh response, first dropping anything past its TTL, then evicting the oldest
+    /// entry if the cache is still at capacity.
+    private func store(_ data: Data, for url: URL) {
+        let now = Date.now
+        cache = cache.filter { now.timeIntervalSince($0.value.insertedAt) < ttl }
+        if cache.count >= maxEntries, let oldest = cache.min(by: { $0.value.insertedAt < $1.value.insertedAt })?.key {
+            cache.removeValue(forKey: oldest)
+        }
+        cache[url] = CachedResponse(data: data, insertedAt: now)
     }
 
     /// Drops cached entries whose URL path starts with any of the given prefixes. Prefixes are
@@ -897,11 +916,13 @@ private actor RequestDeduplicator {
     }
 }
 
-enum TMDBError: LocalizedError {
+nonisolated enum TMDBError: LocalizedError {
     case invalidURL
     case invalidResponse
-    case httpError(statusCode: Int)
+    case httpError(statusCode: Int, retryAfter: Double? = nil)
     case decodingError(Error)
+    case offline
+    case timedOut
 
     var errorDescription: String? {
         switch self {
@@ -909,10 +930,21 @@ enum TMDBError: LocalizedError {
             return "Invalid URL"
         case .invalidResponse:
             return "Invalid response from server"
-        case .httpError(let statusCode):
-            return "HTTP error: \(statusCode)"
-        case .decodingError(let error):
-            return "Failed to decode response: \(error.localizedDescription)"
+        case .httpError(let statusCode, _):
+            switch statusCode {
+            case 429:
+                return "TMDB is busy right now. Try again in a moment."
+            case 500...599:
+                return "TMDB is having trouble. Try again later."
+            default:
+                return "HTTP error: \(statusCode)"
+            }
+        case .decodingError:
+            return "Couldn't read the response from TMDB."
+        case .offline:
+            return "You're offline."
+        case .timedOut:
+            return "The connection timed out."
         }
     }
 }

@@ -434,9 +434,14 @@ final class TVShow: NSManagedObject, MediaItemProtocol, Identifiable {
 /// The stored `Movie` row for a TMDB id, if there is one. There should only ever be a single row
 /// per id — the watchlist and every custom list share it — but older installs can hold duplicates,
 /// so the row the library refers to (the one with `listItems`) wins.
+///
+/// Scoped to the active store: an interrupted join can leave rows behind in the inactive one
+/// (`acceptShareInvitations` and the private purge aren't atomic), and relating a new `ListItem`
+/// in the shared store to a private-store `Movie` fails the save with a cross-store reference.
 func existingMovie(id: String, in context: NSManagedObjectContext) -> Movie? {
     let request = NSFetchRequest<Movie>(entityName: "Movie")
     request.predicate = NSPredicate(format: "id == %@", id)
+    request.affectedStores = [PersistenceController.shared.activeStore]
     guard let matches = try? context.fetch(request), !matches.isEmpty else { return nil }
     return matches.first { !($0.listItems ?? []).isEmpty } ?? matches.first
 }
@@ -445,6 +450,7 @@ func existingMovie(id: String, in context: NSManagedObjectContext) -> Movie? {
 func existingTVShow(id: String, in context: NSManagedObjectContext) -> TVShow? {
     let request = NSFetchRequest<TVShow>(entityName: "TVShow")
     request.predicate = NSPredicate(format: "id == %@", id)
+    request.affectedStores = [PersistenceController.shared.activeStore]
     guard let matches = try? context.fetch(request), !matches.isEmpty else { return nil }
     return matches.first { !($0.listItems ?? []).isEmpty } ?? matches.first
 }
@@ -537,8 +543,10 @@ func deleteUnreferencedNetworks(
 ) {
     guard let networks else { return }
     for network in networks {
-        let stillReferenced = (network.movies ?? []).contains { $0.objectID != ownerID }
-            || (network.tvShows ?? []).contains { $0.objectID != ownerID }
+        // A row already deleted in this pass still shows up in the inverse relationship until the
+        // context is saved; counting it as a referrer would strand the network for good.
+        let stillReferenced = (network.movies ?? []).contains { !$0.isDeleted && $0.objectID != ownerID }
+            || (network.tvShows ?? []).contains { !$0.isDeleted && $0.objectID != ownerID }
         guard !stillReferenced else { continue }
         context.delete(network)
     }
@@ -606,16 +614,16 @@ func deleteMediaIfUnreferenced(
     in context: NSManagedObjectContext
 ) {
     if let movie {
-        let stillReferenced = (movie.listItems ?? []).contains { $0.objectID != deletedItemID }
-            || (movie.customListItems ?? []).contains { $0.objectID != deletedItemID }
+        let stillReferenced = (movie.listItems ?? []).contains { !$0.isDeleted && $0.objectID != deletedItemID }
+            || (movie.customListItems ?? []).contains { !$0.isDeleted && $0.objectID != deletedItemID }
         if !stillReferenced {
             deleteUnreferencedNetworks(movie.networks, excludingOwner: movie.objectID, in: context)
             context.delete(movie)
         }
     }
     if let tvShow {
-        let stillReferenced = (tvShow.listItems ?? []).contains { $0.objectID != deletedItemID }
-            || (tvShow.customListItems ?? []).contains { $0.objectID != deletedItemID }
+        let stillReferenced = (tvShow.listItems ?? []).contains { !$0.isDeleted && $0.objectID != deletedItemID }
+            || (tvShow.customListItems ?? []).contains { !$0.isDeleted && $0.objectID != deletedItemID }
         if !stillReferenced {
             deleteUnreferencedNetworks(tvShow.networks, excludingOwner: tvShow.objectID, in: context)
             context.delete(tvShow)
@@ -630,9 +638,13 @@ extension Movie {
     func update(from source: Movie) {
         title = source.title
         descriptionText = source.descriptionText
-        cast = source.cast
-        castImagePaths = source.castImagePaths
-        castCharacters = source.castCharacters
+        // The 6-hour metadata refresh uses the lean endpoints (no `credits`), so an empty cast
+        // means "not fetched", not "nobody" — keep what the last full fetch stored.
+        if !source.cast.isEmpty {
+            cast = source.cast
+            castImagePaths = source.castImagePaths
+            castCharacters = source.castCharacters
+        }
         genres = source.genres
         if let replacement = reconciledNetworks(
             current: networks,
@@ -672,9 +684,13 @@ extension TVShow {
     func update(from source: TVShow) {
         title = source.title
         descriptionText = source.descriptionText
-        cast = source.cast
-        castImagePaths = source.castImagePaths
-        castCharacters = source.castCharacters
+        // The 6-hour metadata refresh uses the lean endpoints (no `credits`), so an empty cast
+        // means "not fetched", not "nobody" — keep what the last full fetch stored.
+        if !source.cast.isEmpty {
+            cast = source.cast
+            castImagePaths = source.castImagePaths
+            castCharacters = source.castCharacters
+        }
         genres = source.genres
         if let replacement = reconciledNetworks(
             current: networks,

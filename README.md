@@ -15,6 +15,7 @@ Just a fun personal project to replace the running list of movies and TV shows m
 - **Provider filtering**: See only titles available on your streaming services, by region
 - **Shared library**: Share your entire library with one partner (Apple Account) — changes sync across devices. Settings is reachable from every tab; once a partner joins, the toolbar button becomes your two avatars, and each title's detail shows who added it and when
 - **Partner notifications**: "Sarah added Elf to Movies" as a notification when the app is closed, or a toast while it's open — only for the other person's edits, never your own devices
+- **Updating from 1.7**: The first launch offers to bring your previous Up Next over (titles, watched seasons, ratings, notes and collections). The old data is left in place, and you can run the import later from Settings.
 - **Metadata**: Ratings, cast, descriptions, season/episode totals, and where to watch pulled from The Movie Database (TMDB). Show details let you browse every season before adding a title, including from search and collections.
 
 ## Tech
@@ -85,6 +86,13 @@ Then select the Up Next scheme and run on an iOS 26.1+ simulator or device.
 ### Collection recommendation experiment
 
 A standalone Jev evaluation compares real TMDB candidates across six test Collections, including the Anchorman/Dodgeball regression. See [the experiment guide](experiments/collection_recommendations/README.md). It uses `TYPESAFE_API_KEY` from the gitignored `.env.jev.local` and the existing TMDB configuration (or `TMDB_API_KEY`). Run `python3 experiments/collection_recommendations/evaluate.py prepare`, then `python3 experiments/collection_recommendations/evaluate.py run --batch-size 6`. Reports and cached responses stay in `.local/jev-eval/`; the experiment runs independently of the app. The app uses the same small-batch scoring approach for movies and TV, without experimental keyword scoring.
+
+Legacy-store reader check (needs a copy of a 1.x `Watch_List.store`; see `experiments/legacy_import/README.md`):
+
+```bash
+swiftc -parse-as-library "Up Next/Services/LegacyStoreReader.swift" experiments/legacy_import/RuntimeChecks.swift -o /tmp/legacy-checks
+/tmp/legacy-checks /path/to/Watch_List.store
+```
 
 Runtime networking checks (mock responses, no API charges):
 

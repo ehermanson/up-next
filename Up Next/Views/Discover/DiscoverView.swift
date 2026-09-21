@@ -483,7 +483,7 @@ struct DiscoverView: View {
             }
             .padding(.horizontal, 16)
         } else if let error = viewModel.searchError {
-            EmptyStateView(icon: "exclamationmark.triangle", title: error)
+            EmptyStateView(icon: "exclamationmark.triangle", title: "Couldn't Load", subtitle: error)
                 .padding(.vertical, 40)
         } else if viewModel.hasSearchResults {
             LazyVStack(spacing: 8) {

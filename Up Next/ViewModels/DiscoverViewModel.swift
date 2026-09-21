@@ -121,12 +121,25 @@ final class DiscoverViewModel {
     private var reloadTask: Task<Void, Never>?
     private var browseReloadTask: Task<Void, Never>?
     private var latestBrowseRequest: BrowseRequest?
+    /// The media type the carousels currently on screen were fetched for. `selectedMediaType`'s
+    /// `didSet` skips the reload while a search is active (see above), so this can lag behind it
+    /// until `scheduleSearch`'s empty-query branch catches the mismatch up.
+    private var loadedMediaType: DiscoverMediaType?
+    /// True once a Discover load has completed successfully at least once — the SwiftUI `.task`
+    /// that calls `initialLoad()` re-runs on every tab appearance, and without this it would
+    /// flash the shimmer and reset Browse All to page 1 each time. A previous failure or
+    /// cancellation leaves this false so returning to the tab retries.
+    private var hasLoaded = false
 
     var selectedMediaType: DiscoverMediaType = .tvShows {
         didSet {
             guard oldValue != selectedMediaType else { return }
+            // TV and movie genre ids are different vocabularies — a genre picked for one type
+            // means something else (or nothing) for the other.
+            if selectedGenre != nil { selectedGenre = nil }
             // While searching, both types are already fetched — flipping the segment just
-            // changes which results are displayed, no refetch needed.
+            // changes which results are displayed, no refetch needed. `scheduleSearch`'s
+            // empty-query branch catches up (via `loadedMediaType`) once search ends.
             guard !isSearchActive else { return }
             reloadTask?.cancel()
             reloadTask = Task { await reload() }
@@ -201,18 +214,26 @@ final class DiscoverViewModel {
 
     // MARK: - Loading
 
+    /// No-ops once a load has already succeeded, so the SwiftUI `.task` that calls this on every
+    /// tab appearance doesn't flash the shimmer and reset Browse All to page 1 each time. Pull-
+    /// to-refresh (`refresh()`) always reloads regardless of `hasLoaded`.
     func initialLoad() async {
-        await runOwnedReload()
+        guard !hasLoaded else { return }
+        let completed = await runOwnedReload()
+        if completed, carouselError == nil, browseError == nil {
+            hasLoaded = true
+        }
     }
 
     /// Pull-to-refresh. Drops the cached responses for the endpoints Discover owns before
     /// reloading — otherwise a refresh inside `RequestDeduplicator`'s 10-minute TTL would just
-    /// re-read the cache. Scoped rather than a full `clearResponseCache()` so detail pages,
+    /// re-read the cache. Scoped rather than invalidating the whole cache so detail pages,
     /// search results and the provider list the rest of the app relies on stay cached.
     func refresh() async {
         await service.invalidateResponseCache(
             pathPrefixes: ["/discover/", "/trending/", "/movie/now_playing", "/genre/"]
         )
+        airingDateRequestedIDs.removeAll()
         await runOwnedReload()
     }
 
@@ -222,11 +243,14 @@ final class DiscoverViewModel {
     /// (`.task` on a tab switch, `.refreshable` when the gesture ends) with no replacement
     /// coming, and the shimmer would never end. Awaiting an owned task's value doesn't forward
     /// that cancellation, so the load always runs to completion and clears its own flags.
-    private func runOwnedReload() async {
+    /// Returns whether the owned task ran to completion rather than being superseded.
+    @discardableResult
+    private func runOwnedReload() async -> Bool {
         reloadTask?.cancel()
         let task = Task { await reload() }
         reloadTask = task
         await task.value
+        return !task.isCancelled
     }
 
     /// Reloads everything. Also drives pull-to-refresh; `reloadBrowse()` already resets the
@@ -284,6 +308,7 @@ final class DiscoverViewModel {
             results.3.errorDescription, results.4.errorDescription,
         ].compactMap { $0 }.first
         isCarouselLoading = false
+        loadedMediaType = requestedMediaType
     }
 
     /// Real trending when unfiltered. `/trending` can't take `with_watch_providers`, so when the
@@ -439,6 +464,10 @@ final class DiscoverViewModel {
         } catch {
             // Items stay as-is; the view decides whether the failure is worth showing.
             guard !Task.isCancelled, latestBrowseRequest == request else { return }
+            // `loadNextBrowsePage` already advanced `browsePage` past this failed page; roll it
+            // back so the next attempt (retry button or the infinite-scroll sentinel) re-fetches
+            // the same page instead of skipping it forever.
+            browsePage = max(1, request.page - 1)
             browseError = Self.errorText(error)
         }
         // A superseded page leaves the flag alone; its replacement owns it.
@@ -454,8 +483,8 @@ final class DiscoverViewModel {
             guard !Task.isCancelled, requestedMediaType == selectedMediaType else { return }
             genres = loaded
         } catch {
-            guard !Task.isCancelled, requestedMediaType == selectedMediaType else { return }
-            genres = []
+            // Keep whatever genre list is already showing rather than blanking the filter menu
+            // out from under the user for a transient failure.
         }
     }
 
@@ -565,6 +594,12 @@ final class DiscoverViewModel {
             searchError = nil
             searchTVResults = []
             searchMovieResults = []
+            // The segment may have flipped mid-search (`selectedMediaType`'s didSet skips the
+            // reload while `isSearchActive`) — catch up now that carousels/Browse All are back
+            // on screen, instead of showing the wrong media type until the next full reload.
+            if loadedMediaType != selectedMediaType {
+                Task { await runOwnedReload() }
+            }
             return
         }
 
@@ -632,12 +667,14 @@ final class DiscoverViewModel {
         guard !airingDateRequestedIDs.contains(tmdbId) else { return }
         airingDateRequestedIDs.insert(tmdbId)
         do {
-            let detail = try await service.getTVShowDetails(id: tmdbId)
+            let detail = try await service.getTVShowMetadata(id: tmdbId)
             guard let episode = detail.nextEpisodeToAir, let airDate = episode.airDate else { return }
             airingDates[tmdbId] = airDate
             airingEpisodeCodes[tmdbId] = episodeCode(season: episode.seasonNumber, episode: episode.episodeNumber)
         } catch {
-            // Silent — the chip just doesn't show for this card.
+            // Transient failure, not "no data" — allow a later appearance of the card to retry
+            // rather than permanently blocking the chip.
+            airingDateRequestedIDs.remove(tmdbId)
         }
     }
 }
