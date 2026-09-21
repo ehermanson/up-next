@@ -2,12 +2,20 @@ import Foundation
 
 // MARK: - Search Response Models
 
-struct TMDBTVShowSearchResponse: Codable {
+/// One page of a paginated TMDB list response. Lets `TMDBService` fetch and merge the first
+/// pages of `/search/{tv,movie}` generically.
+protocol TMDBSearchPage: Decodable {
+    associatedtype Result: Identifiable where Result.ID == Int
+    var results: [Result] { get }
+    var totalPages: Int? { get }
+}
+
+struct TMDBTVShowSearchResponse: Codable, TMDBSearchPage {
     let results: [TMDBTVShowSearchResult]
     let totalPages: Int?
 }
 
-struct TMDBMovieSearchResponse: Codable {
+struct TMDBMovieSearchResponse: Codable, TMDBSearchPage {
     let results: [TMDBMovieSearchResult]
     let totalPages: Int?
 }
@@ -33,6 +41,9 @@ struct TMDBTVShowSearchResult: Codable, Identifiable {
     /// vote-count floor.
     let genreIds: [Int]?
     let voteCount: Int?
+    /// Search-only signals read by `SearchRanking` (see `TMDBService.searchTVShows`).
+    let originalName: String?
+    let popularity: Double?
 }
 
 struct TMDBTVShowDetail: Codable {
@@ -122,6 +133,9 @@ struct TMDBMovieSearchResult: Codable, Identifiable {
     /// See `TMDBTVShowSearchResult.genreIds`.
     let genreIds: [Int]?
     let voteCount: Int?
+    /// Search-only signals read by `SearchRanking` (see `TMDBService.searchMovies`).
+    let originalTitle: String?
+    let popularity: Double?
 }
 
 struct TMDBMovieDetail: Codable {

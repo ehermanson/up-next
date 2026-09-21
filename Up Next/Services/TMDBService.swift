@@ -42,24 +42,49 @@ final class TMDBService: @unchecked Sendable {
 
     // MARK: - Search
 
-    /// Search for TV shows by name
+    /// Search for TV shows by name. The first two pages, re-ranked by `SearchRanking` — TMDB's
+    /// own order is text relevance only, which buries well-known titles under obscure tighter
+    /// matches (see `SearchRanking`).
     func searchTVShows(query: String) async throws -> [TMDBTVShowSearchResult] {
-        let endpoint = "/search/tv"
-        let response: TMDBTVShowSearchResponse = try await performRequest(
-            endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "query", value: query)]
+        let results: [TMDBTVShowSearchResult] = try await searchPages(
+            TMDBTVShowSearchResponse.self, endpoint: "/search/tv", query: query
         )
-        return response.results
+        return SearchRanking.ranked(results, query: query) {
+            SearchRanking.Signals(title: $0.name, alternateTitle: $0.originalName,
+                                  popularity: $0.popularity, voteCount: $0.voteCount)
+        }
     }
 
-    /// Search for movies by name
+    /// Search for movies by name. See `searchTVShows`.
     func searchMovies(query: String) async throws -> [TMDBMovieSearchResult] {
-        let endpoint = "/search/movie"
-        let response: TMDBMovieSearchResponse = try await performRequest(
-            endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "query", value: query)]
+        let results: [TMDBMovieSearchResult] = try await searchPages(
+            TMDBMovieSearchResponse.self, endpoint: "/search/movie", query: query
         )
-        return response.results
+        return SearchRanking.ranked(results, query: query) {
+            SearchRanking.Signals(title: $0.title, alternateTitle: $0.originalTitle,
+                                  popularity: $0.popularity, voteCount: $0.voteCount)
+        }
+    }
+
+    /// Pages 1 and 2 of a search, fetched concurrently and merged in order, deduped by id
+    /// (TMDB pagination can repeat a row across the page boundary). Page 2 is requested up
+    /// front rather than after page 1 reports `totalPages` so a multi-page query doesn't pay a
+    /// second round trip; a failed or empty page 2 just yields page 1.
+    private func searchPages<Page: TMDBSearchPage>(
+        _ page: Page.Type, endpoint: String, query: String
+    ) async throws -> [Page.Result] {
+        func items(page: Int) -> [URLQueryItem] {
+            [URLQueryItem(name: "query", value: query), URLQueryItem(name: "page", value: "\(page)")]
+        }
+        async let first: Page = performRequest(endpoint: endpoint, queryItems: items(page: 1))
+        async let second: Page? = try? performRequest(endpoint: endpoint, queryItems: items(page: 2))
+
+        let firstPage = try await first
+        guard (firstPage.totalPages ?? 1) > 1, let secondPage = await second else {
+            return firstPage.results
+        }
+        var seen = Set<Int>()
+        return (firstPage.results + secondPage.results).filter { seen.insert($0.id).inserted }
     }
 
     // MARK: - Trending & Theatrical
