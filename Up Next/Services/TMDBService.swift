@@ -268,43 +268,65 @@ final class TMDBService {
             652,    // Apple TV
         ]
 
-        var seenIds = Set<Int>()
+        let allResults = movieProviders.results + tvProviders.results
+
+        // Pass 1: learn which base services exist, so `alias(for:)` can fold a channel variant
+        // TMDB renamed since the alias table was written ("HBO Max Amazon Channel") onto its base.
+        for provider in allResults where !Self.isChannelVariant(named: provider.providerName) {
+            canonicalIDsByName[Self.normalizedProviderName(provider.providerName)] = provider.providerId
+        }
+        for (name, canonical) in Self.providerAliases {
+            canonicalIDsByName[Self.normalizedProviderName(name)] = canonical.id
+            canonicalIDsByName[Self.normalizedProviderName(canonical.name)] = canonical.id
+        }
+
+        var mergedIndexByID: [Int: Int] = [:]
         var seenNames = Set<String>()
         var merged: [TMDBWatchProviderInfo] = []
+        // Best priority seen for each canonical provider across every variant that folds into it.
+        // TMDB ranks "HBO Max Amazon Channel" 11th in the US but "HBO Max" itself 152nd; without
+        // this the canonical row inherits whichever variant happened to be seen first.
+        var bestPriority: [Int: Int] = [:]
 
-        for provider in movieProviders.results + tvProviders.results {
+        for provider in allResults {
             guard !rentBuyOnlyProviderIDs.contains(provider.providerId) else { continue }
 
             // Resolve the alias first — an aliased channel variant is a real subscription.
-            let alias = Self.alias(for: provider.providerName)
+            let alias = alias(for: provider.providerName)
             let canonicalName = alias?.name ?? provider.providerName
             let canonicalID = alias.flatMap { $0.id >= 0 ? $0.id : nil } ?? provider.providerId
             if alias == nil, Self.isChannelVariant(named: provider.providerName) { continue }
 
-            guard !seenIds.contains(canonicalID) else { continue }
+            bestPriority[canonicalID] = min(bestPriority[canonicalID] ?? Int.max, provider.priority(in: regionCode))
+            // The base is the entry that *is* the canonical id ("Paramount Plus" 531), whatever
+            // TMDB calls it; the canonical name is ours.
+            let isBase = canonicalID == provider.providerId
+            let canonical = TMDBWatchProviderInfo(
+                providerId: canonicalID,
+                providerName: canonicalName,
+                logoPath: provider.logoPath,
+                displayPriority: provider.displayPriority,
+                displayPriorities: provider.displayPriorities
+            )
+
+            if let index = mergedIndexByID[canonicalID] {
+                // A variant got here first (Paramount+ Premium's logo on the Paramount+ tile) —
+                // the base's own logo wins.
+                if isBase { merged[index] = canonical }
+                continue
+            }
             guard !seenNames.contains(canonicalName) else { continue }
 
-            seenIds.insert(canonicalID)
+            mergedIndexByID[canonicalID] = merged.count
             seenNames.insert(canonicalName)
-
-            if canonicalName == provider.providerName, canonicalID == provider.providerId {
-                merged.append(provider)
-            } else {
-                merged.append(TMDBWatchProviderInfo(
-                    providerId: canonicalID,
-                    providerName: canonicalName,
-                    logoPath: provider.logoPath,
-                    displayPriority: provider.displayPriority,
-                    displayPriorities: provider.displayPriorities
-                ))
-            }
+            merged.append(canonical)
         }
 
         // TMDB lower display_priority means higher prominence — the *region's* priority, not the
         // global one, or the US grid opens with FilmBox+ and Sun NXT ahead of Hulu.
         let sorted = merged.sorted {
-            let leftPriority = $0.priority(in: regionCode)
-            let rightPriority = $1.priority(in: regionCode)
+            let leftPriority = bestPriority[$0.providerId] ?? $0.priority(in: regionCode)
+            let rightPriority = bestPriority[$1.providerId] ?? $1.priority(in: regionCode)
             if leftPriority != rightPriority {
                 return leftPriority < rightPriority
             }
@@ -466,7 +488,7 @@ final class TMDBService {
 
         // Add originating networks only if not already covered by watch providers
         for tmdbNetwork in detail.networks ?? [] {
-            let alias = Self.alias(for: tmdbNetwork.name)
+            let alias = alias(for: tmdbNetwork.name)
             let canonical = alias?.name ?? tmdbNetwork.name
             guard !seenNames.contains(canonical) else { continue }
             seenNames.insert(canonical)
@@ -538,26 +560,49 @@ final class TMDBService {
         "roku premium channel",
     ]
 
-    /// Alias lookup that also understands ad-supported tiers. TMDB lists "Amazon Prime Video",
-    /// "Amazon Prime Video with Ads" (2100) *and* "Amazon Prime Video Free with Ads" (613) as
-    /// separate providers, and adds tiers faster than a hand-written table keeps up — so strip a
-    /// trailing "[Free|Standard|Basic] with Ads" and resolve the base name instead. A base with no
-    /// alias of its own still collapses by name in the callers' `seenNames` dedupe.
-    private static func alias(for providerName: String) -> CanonicalProvider? {
-        if let exact = providerAliases[providerName] { return exact }
-        let base = providerName.replacingOccurrences(
+    /// Normalised provider names → canonical ids, learned from the region's provider list (every
+    /// non-variant entry, plus the alias table's keys and canonical names). Filled by
+    /// `fetchWatchProviders`, which runs at startup via `ensureCanonicalLogosLoaded`.
+    private var canonicalIDsByName: [String: Int] = [:]
+
+    /// Alias lookup that also understands the two ways TMDB spawns variants faster than a table
+    /// keeps up: ad-supported tiers ("Amazon Prime Video Free with Ads" → Prime Video) and resold
+    /// channels ("HBO Max Amazon Channel" → HBO Max, "Paramount+ Apple TV channel" → Paramount+).
+    /// Both strip the suffix and resolve the base — through the alias table first, then through
+    /// `canonicalIDsByName`. An ad tier whose base is unknown keeps the entry's own id (`-1`
+    /// signals that to callers); a channel whose base is unknown returns nil and is dropped, since
+    /// a resold channel with no base subscription isn't a service anyone picks.
+    private func alias(for providerName: String) -> CanonicalProvider? {
+        if let exact = Self.providerAliases[providerName] { return exact }
+
+        let tierBase = providerName.replacingOccurrences(
             of: #"\s+(?:free\s+|standard\s+|basic\s+)?with\s+ads\s*$"#,
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
-        guard base != providerName else { return nil }
-        if let baseAlias = providerAliases[base] { return baseAlias }
-        return CanonicalProvider(name: base, id: adTierBaseIDs[base] ?? -1)
+        if tierBase != providerName {
+            if let baseAlias = alias(for: tierBase) { return baseAlias }
+            return CanonicalProvider(name: tierBase, id: canonicalIDsByName[Self.normalizedProviderName(tierBase)] ?? -1)
+        }
+
+        if let channelBase = Self.channelBaseName(of: providerName) {
+            if let baseAlias = alias(for: channelBase) { return baseAlias }
+            if let id = canonicalIDsByName[Self.normalizedProviderName(channelBase)] {
+                return CanonicalProvider(name: channelBase, id: id)
+            }
+        }
+        return nil
     }
 
-    /// Base provider ids for ad tiers whose base name isn't itself aliased. `-1` from `alias(for:)`
-    /// means "unknown"; callers keep the entry's own id in that case.
-    private static let adTierBaseIDs: [String: Int] = [:]
+    /// "Paramount+ Amazon Channel" → "Paramount+"; nil when the name carries no channel suffix.
+    private static func channelBaseName(of providerName: String) -> String? {
+        let normalized = normalizedProviderName(providerName)
+        guard let suffix = channelSuffixes.first(where: { normalized.hasSuffix($0) }) else { return nil }
+        let trimmed = providerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > suffix.count else { return nil }
+        let base = String(trimmed.dropLast(suffix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return base.isEmpty ? nil : base
+    }
 
     private static func normalizedProviderName(_ name: String) -> String {
         name
@@ -613,6 +658,8 @@ final class TMDBService {
         // Paramount
         "Paramount+ Premium": CanonicalProvider(name: "Paramount+", id: 531),
         "Paramount Plus Premium": CanonicalProvider(name: "Paramount+", id: 531),
+        "Paramount+ Essential": CanonicalProvider(name: "Paramount+", id: 531),
+        "Paramount Plus Essential": CanonicalProvider(name: "Paramount+", id: 531),
         "Paramount Plus": CanonicalProvider(name: "Paramount+", id: 531),
         "Paramount+ Amazon Channel": CanonicalProvider(name: "Paramount+", id: 531),
         // Hulu
@@ -644,7 +691,7 @@ final class TMDBService {
             for entry in entries {
                 // Resolve the alias first — an aliased channel variant (e.g. "Paramount+ Amazon
                 // Channel") is a real subscription, so it must survive the channel-variant filter.
-                let alias = Self.alias(for: entry.providerName)
+                let alias = alias(for: entry.providerName)
                 let canonicalName = alias?.name ?? entry.providerName
                 let canonicalID = alias.flatMap { $0.id >= 0 ? $0.id : nil } ?? entry.providerId
                 if alias == nil, Self.isChannelVariant(named: entry.providerName) { continue }

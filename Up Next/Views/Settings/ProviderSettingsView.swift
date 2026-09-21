@@ -11,6 +11,7 @@ struct ProviderSettingsView: View {
     @State private var providers: [TMDBWatchProviderInfo] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var searchText = ""
 
     private let settings = ProviderSettings.shared
 
@@ -59,9 +60,28 @@ struct ProviderSettingsView: View {
         .background(AppBackground())
         .navigationTitle("Streaming Services")
         .navigationBarTitleDisplayMode(.inline)
+        // ~270 services per region; nobody should scroll to the bottom to find Crunchyroll.
+        .searchable(text: $searchText, prompt: "Search services")
         .task {
             await loadProviders()
         }
+    }
+
+    // MARK: - Filtering
+
+    private var trimmedQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredProviders: [TMDBWatchProviderInfo] {
+        guard !trimmedQuery.isEmpty else { return providers }
+        return providers.filter { $0.providerName.localizedStandardContains(trimmedQuery) }
+    }
+
+    /// The user's picks, in list order — pinned above everything else so they're one glance
+    /// away instead of scattered through a 270-row grid. Hidden while searching.
+    private var selectedProviders: [TMDBWatchProviderInfo] {
+        providers.filter { settings.selectedProviderIDs.contains($0.id) }
     }
 
     // MARK: - Description
@@ -108,9 +128,35 @@ struct ProviderSettingsView: View {
 
     // MARK: - Provider Grid
 
+    @ViewBuilder
     private var providerGrid: some View {
+        if trimmedQuery.isEmpty {
+            let picked = selectedProviders
+            if !picked.isEmpty {
+                VStack(spacing: 8) {
+                    SectionHeader(title: "Your Services", count: picked.count, showsFilter: false)
+                    grid(for: picked)
+                }
+            }
+            VStack(spacing: 8) {
+                SectionHeader(title: "All Services", showsFilter: false)
+                grid(for: providers)
+            }
+        } else if filteredProviders.isEmpty {
+            EmptyStateView(
+                icon: "magnifyingglass",
+                title: "No Services Match",
+                subtitle: "Try a different name — services are listed the way TMDB names them."
+            )
+            .padding(.vertical, 40)
+        } else {
+            grid(for: filteredProviders)
+        }
+    }
+
+    private func grid(for items: [TMDBWatchProviderInfo]) -> some View {
         LazyVGrid(columns: columns, spacing: 16) {
-            ForEach(providers) { provider in
+            ForEach(items) { provider in
                 ProviderGridCell(
                     provider: provider,
                     isSelected: settings.selectedProviderIDs.contains(provider.id)
