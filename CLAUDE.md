@@ -114,7 +114,7 @@ Up Next/
 │       ├── SettingsView.swift           # Settings root (sheet from every tab): Sharing / Streaming Services / Region rows + Appearance picker + About; hosts the Sharing push screen
 │       ├── ProviderSettingsView.swift   # Streaming service grid; isRoot owns its own NavigationStack+Done (first-launch onboarding), else pushed from SettingsView. Also hosts RegionPickerView (internal)
 │       ├── SharingSettingsView.swift    # SharingSection: iCloud off / owner unshared → share link; owner shared (incl. pending invite) → manage; participant → leave; joining. Pushed from SettingsView's Sharing row
-│       └── LegacyImportView.swift       # "Bring Over Your Up Next?" sheet: offer / progress / result for the 1.x importer
+│       └── LegacyImportView.swift       # "Bring over your Up Next lists?" sheet: offer / progress / result for the 1.x importer
 │
 ├── Services/
 │   ├── PersistenceController.swift      # Core Data + CloudKit container, role rule, remote change tracking, sharing API (liveShare / isSharingLive / isCloudAccountAvailable), store-load failure state, history pruning

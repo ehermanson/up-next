@@ -64,8 +64,8 @@ struct LegacyImportView: View {
             if summary.isEmpty {
                 ImportStateLayout(
                     icon: "arrow.down.doc",
-                    title: "Nothing to Bring Over",
-                    subtitle: "The previous version of Up Next didn’t leave anything on this device."
+                    title: "Nothing to bring over",
+                    subtitle: "The previous version of Up Next didn’t leave any lists on this device."
                 ) {
                     dismissButton(title: "Done")
                 }
@@ -73,7 +73,7 @@ struct LegacyImportView: View {
                 ImportStateLayout(
                     icon: "arrow.down.doc",
                     breathes: true,
-                    title: "Bring Over Your Up Next?",
+                    title: "Bring over your Up Next lists?",
                     subtitle: offerMessage(summary)
                 ) {
                     VStack(spacing: 12) {
@@ -100,7 +100,7 @@ struct LegacyImportView: View {
         ImportStateLayout(
             icon: "arrow.down.doc",
             breathes: true,
-            title: "Bringing Everything Over"
+            title: "Bringing over your Up Next lists…"
         ) {
             VStack(spacing: 10) {
                 if total > 0 {
