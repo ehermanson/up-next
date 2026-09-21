@@ -111,7 +111,7 @@ struct SectionHeader: View {
             if let count {
                 Chip(text: "\(count)")
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(count) items")
+                    .accessibilityLabel("\(count) titles")
             }
             Spacer()
             if showsFilter, hasFilterOptions {

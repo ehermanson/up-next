@@ -276,9 +276,9 @@ final class TMDBService {
             guard !rentBuyOnlyProviderIDs.contains(provider.providerId) else { continue }
 
             // Resolve the alias first — an aliased channel variant is a real subscription.
-            let alias = Self.providerAliases[provider.providerName]
+            let alias = Self.alias(for: provider.providerName)
             let canonicalName = alias?.name ?? provider.providerName
-            let canonicalID = alias?.id ?? provider.providerId
+            let canonicalID = alias.flatMap { $0.id >= 0 ? $0.id : nil } ?? provider.providerId
             if alias == nil, Self.isChannelVariant(named: provider.providerName) { continue }
 
             guard !seenIds.contains(canonicalID) else { continue }
@@ -464,12 +464,14 @@ final class TMDBService {
 
         // Add originating networks only if not already covered by watch providers
         for tmdbNetwork in detail.networks ?? [] {
-            let alias = Self.providerAliases[tmdbNetwork.name]
+            let alias = Self.alias(for: tmdbNetwork.name)
             let canonical = alias?.name ?? tmdbNetwork.name
             guard !seenNames.contains(canonical) else { continue }
             seenNames.insert(canonical)
             // Use provider ID if known, otherwise fall back to network ID
-            let networkID = Self.networkToProviderID[tmdbNetwork.name] ?? alias?.id ?? tmdbNetwork.id
+            let networkID = Self.networkToProviderID[tmdbNetwork.name]
+                ?? alias.flatMap { $0.id >= 0 ? $0.id : nil }
+                ?? tmdbNetwork.id
             // Prefer canonical logo, then streaming provider's logo, then network logo
             let logoPath = canonicalLogoPaths[networkID] ?? providerLogos[networkID] ?? tmdbNetwork.logoPath
             let network = Network(
@@ -533,6 +535,27 @@ final class TMDBService {
         "apple tv+ channel",
         "roku premium channel",
     ]
+
+    /// Alias lookup that also understands ad-supported tiers. TMDB lists "Amazon Prime Video",
+    /// "Amazon Prime Video with Ads" (2100) *and* "Amazon Prime Video Free with Ads" (613) as
+    /// separate providers, and adds tiers faster than a hand-written table keeps up — so strip a
+    /// trailing "[Free|Standard|Basic] with Ads" and resolve the base name instead. A base with no
+    /// alias of its own still collapses by name in the callers' `seenNames` dedupe.
+    private static func alias(for providerName: String) -> CanonicalProvider? {
+        if let exact = providerAliases[providerName] { return exact }
+        let base = providerName.replacingOccurrences(
+            of: #"\s+(?:free\s+|standard\s+|basic\s+)?with\s+ads\s*$"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        guard base != providerName else { return nil }
+        if let baseAlias = providerAliases[base] { return baseAlias }
+        return CanonicalProvider(name: base, id: adTierBaseIDs[base] ?? -1)
+    }
+
+    /// Base provider ids for ad tiers whose base name isn't itself aliased. `-1` from `alias(for:)`
+    /// means "unknown"; callers keep the entry's own id in that case.
+    private static let adTierBaseIDs: [String: Int] = [:]
 
     private static func normalizedProviderName(_ name: String) -> String {
         name
@@ -619,9 +642,9 @@ final class TMDBService {
             for entry in entries {
                 // Resolve the alias first — an aliased channel variant (e.g. "Paramount+ Amazon
                 // Channel") is a real subscription, so it must survive the channel-variant filter.
-                let alias = Self.providerAliases[entry.providerName]
+                let alias = Self.alias(for: entry.providerName)
                 let canonicalName = alias?.name ?? entry.providerName
-                let canonicalID = alias?.id ?? entry.providerId
+                let canonicalID = alias.flatMap { $0.id >= 0 ? $0.id : nil } ?? entry.providerId
                 if alias == nil, Self.isChannelVariant(named: entry.providerName) { continue }
 
                 guard !seenIDs.contains(canonicalID) else { continue }
@@ -940,9 +963,9 @@ nonisolated enum TMDBError: LocalizedError {
                 return "HTTP error: \(statusCode)"
             }
         case .decodingError:
-            return "Couldn't read the response from TMDB."
+            return "Couldn’t read the response from TMDB."
         case .offline:
-            return "You're offline."
+            return "You’re offline."
         case .timedOut:
             return "The connection timed out."
         }

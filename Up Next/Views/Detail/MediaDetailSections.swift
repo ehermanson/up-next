@@ -24,7 +24,7 @@ struct DescriptionSection: View {
             } else if let errorMessage {
                 EmptyStateView(
                     icon: "wifi.exclamationmark",
-                    title: "Couldn't Load Details",
+                    title: "Couldn’t Load Details",
                     subtitle: errorMessage
                 ) {
                     Button("Try Again", action: onRetry)

@@ -150,7 +150,7 @@ struct CollectionSuggestionsView: View {
             guard !list.isDeleted else { adding.remove(key); return }
             viewModel.addItem(movie: movie, to: list)
             adding.remove(key)
-            toast.show("\(result.title) added to \(list.name)")
+            toast.show("Added \(result.title) to \(list.name)")
         }
     }
 
@@ -168,7 +168,7 @@ struct CollectionSuggestionsView: View {
             guard !list.isDeleted else { adding.remove(key); return }
             viewModel.addItem(tvShow: show, to: list)
             adding.remove(key)
-            toast.show("\(result.name) added to \(list.name)")
+            toast.show("Added \(result.name) to \(list.name)")
         }
     }
 }

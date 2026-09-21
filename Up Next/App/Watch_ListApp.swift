@@ -57,7 +57,7 @@ struct Watch_ListApp: App {
     private var storeFailurePlaceholder: some View {
         EmptyStateView(
             icon: "externaldrive.badge.exclamationmark",
-            title: "Couldn't Open Your Library",
+            title: "Couldn’t Open Your Watchlist",
             subtitle: "Restart the app. If this keeps happening, reinstall Up Next — your data is safe in iCloud."
         )
         .background(AppBackground())

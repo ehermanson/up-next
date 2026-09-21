@@ -1,6 +1,6 @@
 # Up Next
 
-Just a fun personal project to replace the running list of movies and TV shows my wife and I kept in the Notes app for years. Now with shared library support so we can watch together.
+Just a fun personal project to replace the running list of movies and TV shows my wife and I kept in the Notes app for years. Now with shared watchlist support so we can watch together.
 
 ## Features
 
@@ -13,7 +13,7 @@ Just a fun personal project to replace the running list of movies and TV shows m
 - **Collections**: Create custom collections (Christmas movies, kid-friendly, guilty pleasures, etc.). Suggestions appear inside each collection with one-tap adding. Jev ranks TMDB candidates against the exact collection name and member titles, with cached scores and a TMDB fallback. Adding a suggestion keeps the row stable until you reopen or rename the collection.
 - **Discover**: Search, browse trending titles, see what's airing this week (with the exact episode and day), and get personalized recommendations
 - **Provider filtering**: See only titles available on your streaming services, by region
-- **Shared library**: Share your entire library with one partner (Apple Account) — changes sync across devices. Settings is reachable from every tab; once a partner joins, the toolbar button becomes your two avatars, and each title's detail shows who added it and when
+- **Shared watchlist**: Share your entire watchlist with one partner (Apple Account) — changes sync across devices. Settings is reachable from every tab; once a partner joins, the toolbar button becomes your two avatars, and each title's detail shows who added it and when
 - **Partner notifications**: "Sarah added Elf to Movies" as a notification when the app is closed, or a toast while it's open — only for the other person's edits, never your own devices
 - **Updating from 1.7**: The first launch offers to bring your previous Up Next over (titles, watched seasons, ratings, notes and collections). The old data is left in place, and you can run the import later from Settings.
 - **Metadata**: Ratings, cast, descriptions, season/episode totals, and where to watch pulled from The Movie Database (TMDB). Show details let you browse every season before adding a title, including from search and collections.
@@ -21,7 +21,7 @@ Just a fun personal project to replace the running list of movies and TV shows m
 ## Tech
 
 - **Native iOS app** (Swift/SwiftUI, iOS 26.1+)
-- **Core Data + CloudKit**: Local persistence with optional sharing (one person owns the shared library; the partner gets read-write access to it through their own iCloud account)
+- **Core Data + CloudKit**: Local persistence with optional sharing (one person owns the shared watchlist; the partner gets read-write access to it through their own iCloud account)
 - **TMDB API**: For media metadata and discovery
 - **No analytics, no ads, no accounts** — just your data
 
@@ -51,11 +51,11 @@ Just a fun personal project to replace the running list of movies and TV shows m
 open "Up Next.xcodeproj"
 ```
 
-Then select the Up Next scheme and run on an iOS 26.1+ simulator or device.
+Then select the `Up Next` scheme and run on an iOS 26.1+ simulator or device.
 
 **Simulator note**: Unsigned simulator builds (e.g., CI) must be launched with `--no-cloudkit` because CloudKit requires the `icloud-services` entitlement.
 
-## Sharing Your Library
+## Sharing Your Watchlist
 
 ### As the owner (the first person to use the app)
 
@@ -66,15 +66,15 @@ Then select the Up Next scheme and run on an iOS 26.1+ simulator or device.
 ### As a partner (accepting the share)
 
 1. Tap the share link from Messages, Mail, etc.
-2. The app opens and asks you to confirm — joining replaces anything already in your own library on that device (it tells you exactly how many titles and collections)
-3. Once you tap Join, your partner's library syncs down
+2. The app opens and asks you to confirm — joining replaces your own watchlist across your Apple Account (it tells you exactly how many titles and collections)
+3. Once you tap Join, your partner's watchlist syncs down
 4. You can add, edit, and remove titles just like the owner
 5. Changes sync within seconds to minutes; the app asks for notification permission once sharing is live so you hear about each other's edits (deletions aren't announced)
 
 ### Leaving or stopping
 
-- **Partner leaving**: Settings → Sharing → "Leave shared library"
-- **Owner stopping**: Settings → Sharing → Manage → Stop Sharing (the owner keeps everything; the partner's copy is removed and they start over with an empty library of their own)
+- **Partner leaving**: Settings → Sharing → "Leave Shared Watchlist"
+- **Owner stopping**: Settings → Sharing → Manage → Stop Sharing (the owner keeps everything; the partner is told, their copy is removed and they start over with an empty watchlist of their own)
 
 ## Development Notes
 

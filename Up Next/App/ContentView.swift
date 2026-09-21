@@ -126,7 +126,7 @@ struct ContentView: View {
         // A rejected save is silent otherwise, and the user's edit is rolled back underneath them.
         .onChange(of: persistence.lastSaveError != nil) { _, failed in
             guard failed else { return }
-            toast.show("Couldn't save your changes", icon: "exclamationmark.triangle.fill", feedback: nil)
+            toast.show("Couldn’t save your changes", icon: "exclamationmark.triangle.fill", feedback: nil)
             persistence.clearLastSaveError()
         }
         // The partner's edits landing while the app is on screen: toast rather than banner.
@@ -203,10 +203,10 @@ struct ContentView: View {
                 persistence.sharingEndedByOwnerName = nil
             }
         } message: {
-            Text("You now have an empty library of your own. Anything you add from here on is just yours.")
+            Text("You now have an empty watchlist of your own. Anything you add from here on is just yours.")
         }
         .alert(
-            "Couldn't Join Shared Library",
+            "Couldn’t Join Shared Watchlist",
             isPresented: Binding(
                 get: { joinErrorMessage != nil },
                 set: { if !$0 { joinErrorMessage = nil } }
@@ -246,17 +246,17 @@ struct ContentView: View {
 
     private var joinInvitationTitle: String {
         if let name = invitationOwnerName {
-            return "Join \(name)'s library?"
+            return "Join \(name)’s watchlist?"
         }
-        return "Join this shared library?"
+        return "Join this shared watchlist?"
     }
 
     private var joinInvitationMessage: String {
-        let shared = "You'll both see and edit the same watchlist and collections."
+        let shared = "You’ll both see and edit the same watchlist and collections."
         // Already in someone else's library: nothing of this device's own is at stake, but the
         // library they're in right now is.
         if let currentOwner = persistence.pendingInvitationCurrentOwnerName {
-            return "You're currently in \(currentOwner)'s shared library. Joining replaces it on this device. You can rejoin later from the original link."
+            return "You’re currently in \(currentOwner)’s shared watchlist. Joining replaces it on this device. You can rejoin later from the original link."
         }
 
         let counts = persistence.ownedLibraryCounts()
@@ -268,20 +268,20 @@ struct ContentView: View {
         if counts.collections > 0 {
             parts.append("\(counts.collections) \(counts.collections == 1 ? "collection" : "collections")")
         }
-        return "Your own \(parts.joined(separator: " and ")) on this device will be removed and replaced by the shared library. \(shared)"
+        return "Your own \(parts.joined(separator: " and ")) will be removed from your Apple Account (every device signed in as you) and replaced by the shared watchlist. \(shared)"
     }
 
     private var blockedInvitationMessage: String {
         let partner = persistence.liveShare?.partnerParticipant?.displayName ?? "your partner"
-        let library = persistence.blockedShareInvitationOwnerName.map { "\($0)'s library" } ?? "this library"
-        return "You're sharing your library with \(partner). To join \(library) instead, stop sharing yours first in Settings → Sharing."
+        let library = persistence.blockedShareInvitationOwnerName.map { "\($0)’s watchlist" } ?? "this watchlist"
+        return "You’re sharing your watchlist with \(partner). To join \(library) instead, stop sharing yours first in Settings → Sharing."
     }
 
     private var joiningPlaceholder: some View {
         EmptyStateView(
             icon: "icloud.and.arrow.down",
-            title: "Joining shared library…",
-            subtitle: "Waiting for the shared library to arrive from iCloud."
+            title: "Joining shared watchlist…",
+            subtitle: "Waiting for the shared watchlist to arrive from iCloud."
         )
         .background(AppBackground())
     }

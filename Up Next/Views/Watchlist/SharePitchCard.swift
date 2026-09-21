@@ -24,7 +24,7 @@ struct SharePitchCard: View {
                     Text("Watching with someone?")
                         .font(.headline)
                         .foregroundStyle(.primary)
-                    Text("Share your list with one person and you'll both see and edit the same watchlist and collections.")
+                    Text("Share your watchlist with one person and you’ll both see and edit the same watchlist and collections.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -44,7 +44,7 @@ struct SharePitchCard: View {
                 .accessibilityLabel("Dismiss")
             }
 
-            ShareLink(item: LibraryShareItem(existingShare: persistence.liveShare), preview: SharePreview("Up Next library")) {
+            ShareLink(item: LibraryShareItem(existingShare: persistence.liveShare), preview: SharePreview("Up Next watchlist")) {
                 Label("Share with a partner", systemImage: "square.and.arrow.up")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)

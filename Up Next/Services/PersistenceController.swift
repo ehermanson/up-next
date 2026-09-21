@@ -819,13 +819,13 @@ final class PersistenceController {
         var errorDescription: String? {
             switch self {
             case .noGroup:
-                "Your library hasn't finished loading yet. Try again in a moment."
+                "Your watchlist hasn’t finished loading yet. Try again in a moment."
             case .noShare:
-                "This library isn't shared."
+                "This watchlist isn’t shared."
             case .notParticipant:
-                "Only someone who joined a shared library can leave it."
+                "Only someone who joined a shared watchlist can leave it."
             case .storeUnavailable:
-                "Up Next couldn't open your library on this device."
+                "Up Next couldn’t open your watchlist on this device."
             }
         }
     }

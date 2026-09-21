@@ -126,7 +126,7 @@ struct MyListsView: View {
                     listToDelete = nil
                 }
             } message: { list in
-                Text("Are you sure you want to delete \"\(list.name)\"? This action cannot be undone.")
+                Text("Are you sure you want to delete \u{201C}\(list.name)\u{201D}? This action cannot be undone.")
             }
         }
     }

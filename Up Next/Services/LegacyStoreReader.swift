@@ -116,7 +116,7 @@ nonisolated enum LegacyStoreReader {
             case .missingStore:
                 return "Nothing from the previous version of Up Next was found on this device."
             case .cannotOpen(let message), .queryFailed(let message):
-                return "The data from the previous version of Up Next couldn't be read. (\(message))"
+                return "The data from the previous version of Up Next couldn’t be read. (\(message))"
             }
         }
     }

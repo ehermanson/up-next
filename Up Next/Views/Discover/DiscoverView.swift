@@ -162,7 +162,7 @@ struct DiscoverView: View {
             } else if let error = viewModel.carouselError, !viewModel.hasCarouselItems {
                 EmptyStateView(
                     icon: "wifi.exclamationmark",
-                    title: "Couldn't Load",
+                    title: "Couldn’t Load",
                     subtitle: error
                 ) {
                     Button("Try Again") {
@@ -402,7 +402,7 @@ struct DiscoverView: View {
             if let error = viewModel.browseError, viewModel.browseItems.isEmpty {
                 EmptyStateView(
                     icon: "wifi.exclamationmark",
-                    title: "Couldn't Load",
+                    title: "Couldn’t Load",
                     subtitle: error
                 ) {
                     Button("Try Again") {
@@ -492,7 +492,7 @@ struct DiscoverView: View {
             }
             .padding(.horizontal, DesignTokens.Spacing.screenInset)
         } else if let error = viewModel.searchError {
-            EmptyStateView(icon: "exclamationmark.triangle", title: "Couldn't Load", subtitle: error)
+            EmptyStateView(icon: "exclamationmark.triangle", title: "Couldn’t Load", subtitle: error)
                 .padding(.vertical, 40)
         } else if viewModel.hasSearchResults {
             LazyVStack(spacing: 8) {
@@ -551,7 +551,7 @@ struct DiscoverView: View {
         let key = MediaIDKey.make(item.mediaType, item.tmdbId)
         guard !addedIDs.contains(key) else { return }
         addedIDs.insert(key)
-        toast.show("\(item.title) has been added")
+        toast.show("Added \(item.title)")
 
         Task {
             switch item {

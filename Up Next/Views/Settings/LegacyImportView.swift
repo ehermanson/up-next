@@ -65,7 +65,7 @@ struct LegacyImportView: View {
                 ImportStateLayout(
                     icon: "arrow.down.doc",
                     title: "Nothing to Bring Over",
-                    subtitle: "The previous version of Up Next didn't leave anything on this device."
+                    subtitle: "The previous version of Up Next didn’t leave anything on this device."
                 ) {
                     dismissButton(title: "Done")
                 }
@@ -139,7 +139,7 @@ struct LegacyImportView: View {
         ImportStateLayout(
             icon: "exclamationmark.triangle",
             iconColor: .orange,
-            title: "Couldn't Import",
+            title: "Couldn’t Import",
             subtitle: message
         ) {
             VStack(spacing: 12) {
@@ -182,7 +182,7 @@ struct LegacyImportView: View {
         }
         var message = "Found \(joined(parts)) from the previous version of Up Next."
         if persistence.role == .participant {
-            message += " They'll be added to the shared library."
+            message += " They’ll be added to the shared watchlist."
         }
         return message
     }

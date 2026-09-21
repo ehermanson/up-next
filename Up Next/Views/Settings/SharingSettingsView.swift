@@ -94,10 +94,10 @@ struct SharingSection: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("You'll get an empty library of your own. The shared one keeps going without you.")
+            Text("You’ll get an empty watchlist of your own. The shared one keeps going without you.")
         }
         .alert(
-            "Couldn't Leave Shared Library",
+            "Couldn’t Leave Shared Watchlist",
             isPresented: Binding(
                 get: { leaveErrorMessage != nil },
                 set: { if !$0 { leaveErrorMessage = nil } }
@@ -108,7 +108,7 @@ struct SharingSection: View {
             Text(leaveErrorMessage ?? "")
         }
         .alert(
-            "Couldn't Update Sharing",
+            "Couldn’t Update Sharing",
             isPresented: Binding(
                 get: { manageErrorMessage != nil },
                 set: { if !$0 { manageErrorMessage = nil } }
@@ -124,17 +124,17 @@ struct SharingSection: View {
 
     private var unsharedCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Share your library")
+            Text("Share your watchlist")
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
 
-            Text("Invite one person with an Apple Account. You'll both see and edit the same watchlist and collections.")
+            Text("Invite one person with an Apple Account. You’ll both see and edit the same watchlist and collections.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            ShareLink(item: LibraryShareItem(existingShare: persistence.liveShare), preview: SharePreview("Up Next library")) {
+            ShareLink(item: LibraryShareItem(existingShare: persistence.liveShare), preview: SharePreview("Up Next watchlist")) {
                 Label("Share with a partner", systemImage: "person.2")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
@@ -200,7 +200,7 @@ struct SharingSection: View {
                     .foregroundStyle(.primary)
             }
 
-            Text("Sign in to iCloud on this device to share your library with a partner.")
+            Text("Sign in to iCloud on this device to share your watchlist with a partner.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -217,7 +217,7 @@ struct SharingSection: View {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text("Shared library")
+                Text("Shared watchlist")
                     .font(.subheadline)
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
@@ -236,7 +236,7 @@ struct SharingSection: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                 } else {
-                    Label("Leave Shared Library", systemImage: "rectangle.portrait.and.arrow.right")
+                    Label("Leave Shared Watchlist", systemImage: "rectangle.portrait.and.arrow.right")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
@@ -255,10 +255,10 @@ struct SharingSection: View {
         persistence.liveShare?.ownerDisplayName ?? "your partner"
     }
 
-    /// "Leave Sarah's Library?" when CloudKit gave us the owner's name, else a generic fallback.
+    /// "Leave Sarah’s watchlist?" when CloudKit gave us the owner's name, else a generic fallback.
     private var leaveDialogTitle: String {
-        guard let name = persistence.liveShare?.ownerDisplayName else { return "Leave Shared Library?" }
-        return "Leave \(name)'s Library?"
+        guard let name = persistence.liveShare?.ownerDisplayName else { return "Leave Shared Watchlist?" }
+        return "Leave \(name)’s watchlist?"
     }
 
     // MARK: - Joining
@@ -266,7 +266,7 @@ struct SharingSection: View {
     private var joiningRow: some View {
         HStack(spacing: 12) {
             ProgressView()
-            Text("Joining shared library…")
+            Text("Joining shared watchlist…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

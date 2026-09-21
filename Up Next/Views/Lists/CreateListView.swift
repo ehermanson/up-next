@@ -61,7 +61,7 @@ struct CreateListView: View {
                                 .multilineTextAlignment(.center)
                         }
 
-                        Text("Titles in a collection stay out of Up Next, and watching them here doesn't change your Movies or TV Shows tabs.")
+                        Text("Titles in a collection stay out of Up Next, and watching them here doesn’t change your Movies or TV Shows tabs.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)

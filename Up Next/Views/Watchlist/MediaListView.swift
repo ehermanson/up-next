@@ -499,7 +499,7 @@ struct MediaListView: View {
 
     private var caughtUpRow: some View {
         VStack(spacing: 12) {
-            Text("You're all caught up!")
+            Text("You’re all caught up!")
                 .font(.headline)
             if let onSearchTapped {
                 Button(action: onSearchTapped) {
@@ -761,7 +761,7 @@ struct MediaListRow: View {
             Button(role: .destructive) {
                 onDeleteRequested()
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label("Remove", systemImage: "trash")
             }
         }
         // Swipe actions are suppressed automatically while the list is in edit mode. Mark
@@ -786,7 +786,7 @@ struct MediaListRow: View {
             Button(role: .destructive) {
                 onDeleteRequested()
             } label: {
-                Label("Delete", systemImage: "trash")
+                Label("Remove", systemImage: "trash")
             }
         }
     }

@@ -659,9 +659,9 @@ final class MediaLibraryViewModel {
             (545611, false, nil, nil), // Everything Everywhere All at Once
             (346698, false, nil, nil), // Barbie
             (872585, false, nil, nil), // Oppenheimer
-            (438631, true, 1, "Visually stunning, can't wait for Part Two"),   // Dune
+            (438631, true, 1, "Visually stunning, can’t wait for Part Two"),   // Dune
             (299536, true, 1, nil),    // Avengers: Infinity War
-            (550, true, 1, "First rule: you don't talk about it"),             // Fight Club
+            (550, true, 1, "First rule: you don’t talk about it"),             // Fight Club
             (278, true, 1, "Perfect film"),  // The Shawshank Redemption
         ]
 

@@ -73,7 +73,7 @@ enum RemoteActivityNotifier {
 
         let lines: [String]
         if messages.count > detailLimit {
-            lines = ["\(actor) made \(messages.count) changes to your shared library"]
+            lines = ["\(actor) made \(messages.count) changes to your shared watchlist"]
         } else {
             lines = messages
         }

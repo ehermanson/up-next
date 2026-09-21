@@ -312,7 +312,7 @@ struct MediaDetailView: View {
     }
 
     private var removalAlertMessage: String {
-        if collectionName != nil { return "It stays in Up Next if it's there." }
+        if collectionName != nil { return "It stays in Up Next if it’s there." }
         return "This removes it from your Up Next. Notes and ratings go with it."
     }
 

@@ -199,7 +199,7 @@ struct WatchlistSearchView: View {
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .automatic),
-                prompt: "Search..."
+                prompt: "Search…"
             )
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled(true)
@@ -651,7 +651,7 @@ struct WatchlistSearchView: View {
     private func addTVShow(_ result: TMDBTVShowSearchResult) {
         guard !isAlreadyAdded(id: result.id, mediaType: .tvShow) else { return }
         addedIDs.insert(MediaIDKey.make(.tvShow, result.id))
-        toast.show("\(result.name) has been added")
+        toast.show("Added \(result.name)")
         Task {
             let tvShow: TVShow
             do {
@@ -672,7 +672,7 @@ struct WatchlistSearchView: View {
     private func addMovie(_ result: TMDBMovieSearchResult) {
         guard !isAlreadyAdded(id: result.id, mediaType: .movie) else { return }
         addedIDs.insert(MediaIDKey.make(.movie, result.id))
-        toast.show("\(result.title) has been added")
+        toast.show("Added \(result.title)")
         Task {
             let movie: Movie
             do {

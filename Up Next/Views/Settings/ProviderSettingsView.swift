@@ -68,7 +68,7 @@ struct ProviderSettingsView: View {
 
     private var descriptionSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Select the streaming services you subscribe to. They're highlighted on your cards and used to filter Discover and your watchlist.")
+            Text("Select the streaming services you subscribe to. They’re highlighted on your cards and used to filter Discover and your watchlist.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -95,7 +95,7 @@ struct ProviderSettingsView: View {
     private func errorView(message: String) -> some View {
         EmptyStateView(
             icon: "wifi.exclamationmark",
-            title: "Couldn't load streaming services",
+            title: "Couldn’t load streaming services",
             subtitle: message
         ) {
             Button("Try Again") {
@@ -169,7 +169,7 @@ struct RegionPickerView: View {
                     }
                     .listRowBackground(Color.clear)
                 } else if regions.isEmpty {
-                    EmptyStateView(icon: "wifi.exclamationmark", title: "Couldn't load regions") {
+                    EmptyStateView(icon: "wifi.exclamationmark", title: "Couldn’t load regions") {
                         if let onRetry {
                             Button("Try Again") {
                                 Task { await onRetry() }
@@ -202,7 +202,7 @@ struct RegionPickerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Automatic")
                         .foregroundStyle(.primary)
-                    Text("Uses your device's region (\(deviceRegionName))")
+                    Text("Uses your device’s region (\(deviceRegionName))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

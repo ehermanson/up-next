@@ -27,7 +27,7 @@ struct SeasonEpisodesView: View {
                     } else if let loadError {
                         EmptyStateView(
                             icon: "wifi.exclamationmark",
-                            title: "Couldn't load episodes",
+                            title: "Couldn’t Load Episodes",
                             subtitle: loadError
                         ) {
                             Button("Try Again") {

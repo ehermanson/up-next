@@ -42,7 +42,7 @@ struct CloudSharingView: UIViewControllerRepresentable {
         }
 
         func itemTitle(for csc: UICloudSharingController) -> String? {
-            "Up Next library"
+            "Up Next watchlist"
         }
 
         func itemThumbnailData(for csc: UICloudSharingController) -> Data? {
