@@ -119,8 +119,10 @@ Temporary Items
 
 # Local recommendation evaluation credentials and API artifacts
 .env.jev.local
-.local/jev-eval/
 __pycache__/
+
+# Scratch harnesses and generated artifacts (jev-eval, one-off swiftc checks)
+.local/
 
 # Visible shortcut to the local Jev credentials file
 Jev.local.env
