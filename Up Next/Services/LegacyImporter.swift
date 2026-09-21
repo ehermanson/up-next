@@ -54,10 +54,15 @@ final class LegacyImporter {
     /// Whether the offer sheet should be shown: a 1.x store is on disk and the user has neither
     /// imported it nor said "Not Now".
     static var isOfferPending: Bool {
-        let defaults = UserDefaults.standard
-        guard defaults.object(forKey: completedKey) == nil else { return false }
-        guard !defaults.bool(forKey: dismissedKey) else { return false }
+        guard !hasCompletedImport else { return false }
+        guard !UserDefaults.standard.bool(forKey: dismissedKey) else { return false }
         return LegacyStoreReader.storeExists()
+    }
+
+    /// True once a run finished. The Settings row disappears at that point — the 1.x file stays
+    /// on disk, but there's nothing left to offer.
+    static var hasCompletedImport: Bool {
+        UserDefaults.standard.object(forKey: completedKey) != nil
     }
 
     private var isRunning = false

@@ -27,7 +27,7 @@ struct SettingsView: View {
                     sharingRow
                     streamingServicesRow
                     regionRow
-                    if LegacyStoreReader.storeExists() { legacyImportRow }
+                    if LegacyStoreReader.storeExists(), !LegacyImporter.hasCompletedImport { legacyImportRow }
                     appearanceSection
                     aboutSection
 
@@ -60,14 +60,14 @@ struct SettingsView: View {
 
     // MARK: - Import from 1.x
 
-    /// Only shown while a 1.x store is still on disk. Stays available after "Not Now" or a
-    /// finished run — importing again skips anything already there.
+    /// Only shown while a 1.x store is on disk and hasn't been imported — "Not Now" on the offer
+    /// sheet leaves this as the way back; a finished run removes it (the sheet's dismissal
+    /// re-evaluates `body`, so the row goes away as soon as the user taps Done).
     private var legacyImportRow: some View {
         Button {
             showingLegacyImport = true
         } label: {
-            row(icon: "arrow.down.doc", title: "Import from Up Next 1.7",
-                value: LegacyImporter.isOfferPending ? "Not imported" : "Imported")
+            row(icon: "arrow.down.doc", title: "Import from Up Next 1.7", value: "Not imported")
         }
         .buttonStyle(.plain)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
