@@ -294,15 +294,17 @@ final class TMDBService {
                     providerId: canonicalID,
                     providerName: canonicalName,
                     logoPath: provider.logoPath,
-                    displayPriority: provider.displayPriority
+                    displayPriority: provider.displayPriority,
+                    displayPriorities: provider.displayPriorities
                 ))
             }
         }
 
-        // TMDB lower display_priority means higher prominence.
+        // TMDB lower display_priority means higher prominence — the *region's* priority, not the
+        // global one, or the US grid opens with FilmBox+ and Sun NXT ahead of Hulu.
         let sorted = merged.sorted {
-            let leftPriority = $0.displayPriority ?? Int.max
-            let rightPriority = $1.displayPriority ?? Int.max
+            let leftPriority = $0.priority(in: regionCode)
+            let rightPriority = $1.priority(in: regionCode)
             if leftPriority != rightPriority {
                 return leftPriority < rightPriority
             }

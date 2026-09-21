@@ -134,7 +134,7 @@ Up Next/
 │   ├── DesignTokens.swift               # Radius/spacing/color tokens, cardSurface/cellSurface/chipSurface, Chip
 │   ├── SectionHeader.swift              # Shared section header (title, optional icon, optional count chip, optional filter Menu with "Clear Filters", optional disclosure mode via `isExpanded:`) — watchlist sections incl. the Watched disclosure, Discover carousels, collection "Watched" header
 │   ├── MediaCardView.swift              # Media item card (72×108 poster, title, subtitle folded with first genre, networks)
-│   ├── NetworkLogosView.swift           # Inline streaming provider logos with overflow badge
+│   ├── NetworkLogosView.swift           # Inline streaming provider logos with overflow badge; logos are `scaledToFit` (square provider tiles fill either way, wide originating-network logos like NBC would crop)
 │   ├── CachedAsyncImage.swift           # AsyncImage wrapper with NSCache (200 items, 100 MB); optional onLoad hands back the decoded UIImage. Fresh downloads animate the phase swap (cache hits don't) so callers whose `.success` view carries `Motion.posterAppear` settle in; reduce-motion aware
 │   ├── ImageColor.swift                 # UIImage.dominantTint() (CIAreaAverage, appearance-adaptive DominantTint) + Color.mixed(with:amount:)
 │   ├── Motion.swift                     # Shared motion vocabulary: `Motion.posterAppear`/`.pop`/`.morph`/`.checkPop` + the `.checkmarkPop(isOn:)` modifier (symbol-replace morph + bounce + spring, reduce-motion aware) used by every add/done button. Movers here are reduce-motion gated
@@ -202,7 +202,7 @@ All attributes optional or defaulted; all relationships optional with inverses (
 
 ### Provider Logic (TMDBService)
 
-- Full regional provider list from `/watch/providers/{movie,tv}`, minus rent/buy storefronts and resold "channel" variants
+- Full regional provider list from `/watch/providers/{movie,tv}`, minus rent/buy storefronts and resold "channel" variants, ordered by the **region's** `display_priorities[region]` (the global `display_priority` ties FilmBox+ and Sun NXT with Prime Video in the US)
 - Provider aliases collapse variants onto a canonical name **and canonical TMDB provider id** (e.g., "Netflix Standard with Ads" (1796) → Netflix (8)), so stored `Network.id`s always match `ProviderSettings` selections. `alias(for:)` also strips a trailing "[Free|Standard|Basic] with Ads" before looking up the base, so ad tiers TMDB adds later ("Amazon Prime Video Free with Ads" (613)) fold onto Prime Video without a table entry. Aliases resolve before the channel-variant filter, so e.g. "Paramount+ Amazon Channel" counts as Paramount+.
 - Network → Provider ID mapping (e.g., "AMC" network → AMC+ provider)
 - Region-aware lookups via `TMDBService.currentRegion` = `ProviderSettings.effectiveRegion`: the user's override (`providers.regionOverride`) if set, else `Locale.current.region`, else US. `effectiveRegion` is `nonisolated` and reads UserDefaults directly so the service can call it off the main actor.

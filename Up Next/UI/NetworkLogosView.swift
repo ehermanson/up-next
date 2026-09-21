@@ -11,7 +11,9 @@ struct ProviderLogoView: View {
                 CachedAsyncImage(url: logoURL) { phase in
                     switch phase {
                     case .success(let image):
-                        image.resizable().scaledToFill()
+                        // Provider logos are square and fill the tile either way; originating
+                        // *network* logos (NBC, AMC) are wide and would be cropped by `.fill`.
+                        image.resizable().scaledToFit()
                     default:
                         Rectangle().fill(.fill.tertiary)
                     }

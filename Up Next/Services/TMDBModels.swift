@@ -291,7 +291,14 @@ nonisolated struct TMDBWatchProviderInfo: Codable, Identifiable, Sendable {
     let providerId: Int
     let providerName: String
     let logoPath: String?
+    /// TMDB's global ordering. `displayPriorities[region]` is the one that matters for a grid —
+    /// the global value puts obscure catalogue services above Hulu in the US.
     let displayPriority: Int?
+    let displayPriorities: [String: Int]?
+
+    func priority(in region: String) -> Int {
+        displayPriorities?[region] ?? displayPriority ?? Int.max
+    }
 
     var id: Int { providerId }
     // Note: No CodingKeys needed - decoder uses .convertFromSnakeCase automatically
