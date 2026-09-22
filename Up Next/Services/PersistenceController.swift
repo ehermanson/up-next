@@ -291,6 +291,8 @@ final class PersistenceController {
             }
             role = .participant
             group = existing
+            // Streaming services live on the root too, so joining adopts the household's set.
+            ProviderSettings.shared.adoptSelection(from: existing)
             isJoiningSharedLibrary = false
             // A join that was interrupted between `acceptShareInvitations` and the private purge
             // leaves rows in the inactive store; a `ListItem` related to one of those would fail
@@ -314,6 +316,7 @@ final class PersistenceController {
         role = .owner
         if let existing = try reconciledRoot(in: privateStore) {
             group = existing
+            ProviderSettings.shared.adoptSelection(from: existing)
             settleInitialImport()
             return
         }
@@ -361,8 +364,14 @@ final class PersistenceController {
         movieList.group = newGroup
         viewContext.assign(movieList, to: privateStore)
 
+        // The mirror still holds the last household set, so leaving a share (or the owner stopping
+        // one) keeps this device's services instead of resetting them. It also carries the
+        // onboarding picks — and the `--screenshots` preselect — onto a brand new root.
+        newGroup.selectedProviderIDs = ProviderSettings.shared.selectedProviderIDs
+
         try viewContext.save()
         group = newGroup
+        ProviderSettings.shared.adoptSelection(from: newGroup)
     }
 
     /// The single root in `store`, merging duplicates first. Two devices on one account can each
@@ -385,6 +394,11 @@ final class PersistenceController {
         let winner = sorted.first { shares[$0.objectID] != nil } ?? sorted[0]
 
         for loser in sorted where loser !== winner {
+            // Whichever root actually got services keeps them: the winner is picked on id, not on
+            // which device did the onboarding, so the picks can easily sit on a loser.
+            if winner.selectedProviderIDs == nil, let losing = loser.selectedProviderIDs {
+                winner.selectedProviderIDs = losing
+            }
             for list in loser.lists ?? [] { list.group = winner }
             for list in loser.customLists ?? [] { list.group = winner }
             // Let the inverses update before the cascade delete, so nothing moved gets deleted.
@@ -893,6 +907,11 @@ private final class RemoteChangeObserver {
         RemoteActivityNotifier.announce(foreignTransactions, persistence: persistence)
         persistence.refreshRoleAfterRemoteChange()
         persistence.refreshLiveShare()
+        // After the role rule, so a reseeded root is the one read: this is how a partner's
+        // streaming-service change reaches this device.
+        if let group = persistence.group, group.managedObjectContext != nil, !group.isDeleted {
+            ProviderSettings.shared.adoptSelection(from: group)
+        }
         scheduleRemoteChangeBump()
     }
 

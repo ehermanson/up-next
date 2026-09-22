@@ -1,3 +1,4 @@
+import CoreData
 import Foundation
 import SwiftUI
 
@@ -10,6 +11,16 @@ enum StorageKey {
     static let movieWatchedExpanded = "movies.watchedExpanded"
 }
 
+/// Device preferences plus the household's streaming services.
+///
+/// `selectedProviderIDs` is a *mirror*: the source of truth is `WatchListGroup.selectedProviderIDs`
+/// on the active root, so services follow the share the way titles and collections do — an owner's
+/// iPhone and iPad agree, and a partner sees the same set. The stored property stays observable so
+/// every SwiftUI consumer re-renders exactly as it did when this was a plain `UserDefaults` value;
+/// the `UserDefaults` copy is still written, now as a startup cache (the first frame after launch
+/// isn't "no services" while the store loads) and as the seed for a root that has none yet.
+/// Everything else here is device-local on purpose: `regionOverride` (it's about where the phone
+/// is), `onlyMyServicesInDiscover`, `hasCompletedProviderOnboarding`, `hasDismissedSharePitch`.
 @MainActor @Observable
 final class ProviderSettings {
     static let shared = ProviderSettings()
@@ -18,8 +29,14 @@ final class ProviderSettings {
     var selectedProviderIDs: Set<Int> {
         didSet {
             saveSelectedProviders()
+            pushSelectionToGroup()
         }
     }
+
+    /// True once the active group's selection has been read at least once this launch. Onboarding
+    /// waits for it — a partner joining on a cold launch must not be asked to pick services the
+    /// household already has.
+    private(set) var isSelectionLoaded = false
 
     private static let onlyMyServicesInDiscoverKey = "discover.onlyMyServices"
     var onlyMyServicesInDiscover: Bool {
@@ -125,5 +142,34 @@ final class ProviderSettings {
         if let data = try? JSONEncoder().encode(selectedProviderIDs) {
             UserDefaults.standard.set(data, forKey: Self.selectedProvidersKey)
         }
+    }
+
+    // MARK: - Household sync
+
+    /// Group → mirror. Called by `PersistenceController` when the root is established or a remote
+    /// change lands. A `nil` on the group means it was never set: seed it from this device's cache
+    /// (first non-nil wins — no merge, no conflict) instead of blanking the mirror.
+    func adoptSelection(from group: WatchListGroup) {
+        defer { isSelectionLoaded = true }
+        guard let stored = group.selectedProviderIDs else {
+            group.selectedProviderIDs = selectedProviderIDs
+            PersistenceController.shared.save()
+            return
+        }
+        // `didSet` fires on the assignment below, but `pushSelectionToGroup` then finds the group
+        // already equal and writes nothing — no echo back into the store.
+        if stored != selectedProviderIDs { selectedProviderIDs = stored }
+    }
+
+    /// Mirror → group. No-op without a root (mid-join, pre-bootstrap, `--screenshots` before
+    /// seeding) — `adoptSelection` copies the cache in when the root appears.
+    private func pushSelectionToGroup() {
+        let persistence = PersistenceController.shared
+        guard let group = persistence.group as WatchListGroup?,
+              group.managedObjectContext != nil, !group.isDeleted
+        else { return }
+        guard group.selectedProviderIDs != selectedProviderIDs else { return }
+        group.selectedProviderIDs = selectedProviderIDs
+        persistence.save()
     }
 }

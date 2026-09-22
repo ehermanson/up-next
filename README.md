@@ -70,11 +70,12 @@ Then select the `Up Next` scheme and run on an iOS 26.1+ simulator or device.
 3. Once you tap Join, your partner's watchlist syncs down
 4. You can add, edit, and remove titles just like the owner
 5. Changes sync within seconds to minutes; the app asks for notification permission once sharing is live so you hear about each other's edits (deletions aren't announced)
+6. Streaming services are shared too — it's one household. Either of you can change them in Settings → Streaming Services and the other sees the same set (the row reads "Shared with <name>"). Region stays per device.
 
 ### Leaving or stopping
 
 - **Partner leaving**: Settings → Sharing → "Leave Shared Watchlist"
-- **Owner stopping**: Settings → Sharing → Manage → Stop Sharing (the owner keeps everything; the partner is told, their copy is removed and they start over with an empty watchlist of their own)
+- **Owner stopping**: Settings → Sharing → Manage → Stop Sharing (the owner keeps everything; the partner is told, their copy is removed and they start over with an empty watchlist of their own — keeping the streaming services they were using)
 
 ## Development Notes
 

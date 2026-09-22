@@ -23,9 +23,10 @@ enum RemoteActivityNotifier {
     /// flag clears on the very first one — the rest of the same import would otherwise read as
     /// "Sarah made 200 changes". Stay quiet for a moment after the library lands.
     private static let quietAfterJoin: TimeInterval = 60
-    /// Entities whose changes are never announced: a metadata refresh rewrites every media row.
-    /// Checked before the (comparatively expensive) CloudKit record lookup.
-    private static let ignoredEntities: Set<String> = ["Movie", "TVShow", "Network"]
+    /// Entities whose changes are never announced: a metadata refresh rewrites every media row,
+    /// and the only thing that ever dirties the root is the household's streaming services, which
+    /// has no phrased message. Checked before the (comparatively expensive) record lookup.
+    private static let ignoredEntities: Set<String> = ["Movie", "TVShow", "Network", "WatchListGroup"]
 
     /// Asks for notification permission once sharing is actually in use. Safe to call repeatedly —
     /// the system only prompts the first time.

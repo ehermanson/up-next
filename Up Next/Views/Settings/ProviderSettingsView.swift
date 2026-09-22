@@ -103,10 +103,28 @@ struct ProviderSettingsView: View {
             Text("Select the streaming services you subscribe to. They’re highlighted on your cards and used to filter Discover and your watchlist.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            // Services live on the shared root, so a pick here travels. Never during onboarding:
+            // a fresh owner isn't sharing yet, and a participant never sees that sheet.
+            if !isRoot, PersistenceController.shared.isSharingLive {
+                Text("Shared with \(sharingPartnerName). Changes here show up for \(sharingPartnerName) too.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    /// The *other* person in the share: `partnerParticipant` is the first non-owner, which is the
+    /// participant themselves on their own device.
+    private var sharingPartnerName: String {
+        let persistence = PersistenceController.shared
+        let name = persistence.role == .participant
+            ? persistence.liveShare?.ownerDisplayName
+            : persistence.liveShare?.partnerParticipant?.displayName
+        return name ?? "your partner"
     }
 
     // MARK: - Loading

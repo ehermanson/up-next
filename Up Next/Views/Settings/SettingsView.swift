@@ -125,9 +125,22 @@ struct SettingsView: View {
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
+    /// Services are part of the household now, so the row says so — the picker itself repeats it
+    /// in full. No suffix when nothing is picked: "None selected · Shared with Sarah" reads as if
+    /// the sharing were what's missing.
     private var streamingServicesStatus: String {
         let count = settings.selectedProviderIDs.count
-        return count == 0 ? "None selected" : "\(count) selected"
+        guard count > 0 else { return "None selected" }
+        if PersistenceController.shared.isSharingLive {
+            return "\(count) selected \u{00B7} Shared with \(householdPartnerName)"
+        }
+        return "\(count) selected"
+    }
+
+    /// The *other* person in the share. `partnerParticipant` is the first non-owner, which is the
+    /// participant themselves on their own device — same split `sharingStatus` makes above.
+    private var householdPartnerName: String {
+        PersistenceController.shared.role == .participant ? ownerName : partnerName
     }
 
     // MARK: - Region

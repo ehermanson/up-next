@@ -18,6 +18,17 @@ final class WatchListGroup: NSManagedObject {
     /// All custom lists (collections) in this group
     @NSManaged var customListSet: NSSet?
 
+    /// Household streaming services (TMDB provider ids), shared with the partner like everything
+    /// else on the root. `nil` = never set (pre-2.0-services owner, fresh root); `[]` = none.
+    @NSManaged var selectedProviderIDsRaw: [Int]?
+
+    /// Sorted on write so the stored value — and the CloudKit record it mirrors into — is
+    /// deterministic regardless of `Set` iteration order.
+    var selectedProviderIDs: Set<Int>? {
+        get { selectedProviderIDsRaw.map(Set.init) }
+        set { selectedProviderIDsRaw = newValue.map { $0.sorted() } }
+    }
+
     var id: UUID {
         get { idRaw ?? UUID() }
         set { idRaw = newValue }

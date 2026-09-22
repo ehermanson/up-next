@@ -113,6 +113,8 @@ struct ContentView: View {
         .onChange(of: persistence.remoteChangeCount) {
             viewModel.reloadFromStore()
             customListViewModel.reloadFromStore()
+            // The root (and with it the household's services) may have only just arrived.
+            presentOnboardingIfNeeded()
         }
         .onChange(of: persistence.pendingShareInvitation == nil) { _, decided in
             if decided { presentOnboardingIfNeeded() }
@@ -122,6 +124,7 @@ struct ContentView: View {
         .onChange(of: persistence.isJoiningSharedLibrary) {
             viewModel.reloadFromStore()
             customListViewModel.reloadFromStore()
+            presentOnboardingIfNeeded()
         }
         // A rejected save is silent otherwise, and the user's edit is rolled back underneath them.
         .onChange(of: persistence.lastSaveError != nil) { _, failed in
@@ -232,8 +235,16 @@ struct ContentView: View {
         showingLegacyImport = true
     }
 
+    /// Streaming services belong to the household root now, so the prompt waits for that root to
+    /// be read (`isSelectionLoaded`). A second device on the account — or a partner joining on a
+    /// cold launch — arrives with services already chosen, and asking first would overwrite the
+    /// household's set with the newcomer's picks.
     private func presentOnboardingIfNeeded() {
-        guard !settings.hasSelectedProviders && !settings.hasCompletedProviderOnboarding else { return }
+        guard settings.isSelectionLoaded,
+              !settings.hasSelectedProviders,
+              !settings.hasCompletedProviderOnboarding,
+              !persistence.isJoiningSharedLibrary
+        else { return }
         showingOnboarding = true
         settings.hasCompletedProviderOnboarding = true
     }
@@ -252,7 +263,7 @@ struct ContentView: View {
     }
 
     private var joinInvitationMessage: String {
-        let shared = "You’ll both see and edit the same watchlist and collections."
+        let shared = "You’ll both see and edit the same watchlist, collections and streaming services."
         // Already in someone else's library: nothing of this device's own is at stake, but the
         // library they're in right now is.
         if let currentOwner = persistence.pendingInvitationCurrentOwnerName {
