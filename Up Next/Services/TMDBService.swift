@@ -258,16 +258,6 @@ final class TMDBService {
         let (movieProviders, tvProviders) = try await (movieProvidersTask, tvProvidersTask)
 
         // Storefront-style rent/buy-only providers that should not appear in the selection grid.
-        let rentBuyOnlyProviderIDs: Set<Int> = [
-            2,      // Apple iTunes
-            3,      // Google Play Movies
-            7,      // Vudu
-            10,     // Amazon Video
-            68,     // Microsoft Store
-            192,    // YouTube
-            652,    // Apple TV
-        ]
-
         let allResults = movieProviders.results + tvProviders.results
 
         // Pass 1: learn which base services exist, so `alias(for:)` can fold a channel variant
@@ -289,7 +279,8 @@ final class TMDBService {
         var bestPriority: [Int: Int] = [:]
 
         for provider in allResults {
-            guard !rentBuyOnlyProviderIDs.contains(provider.providerId) else { continue }
+            guard !Self.storefrontProviderIDs.contains(provider.providerId),
+                  !Self.aggregatorProviderIDs.contains(provider.providerId) else { continue }
 
             // Resolve the alias first — an aliased channel variant is a real subscription.
             let alias = alias(for: provider.providerName)
@@ -553,6 +544,26 @@ final class TMDBService {
 
     /// Suffixes that indicate a resold channel variant (e.g. "HBO Max Amazon Channel").
     /// Stored normalized (lowercased, collapsed whitespace).
+    /// Rent/buy storefronts: real places to watch (they stay in a title's provider row under
+    /// rent/buy) but nothing anyone "subscribes" to, so they're kept out of the selection grid.
+    private static let storefrontProviderIDs: Set<Int> = [
+        2,      // Apple TV Store (iTunes)
+        3,      // Google Play Movies
+        7,      // Fandango At Home (Vudu)
+        10,     // Amazon Video
+        68,     // Microsoft Store
+        192,    // YouTube
+        332,    // Fandango at Home Free
+        652,    // Apple TV
+    ]
+
+    /// Aggregators and cable on-demand portals TMDB lists as providers. Not services in any
+    /// sense a user recognises, so they're dropped from the grid *and* from every title's logos.
+    private static let aggregatorProviderIDs: Set<Int> = [
+        2285,   // JustWatch TV
+        486,    // Spectrum On Demand
+    ]
+
     private static let channelSuffixes = [
         "amazon channel",
         "apple tv channel",
@@ -641,6 +652,7 @@ final class TMDBService {
     private static let providerAliases: [String: CanonicalProvider] = [
         // Netflix tiers
         "Netflix basic with Ads": CanonicalProvider(name: "Netflix", id: 8),
+        "Netflix Kids": CanonicalProvider(name: "Netflix", id: 8),
         "Netflix Standard with Ads": CanonicalProvider(name: "Netflix", id: 8),
         // Peacock tiers
         "Peacock Premium": CanonicalProvider(name: "Peacock", id: 386),
@@ -689,6 +701,7 @@ final class TMDBService {
 
         for (category, entries) in categorized {
             for entry in entries {
+                guard !Self.aggregatorProviderIDs.contains(entry.providerId) else { continue }
                 // Resolve the alias first — an aliased channel variant (e.g. "Paramount+ Amazon
                 // Channel") is a real subscription, so it must survive the channel-variant filter.
                 let alias = alias(for: entry.providerName)

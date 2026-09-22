@@ -153,6 +153,9 @@ struct SearchResultRowWithImage: View {
     let mediaType: MediaType
     let isAdded: Bool
     let onAdd: () -> Void
+    /// When set, tapping the green check removes the title again (Discover); rows without it
+    /// (the add sheet) treat the check as inert.
+    var onRemove: (() -> Void)? = nil
     var onTap: (() -> Void)?
     var voteAverage: Double?
     /// Release/premiere year, e.g. "2021".
@@ -175,6 +178,7 @@ struct SearchResultRowWithImage: View {
             imageURL: imageURL,
             isAdded: isAdded,
             onAdd: onAdd,
+            onRemove: onRemove,
             onTap: onTap,
             voteAverage: voteAverage,
             year: year,
@@ -189,6 +193,9 @@ struct SearchResultRow: View {
     let imageURL: URL?
     let isAdded: Bool
     let onAdd: () -> Void
+    /// When set, tapping the green check removes the title again (Discover); rows without it
+    /// (the add sheet) treat the check as inert.
+    var onRemove: (() -> Void)? = nil
     var onTap: (() -> Void)?
     var voteAverage: Double?
     /// Release/premiere year, e.g. "2021".
@@ -209,7 +216,7 @@ struct SearchResultRow: View {
                 }
             } else {
                 Button {
-                    if !isAdded { onAdd() }
+                    if isAdded { onRemove?() } else { onAdd() }
                 } label: {
                     HStack(spacing: 12) {
                         rowContent
@@ -281,7 +288,7 @@ struct SearchResultRow: View {
 
     private var addButton: some View {
         Button {
-            if !isAdded { onAdd() }
+            if isAdded { onRemove?() } else { onAdd() }
         } label: {
             addIcon
         }
@@ -299,7 +306,7 @@ struct SearchResultRow: View {
             .foregroundStyle(isAdded ? .green : Color.accentColor)
             .frame(width: 44, height: 44)
             .checkmarkPop(isOn: isAdded)
-            .accessibilityLabel(isAdded ? "Already added" : "Add")
+            .accessibilityLabel(isAdded ? (onRemove == nil ? "Already added" : "Added, tap to remove") : "Add")
     }
 }
 

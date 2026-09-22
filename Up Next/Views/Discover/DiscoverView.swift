@@ -5,6 +5,10 @@ struct DiscoverView: View {
     let existingMovieIDs: Set<String>
     let onTVShowAdded: (TVShow) -> Void
     let onMovieAdded: (Movie) -> Void
+    /// Removes a title from the watchlist (deferred with Undo, like a swipe-delete) and returns
+    /// its title for the toast; nil when it wasn't there.
+    let onRemove: (MediaType, Int) -> String?
+    let onUndoRemove: () -> Void
     var onSettingsTapped: () -> Void
 
     @Environment(ToastState.self) private var toast
@@ -63,6 +67,8 @@ struct DiscoverView: View {
         .onChange(of: settings.selectedProviderIDs) {
             viewModel.providerFilterChanged()
         }
+        .onChange(of: existingTVShowIDs) { old, new in pruneAddedIDs(removedFrom: old, to: new, mediaType: .tvShow) }
+        .onChange(of: existingMovieIDs) { old, new in pruneAddedIDs(removedFrom: old, to: new, mediaType: .movie) }
         .onChange(of: settings.regionOverride) {
             // `watch_region` / `region` are baked into every URL, so the cache keys already
             // differ — reissuing under the new region is enough, no invalidation needed.
@@ -255,8 +261,8 @@ struct DiscoverView: View {
                 .matchedTransitionSource(id: sourceID, in: detailNamespace)
                 .accessibilityLabel(item.title)
 
-                Button(added ? "Added" : "Add", systemImage: added ? "checkmark.circle.fill" : "plus.circle.fill") {
-                    if !added { addItem(item) }
+                Button(added ? "Remove" : "Add", systemImage: added ? "checkmark.circle.fill" : "plus.circle.fill") {
+                    if added { removeItem(item) } else { addItem(item) }
                 }
                 .labelStyle(.iconOnly)
                 .font(.title3)
@@ -466,6 +472,7 @@ struct DiscoverView: View {
             mediaType: item.mediaType,
             isAdded: isAlreadyAdded(id: item.tmdbId, mediaType: item.mediaType),
             onAdd: { addItem(item) },
+            onRemove: { removeItem(item) },
             onTap: { openDetail(for: item, sourceID: sourceID) },
             voteAverage: item.voteAverage,
             year: item.year,
@@ -576,6 +583,25 @@ struct DiscoverView: View {
                 }
                 onMovieAdded(movie)
             }
+        }
+    }
+
+    /// The green check is a toggle: tapping it again takes the title back off the watchlist,
+    /// with the same deferred delete + Undo the list rows use.
+    private func removeItem(_ item: DiscoverViewModel.DiscoverItem) {
+        addedIDs.remove(MediaIDKey.make(item.mediaType, item.tmdbId))
+        guard let title = onRemove(item.mediaType, item.tmdbId) else { return }
+        toast.show("Removed \(title)", icon: "trash.circle.fill", actionLabel: "Undo", feedback: .impact) {
+            onUndoRemove()
+        }
+    }
+
+    /// `addedIDs` is an optimistic overlay for adds whose fetch hasn't landed yet; once the
+    /// watchlist itself drops a title (a swipe-delete on another tab), the overlay must forget it
+    /// too or the check sticks around for the rest of the session.
+    private func pruneAddedIDs(removedFrom old: Set<String>, to new: Set<String>, mediaType: MediaType) {
+        for id in old.subtracting(new) {
+            addedIDs.remove(MediaIDKey.make(mediaType, id))
         }
     }
 

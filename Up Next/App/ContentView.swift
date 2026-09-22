@@ -318,6 +318,8 @@ struct ContentView: View {
                     existingMovieIDs: viewModel.existingMovieIDs,
                     onTVShowAdded: { viewModel.addTVShow($0) },
                     onMovieAdded: { viewModel.addMovie($0) },
+                    onRemove: { mediaType, id in viewModel.removeItem(withID: String(id), mediaType: mediaType) },
+                    onUndoRemove: { viewModel.undoLastDeletion() },
                     onSettingsTapped: { showingSettings = true }
                 )
                 .toastOverlay(bottomPadding: 12)
