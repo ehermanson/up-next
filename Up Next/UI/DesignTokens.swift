@@ -35,17 +35,25 @@ enum DesignTokens {
         static func backgroundBase(for scheme: ColorScheme) -> Color {
             scheme == .dark
                 ? Color(red: 0.09, green: 0.06, blue: 0.20)
-                : Color(red: 0.93, green: 0.91, blue: 0.99)
+                : Color(red: 0.87, green: 0.84, blue: 0.98)
         }
 
         /// Light-mode content surface. Dark mode uses `.fill.tertiary` (white-alpha over purple
         /// reads as frosted lavender); on a light mesh that same fill is black-alpha and goes flat
-        /// gray, so light surfaces are translucent white that lets the mesh glow through.
-        static let lightSurface = Color.white.opacity(0.65)
+        /// gray, so light surfaces are translucent white that lets the mesh glow through. Opaque
+        /// enough (0.82) that a card is a clear step up from the lilac field — at 0.65 it landed
+        /// within a few percent of the page and the whole screen read as one wash.
+        static let lightSurface = Color.white.opacity(0.82)
+        /// Small light-mode surface (chips, cells, badges): a touch more translucent than a card so
+        /// a chip sitting *on* a card still reads as a layer, but well clear of the bare mesh.
+        static let lightSmallSurface = Color.white.opacity(0.72)
         /// Hairline that ties light-mode cards to the palette.
-        static let lightSurfaceBorder = Color.accentColor.opacity(0.10)
+        static let lightSurfaceBorder = Color.accentColor.opacity(0.14)
         /// Faint accent wash over light chips/cells so they read tinted rather than gray.
-        static let lightSurfaceWash = Color.accentColor.opacity(0.05)
+        static let lightSurfaceWash = Color.accentColor.opacity(0.06)
+        /// Outline for a light-mode control drawn as a shape (the season checkmark ring, the
+        /// unselected progress dashes) — `.fill.secondary` is black-alpha and vanishes on lilac.
+        static let lightControlBorder = Color.primary.opacity(0.22)
     }
 
     enum Spacing {
@@ -95,7 +103,7 @@ private struct CardSurface: ViewModifier {
                 shape
                     .fill(DesignTokens.Colors.lightSurface)
                     .overlay(shape.strokeBorder(DesignTokens.Colors.lightSurfaceBorder))
-                    .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
+                    .shadow(color: .black.opacity(0.07), radius: 10, y: 4)
             }
         }
     }
@@ -115,7 +123,7 @@ private struct SmallSurface<S: InsettableShape>: ViewModifier {
                     shape.fill(.fill.tertiary)
                 } else {
                     shape
-                        .fill(DesignTokens.Colors.lightSurface)
+                        .fill(DesignTokens.Colors.lightSmallSurface)
                         .overlay(shape.fill(DesignTokens.Colors.lightSurfaceWash))
                 }
             }

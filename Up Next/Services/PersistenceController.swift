@@ -580,6 +580,48 @@ final class PersistenceController {
         try container.initializeCloudKitSchema(options: [])
         AppLog.sync.notice("CloudKit Development schema initialized")
     }
+
+    /// Development only: proves (or disproves) that this build can talk to the container at all,
+    /// then runs `initializeCloudKitSchema()`. Everything is reported as text for the debug alert
+    /// so a device that isn't attached to Xcode still gives a usable answer.
+    func cloudKitDiagnostics() async -> String {
+        var lines = ["Container: \(Self.containerIdentifier)"]
+        guard isCloudKitEnabled else {
+            lines.append("CloudKit: off for this launch")
+            return lines.joined(separator: "\n")
+        }
+        let ck = Self.ckContainer
+        do {
+            let status = try await ck.accountStatus()
+            lines.append("Account: \(Self.describe(status))")
+        } catch {
+            lines.append("Account: error — \(error.localizedDescription)")
+        }
+        do {
+            let zones = try await ck.privateCloudDatabase.allRecordZones()
+            lines.append("Private zones: \(zones.map(\.zoneID.zoneName).sorted().joined(separator: ", "))")
+        } catch {
+            lines.append("Private zones: error — \(error.localizedDescription)")
+        }
+        do {
+            try initializeCloudKitSchema()
+            lines.append("Schema init: OK")
+        } catch {
+            lines.append("Schema init: \(error.localizedDescription)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func describe(_ status: CKAccountStatus) -> String {
+        switch status {
+        case .available: "available"
+        case .noAccount: "no account"
+        case .restricted: "restricted"
+        case .couldNotDetermine: "could not determine"
+        case .temporarilyUnavailable: "temporarily unavailable"
+        @unknown default: "unknown"
+        }
+    }
     #endif
 
     func refreshAccountStatus() async {

@@ -205,9 +205,16 @@ private struct SeasonProgressBar: View {
     let watchedSeasons: [Int]
     let total: Int
 
+    @Environment(\.colorScheme) private var colorScheme
+
     /// Above this many seasons, individual 12pt segments would overflow a card's width — a single
     /// capsule with a fill fraction reads the same information without spilling.
     private static let maxSegments = 12
+
+    /// `.fill.secondary` is black-alpha in light mode and all but disappears on a white card.
+    private var trackStyle: AnyShapeStyle {
+        colorScheme == .dark ? AnyShapeStyle(.fill.secondary) : AnyShapeStyle(DesignTokens.Colors.lightControlBorder)
+    }
 
     var body: some View {
         Group {
@@ -216,13 +223,13 @@ private struct SeasonProgressBar: View {
                     ForEach(1...total, id: \.self) { season in
                         let isWatched = watchedSeasons.contains(season)
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(isWatched ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.fill.secondary))
+                            .fill(isWatched ? AnyShapeStyle(Color.accentColor) : trackStyle)
                             .frame(width: 12, height: 4)
                     }
                 }
             } else {
                 Capsule()
-                    .fill(.fill.secondary)
+                    .fill(trackStyle)
                     .frame(height: 4)
                     .overlay(alignment: .leading) {
                         Capsule()

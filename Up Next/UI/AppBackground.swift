@@ -46,19 +46,22 @@ struct AppBackground: View {
                 Color(red: 0.22, green: 0.12, blue: 0.15),
             ] : [
                 // Same structure as dark: a saturated centre, a cool corner and a warm corner.
-                // Near-white stops collapse into "off-white", so these carry real chroma.
-                Color(red: 0.93, green: 0.90, blue: 1.00),
-                Color(red: 0.89, green: 0.85, blue: 0.99),
-                Color(red: 0.96, green: 0.92, blue: 1.00),
+                // Near-white stops collapse into "off-white" and leave white-alpha surfaces,
+                // chips and the system search field with nothing to stand against, so the
+                // field sits a clear step below white (~L 0.80–0.90) with real chroma — the
+                // cards then read as white *on* lilac rather than lilac on lilac.
+                Color(red: 0.87, green: 0.83, blue: 0.98),
+                Color(red: 0.80, green: 0.75, blue: 0.97),
+                Color(red: 0.90, green: 0.86, blue: 0.99),
 
-                Color(red: 0.91, green: 0.88, blue: 0.99),
-                Color(red: 0.86, green: 0.82, blue: 0.98),
-                Color(red: 0.94, green: 0.91, blue: 1.00),
+                Color(red: 0.84, green: 0.80, blue: 0.98),
+                Color(red: 0.76, green: 0.70, blue: 0.96),
+                Color(red: 0.88, green: 0.84, blue: 0.99),
 
-                Color(red: 0.90, green: 0.93, blue: 1.00),
+                Color(red: 0.83, green: 0.88, blue: 1.00),
                 DesignTokens.Colors.backgroundBase,
                 // Warm rose corner, the light counterpart of dark's warm stop.
-                Color(red: 1.00, green: 0.90, blue: 0.92),
+                Color(red: 0.99, green: 0.85, blue: 0.89),
             ]
         )
         .ignoresSafeArea()

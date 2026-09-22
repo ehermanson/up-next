@@ -97,6 +97,7 @@ struct SeasonChecklistCard: View {
     @Binding var lastLocalWatchedEdit: Date?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(ToastState.self) private var toast
 
     /// Per-season pulse counters for the "caught up" wave. A `Task` bumps each in sequence; every
@@ -345,13 +346,25 @@ struct SeasonChecklistCard: View {
             .filter { !$0.isEmpty }.joined(separator: ", ")
     }
 
+    /// Dark keeps the soft treatment (a green tint + ring, green check — white-alpha fills read
+    /// as frosted glass there). Light flips to a solid green disc with a white check: a 15% green
+    /// tint over a white card is invisible, and the unchecked ring's `.fill.secondary` is
+    /// black-alpha that vanishes on lilac, so it gets a real outline instead.
+    private var isLight: Bool { colorScheme == .light }
+
     private func watchedCircle(season: Int, isWatched: Bool, isAnnounced: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(isWatched ? AnyShapeStyle(Color.green.opacity(0.15)) : AnyShapeStyle(.fill.tertiary))
+                .fill(
+                    isWatched
+                        ? AnyShapeStyle(isLight ? Color.green : Color.green.opacity(0.15))
+                        : (isLight ? AnyShapeStyle(DesignTokens.Colors.lightSmallSurface) : AnyShapeStyle(.fill.tertiary))
+                )
             Circle()
                 .strokeBorder(
-                    isWatched ? AnyShapeStyle(Color.green.opacity(0.6)) : AnyShapeStyle(.fill.secondary),
+                    isWatched
+                        ? AnyShapeStyle(isLight ? Color.green : Color.green.opacity(0.6))
+                        : (isLight ? AnyShapeStyle(DesignTokens.Colors.lightControlBorder) : AnyShapeStyle(.fill.secondary)),
                     style: isAnnounced
                         ? StrokeStyle(lineWidth: 1.5, dash: [3, 3])
                         : StrokeStyle(lineWidth: 1.5)
@@ -360,7 +373,7 @@ struct SeasonChecklistCard: View {
             if isWatched {
                 Image(systemName: "checkmark")
                     .font(.caption2.bold())
-                    .foregroundStyle(.green)
+                    .foregroundStyle(isLight ? Color.white : Color.green)
                     .transition(reduceMotion ? .identity : Motion.checkPop)
                     .symbolEffect(.bounce, value: reduceMotion ? false : isWatched)
             }
