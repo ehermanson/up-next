@@ -12,6 +12,13 @@ struct ProviderSettingsView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var searchText = ""
+    /// The full regional list runs to ~270 entries, most of them niche or long defunct (TMDB never
+    /// retires a provider). Show the top of the region's priority order by default — search still
+    /// reaches everything — and let the rest be asked for.
+    @State private var showsAllProviders = false
+    private static let featuredLimit = 40
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let settings = ProviderSettings.shared
 
@@ -138,9 +145,24 @@ struct ProviderSettingsView: View {
                     grid(for: picked)
                 }
             }
+            let isTruncated = !showsAllProviders && providers.count > Self.featuredLimit
             VStack(spacing: 8) {
-                SectionHeader(title: "All Services", showsFilter: false)
-                grid(for: providers)
+                SectionHeader(title: isTruncated ? "Popular Services" : "All Services", showsFilter: false)
+                grid(for: isTruncated ? Array(providers.prefix(Self.featuredLimit)) : providers)
+                if isTruncated {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) {
+                            showsAllProviders = true
+                        }
+                    } label: {
+                        Text("Show All \(providers.count) Services")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.top, 4)
+                }
             }
         } else if filteredProviders.isEmpty {
             EmptyStateView(
