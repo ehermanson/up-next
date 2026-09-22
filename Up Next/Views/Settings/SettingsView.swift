@@ -96,21 +96,14 @@ struct SettingsView: View {
         if persistence.isCloudAccountAvailable == false {
             return "iCloud unavailable"
         }
+        // Names can be withheld by iOS — the row reads fine without one.
         if persistence.role == .participant {
-            return "Shared with you by \(ownerName)"
+            return persistence.liveShare?.ownerDisplayName.map { "Shared with you by \($0)" } ?? "Shared with you"
         }
         if persistence.isSharingLive {
-            return "Shared with \(partnerName)"
+            return persistence.liveShare?.otherDisplayName.map { "Shared with \($0)" } ?? "Shared"
         }
         return "Not shared yet"
-    }
-
-    private var ownerName: String {
-        PersistenceController.shared.liveShare?.ownerDisplayName ?? "your partner"
-    }
-
-    private var partnerName: String {
-        PersistenceController.shared.liveShare?.partnerParticipant?.displayName ?? "your partner"
     }
 
     // MARK: - Streaming Services
@@ -131,14 +124,12 @@ struct SettingsView: View {
     private var streamingServicesStatus: String {
         let count = settings.selectedProviderIDs.count
         guard count > 0 else { return "None selected" }
-        if PersistenceController.shared.isSharingLive {
-            return "\(count) selected \u{00B7} Shared with \(householdPartnerName)"
+        let persistence = PersistenceController.shared
+        if persistence.isSharingLive {
+            let shared = persistence.liveShare?.otherDisplayName.map { "Shared with \($0)" } ?? "Shared"
+            return "\(count) selected \u{00B7} \(shared)"
         }
         return "\(count) selected"
-    }
-
-    private var householdPartnerName: String {
-        PersistenceController.shared.liveShare?.otherDisplayName ?? "your partner"
     }
 
     // MARK: - Region

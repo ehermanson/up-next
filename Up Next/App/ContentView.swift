@@ -196,7 +196,7 @@ struct ContentView: View {
         }
         // The owner stopped sharing: the participant's library is gone and they're an owner again.
         .alert(
-            "\(persistence.sharingEndedByOwnerName ?? "Your partner") Stopped Sharing",
+            sharingEndedTitle,
             isPresented: Binding(
                 get: { persistence.sharingEndedByOwnerName != nil },
                 set: { _ in }
@@ -267,7 +267,8 @@ struct ContentView: View {
         // Already in someone else's library: nothing of this device's own is at stake, but the
         // library they're in right now is.
         if let currentOwner = persistence.pendingInvitationCurrentOwnerName {
-            return "You’re currently in \(currentOwner)’s shared watchlist. Joining replaces it on this device. You can rejoin later from the original link."
+            let current = currentOwner.isEmpty ? "another shared watchlist" : "\(currentOwner)’s shared watchlist"
+            return "You’re currently in \(current). Joining replaces it on this device. You can rejoin later from the original link."
         }
 
         let counts = persistence.ownedLibraryCounts()
@@ -283,9 +284,19 @@ struct ContentView: View {
     }
 
     private var blockedInvitationMessage: String {
-        let partner = persistence.liveShare?.otherDisplayName ?? "your partner"
+        // iOS may withhold the other person's name; the sentence works without one rather than
+        // guessing at what the two people are to each other.
+        let sharing = persistence.liveShare?.otherDisplayName.map { "You’re sharing your watchlist with \($0)." }
+            ?? "You’re already sharing your watchlist."
         let library = persistence.blockedShareInvitationOwnerName.map { "\($0)’s watchlist" } ?? "this watchlist"
-        return "You’re sharing your watchlist with \(partner). To join \(library) instead, stop sharing yours first in Settings → Sharing."
+        return "\(sharing) To join \(library) instead, stop sharing yours first in Settings → Sharing."
+    }
+
+    /// "Sarah Stopped Sharing", or just "Sharing Stopped" when the name was withheld (an empty
+    /// string — `sharingEndedByOwnerName` stays non-nil so the alert still presents).
+    private var sharingEndedTitle: String {
+        guard let name = persistence.sharingEndedByOwnerName, !name.isEmpty else { return "Sharing Stopped" }
+        return "\(name) Stopped Sharing"
     }
 
     private var joiningPlaceholder: some View {

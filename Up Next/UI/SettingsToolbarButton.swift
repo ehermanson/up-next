@@ -87,6 +87,7 @@ struct SettingsToolbarButton: View {
 
     private var accessibilityLabel: String {
         guard let pair = participantPair else { return "Settings" }
-        return "Settings, shared with \(pair.partner?.displayName ?? "your partner")"
+        guard let name = pair.partner?.displayName else { return "Settings, sharing is on" }
+        return "Settings, shared with \(name)"
     }
 }

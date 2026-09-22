@@ -107,7 +107,7 @@ struct ProviderSettingsView: View {
             // Services live on the shared root, so a pick here travels. Never during onboarding:
             // a fresh owner isn't sharing yet, and a participant never sees that sheet.
             if !isRoot, PersistenceController.shared.isSharingLive {
-                Text("Shared with \(sharingPartnerName). Changes here show up for \(sharingPartnerName) too.")
+                Text(sharingCaption)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -117,8 +117,11 @@ struct ProviderSettingsView: View {
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
-    private var sharingPartnerName: String {
-        PersistenceController.shared.liveShare?.otherDisplayName ?? "your partner"
+    /// "Shared with Sarah — changes here show up for both of you." (or just "Shared — …" when
+    /// iOS withholds the name).
+    private var sharingCaption: String {
+        let lead = PersistenceController.shared.liveShare?.otherDisplayName.map { "Shared with \($0)" } ?? "Shared"
+        return "\(lead) — changes here show up for both of you."
     }
 
     // MARK: - Loading

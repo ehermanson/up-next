@@ -1,7 +1,7 @@
 import CloudKit
 import SwiftUI
 
-/// `Transferable` wrapper handed to the "Share with a partner" `ShareLink`. The exporter defers
+/// `Transferable` wrapper handed to the "Share Your Watchlist" `ShareLink`. The exporter defers
 /// to `PersistenceController.createShare()` — the CloudKit share on `WatchListGroup` isn't created
 /// until the system share sheet actually needs it, matching Apple's Core Data + CloudKit sharing
 /// sample ("Sharing Core Data objects between iCloud users").
@@ -124,18 +124,18 @@ struct SharingSection: View {
 
     private var unsharedCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Share your watchlist")
+            Text("Not Shared Yet")
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
 
-            Text("Invite one person with an Apple Account. You’ll both see and edit the same watchlist and collections.")
+            Text("Invite one other person with an Apple Account. You’ll both see and edit the same watchlist, collections and streaming services.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             ShareLink(item: LibraryShareItem(existingShare: persistence.liveShare), preview: SharePreview("Up Next watchlist")) {
-                Label("Share with a partner", systemImage: "person.2")
+                Label("Share Your Watchlist", systemImage: "person.2")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
@@ -165,9 +165,7 @@ struct SharingSection: View {
                     .foregroundStyle(.primary)
             }
 
-            Text(isPending
-                 ? "Invited \(partner?.displayName ?? "your partner") — waiting for them to accept."
-                 : "Shared with \(partner?.displayName ?? "your partner").")
+            Text(sharedCaption(name: partner?.displayName, isPending: isPending))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -187,6 +185,17 @@ struct SharingSection: View {
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
+    /// The name can be withheld by iOS; the sentence is rewritten around the gap instead of
+    /// guessing at a noun for the other person.
+    private func sharedCaption(name: String?, isPending: Bool) -> String {
+        switch (isPending, name) {
+        case (true, let name?): return "Invited \(name) — waiting for them to accept."
+        case (true, nil): return "Invitation sent — waiting for them to accept."
+        case (false, let name?): return "Shared with \(name)."
+        case (false, nil): return "Shared with one other person."
+        }
+    }
+
     // MARK: - iCloud unavailable
 
     private var iCloudUnavailableCard: some View {
@@ -200,7 +209,7 @@ struct SharingSection: View {
                     .foregroundStyle(.primary)
             }
 
-            Text("Sign in to iCloud on this device to share your watchlist with a partner.")
+            Text("Sign in to iCloud on this device to share your watchlist.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -223,7 +232,7 @@ struct SharingSection: View {
                     .foregroundStyle(.primary)
             }
 
-            Text("Shared with you by \(ownerName).")
+            Text(persistence.liveShare?.ownerDisplayName.map { "Shared with you by \($0)." } ?? "Shared with you.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -249,10 +258,6 @@ struct SharingSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
-    }
-
-    private var ownerName: String {
-        persistence.liveShare?.ownerDisplayName ?? "your partner"
     }
 
     /// "Leave Sarah’s watchlist?" when CloudKit gave us the owner's name, else a generic fallback.

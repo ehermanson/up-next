@@ -13,15 +13,15 @@ Just a fun personal project to replace the running list of movies and TV shows m
 - **Collections**: Create custom collections (Christmas movies, kid-friendly, guilty pleasures, etc.). Suggestions appear inside each collection with one-tap adding. Jev ranks TMDB candidates against the exact collection name and member titles, with cached scores and a TMDB fallback. Adding a suggestion keeps the row stable until you reopen or rename the collection.
 - **Discover**: Search, browse trending titles, see what's airing this week (with the exact episode and day), and get personalized recommendations
 - **Provider filtering**: See only titles available on your streaming services, by region
-- **Shared watchlist**: Share your entire watchlist with one partner (Apple Account) — changes sync across devices. Settings is reachable from every tab; once a partner joins, the toolbar button becomes your two avatars, and each title's detail shows who added it and when
-- **Partner notifications**: "Sarah added Elf to Movies" as a notification when the app is closed, or a toast while it's open — only for the other person's edits, never your own devices
+- **Shared watchlist**: Share your entire watchlist with one other person (Apple Account) — changes sync across devices. Settings is reachable from every tab; once they join, the toolbar button becomes your two avatars, and each title's detail shows who added it and when
+- **Activity notifications**: "Sarah added Elf to Movies" as a notification when the app is closed, or a toast while it's open — only for the other person's edits, never your own devices
 - **Updating from 1.7**: The first launch offers to bring your Up Next lists over (titles, watched seasons, ratings, notes and collections). The old data is left in place, and you can run the import later from Settings.
 - **Metadata**: Ratings, cast, descriptions, season/episode totals, and where to watch pulled from The Movie Database (TMDB) — the detail sheet leads with the services you subscribe to and tucks the rest behind a “+N” tap. Show details let you browse every season before adding a title, including from search and collections.
 
 ## Tech
 
 - **Native iOS app** (Swift/SwiftUI, iOS 26.1+)
-- **Core Data + CloudKit**: Local persistence with optional sharing (one person owns the shared watchlist; the partner gets read-write access to it through their own iCloud account)
+- **Core Data + CloudKit**: Local persistence with optional sharing (one person owns the shared watchlist; the other gets read-write access to it through their own iCloud account)
 - **TMDB API**: For media metadata and discovery
 - **No analytics, no ads, no accounts** — just your data
 
@@ -59,23 +59,23 @@ Then select the `Up Next` scheme and run on an iOS 26.1+ simulator or device.
 
 ### As the owner (the first person to use the app)
 
-1. Settings → Sharing → "Share with a partner"
+1. Settings → Sharing → "Share Your Watchlist"
 2. Select who to share with (Messages, Mail, AirDrop, etc.)
-3. Your partner gets a link; they tap it to accept
+3. They get a link and tap it to accept
 
-### As a partner (accepting the share)
+### As the other person (accepting the share)
 
 1. Tap the share link from Messages, Mail, etc.
 2. The app opens and asks you to confirm — joining replaces your own watchlist across your Apple Account (it tells you exactly how many titles and collections)
-3. Once you tap Join, your partner's watchlist syncs down
+3. Once you tap Join, the shared watchlist syncs down
 4. You can add, edit, and remove titles just like the owner
 5. Changes sync within seconds to minutes; the app asks for notification permission once sharing is live so you hear about each other's edits (deletions aren't announced)
 6. Streaming services are shared too — it's one household. Either of you can change them in Settings → Streaming Services and the other sees the same set (the row reads "Shared with <name>"). Region stays per device.
 
 ### Leaving or stopping
 
-- **Partner leaving**: Settings → Sharing → "Leave Shared Watchlist"
-- **Owner stopping**: Settings → Sharing → Manage → Stop Sharing (the owner keeps everything; the partner is told, their copy is removed and they start over with an empty watchlist of their own — keeping the streaming services they were using)
+- **Leaving**: Settings → Sharing → "Leave Shared Watchlist"
+- **Owner stopping**: Settings → Sharing → Manage → Stop Sharing (the owner keeps everything; the other person is told, their copy is removed and they start over with an empty watchlist of their own — keeping the streaming services they were using)
 
 ## Development Notes
 

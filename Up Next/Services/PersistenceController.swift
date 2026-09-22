@@ -625,12 +625,11 @@ final class PersistenceController {
     /// toast them. In the background they become local notifications instead.
     var recentRemoteActivity: [String] = []
 
-    /// The other person's name for notifications and toasts: the owner's name for a participant,
-    /// the first non-owner participant's for an owner. iOS may withhold names from apps without
-    /// the extended share-access entitlement, hence the fallback (`CloudKitNames.swift` owns the
-    /// formatting).
-    func partnerDisplayName() -> String {
-        let fallback = "Your partner"
+    /// The other person's name as a sentence subject for notifications and toasts ("Sarah added
+    /// Elf"). iOS may withhold names from apps without the extended share-access entitlement;
+    /// the fallback never guesses at the relationship (`CloudKitNames.swift` owns the formatting).
+    func otherPersonDisplayName() -> String {
+        let fallback = "Someone"
         guard let share = existingShare() else { return fallback }
         return share.otherDisplayName ?? fallback
     }
@@ -655,7 +654,7 @@ final class PersistenceController {
         let name = share?.participants
             .first { $0.userIdentity.userRecordID?.recordName == creator.recordName }?
             .displayName
-        return (name ?? "your partner", record.creationDate)
+        return (name ?? "someone else", record.creationDate)
     }
 
     /// Entry point for share links (both the running-app and cold-launch paths). Three outcomes:
@@ -688,7 +687,8 @@ final class PersistenceController {
             return
         }
 
-        pendingInvitationCurrentOwnerName = currentShare?.ownerDisplayName ?? "your partner"
+        // Non-nil is the signal `ContentView` keys on; empty means the name was withheld.
+        pendingInvitationCurrentOwnerName = currentShare?.ownerDisplayName ?? ""
         pendingShareInvitation = metadata
     }
 
@@ -782,7 +782,8 @@ final class PersistenceController {
         }
 
         if wasParticipant, role == .owner, !isJoiningSharedLibrary, !isLeavingShare {
-            sharingEndedByOwnerName = ownerName ?? "Your partner"
+            // Non-nil presents the alert; empty means the name was withheld ("Sharing Stopped").
+            sharingEndedByOwnerName = ownerName ?? ""
         }
     }
 

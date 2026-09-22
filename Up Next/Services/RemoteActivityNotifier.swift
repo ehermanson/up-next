@@ -53,7 +53,7 @@ enum RemoteActivityNotifier {
         // Only meaningful once there's someone on the other end.
         guard persistence.role == .participant || persistence.existingShare() != nil else { return }
 
-        let actor = persistence.partnerDisplayName()
+        let actor = persistence.otherPersonDisplayName()
         let isActive = UIApplication.shared.applicationState == .active
         var messages: [String] = []
         for transaction in transactions {
