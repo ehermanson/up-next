@@ -16,7 +16,7 @@ struct ProviderSettingsView: View {
     /// retires a provider). Show the top of the region's priority order by default — search still
     /// reaches everything — and let the rest be asked for.
     @State private var showsAllProviders = false
-    private static let featuredLimit = 40
+    private static let featuredLimit = 20
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -91,6 +91,11 @@ struct ProviderSettingsView: View {
         providers.filter { settings.selectedProviderIDs.contains($0.id) }
     }
 
+    /// Everything not already pinned above — a picked service shouldn't appear twice on one screen.
+    private var unselectedProviders: [TMDBWatchProviderInfo] {
+        providers.filter { !settings.selectedProviderIDs.contains($0.id) }
+    }
+
     // MARK: - Description
 
     private var descriptionSection: some View {
@@ -145,17 +150,18 @@ struct ProviderSettingsView: View {
                     grid(for: picked)
                 }
             }
-            let isTruncated = !showsAllProviders && providers.count > Self.featuredLimit
+            let rest = unselectedProviders
+            let isTruncated = !showsAllProviders && rest.count > Self.featuredLimit
             VStack(spacing: 8) {
                 SectionHeader(title: isTruncated ? "Popular Services" : "All Services", showsFilter: false)
-                grid(for: isTruncated ? Array(providers.prefix(Self.featuredLimit)) : providers)
+                grid(for: isTruncated ? Array(rest.prefix(Self.featuredLimit)) : rest)
                 if isTruncated {
                     Button {
                         withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) {
                             showsAllProviders = true
                         }
                     } label: {
-                        Text("Show All \(providers.count) Services")
+                        Text("Show All \(rest.count) Services")
                             .font(.subheadline.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)

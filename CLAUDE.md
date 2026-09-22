@@ -112,7 +112,7 @@ Up Next/
 │   │   └── CreateListView.swift         # Create/edit collection dialog with icon picker (focused field, Return saves, duplicate-name hint)
 │   └── Settings/
 │       ├── SettingsView.swift           # Settings root (sheet from every tab): Sharing / Streaming Services / Region rows + Appearance picker + About; hosts the Sharing push screen
-│       ├── ProviderSettingsView.swift   # Streaming service grid — searchable, the user's picks pinned in "Your Services", then "Popular Services" (top 40 by region priority; TMDB never retires defunct providers) with a "Show All N Services" expander; isRoot owns its own NavigationStack+Done (first-launch onboarding), else pushed from SettingsView. Also hosts RegionPickerView (internal)
+│       ├── ProviderSettingsView.swift   # Streaming service grid — searchable, the user's picks pinned in "Your Services", then "Popular Services" (top 20 by region priority *excluding* the pinned picks; TMDB never retires defunct providers) with a "Show All N Services" expander; search covers everything; isRoot owns its own NavigationStack+Done (first-launch onboarding), else pushed from SettingsView. Also hosts RegionPickerView (internal)
 │       ├── SharingSettingsView.swift    # SharingSection: iCloud off / owner unshared → share link; owner shared (incl. pending invite) → manage; participant → leave; joining. Pushed from SettingsView's Sharing row
 │       └── LegacyImportView.swift       # "Bring over your Up Next lists?" sheet: offer / progress / result for the 1.x importer
 │
