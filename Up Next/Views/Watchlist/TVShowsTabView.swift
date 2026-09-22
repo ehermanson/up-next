@@ -56,9 +56,8 @@ struct TVShowsTabView: View {
         if item.isWatching && item.isWatched { return "Caught up" }
 
         if item.isDropped {
-            let count = item.watchedSeasons.count
-            let total = tvShow.numberOfSeasons ?? 0
-            return total > 0 ? "Dropped \u{00B7} \(count) of \(total) seasons" : "Dropped"
+            // The season dashes under the row already show how far they got.
+            return "Dropped"
         }
 
         // Caught up, with the next season only announced: say so rather than falling through to a
@@ -71,11 +70,13 @@ struct TVShowsTabView: View {
             return "Season \(announced) announced"
         }
 
+        // Partial progress: the row renders season dashes (`SeasonProgressBar`, with its own
+        // VoiceOver label), so a "2 of 4 seasons watched" line would say the same thing twice and
+        // push the genre off the line. Leave the line to the genre and rating.
         if !item.watchedSeasons.isEmpty,
            let total = tvShow.numberOfSeasons, total > 1,
            !item.isWatched {
-            let watched = Set(item.watchedSeasons).filter { (1...total).contains($0) }.count
-            return "\(watched) of \(total) seasons watched"
+            return nil
         }
 
         return tvShow.seasonsEpisodesSummary
