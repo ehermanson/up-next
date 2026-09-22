@@ -36,9 +36,9 @@ struct DetailProviderRow: View {
     /// get their own row when the title streams nowhere.
     private var originatingNetworks: [Network] { networks(in: ["network"]) }
 
-    /// The user's own services among the subscription providers. When any match, the Stream row
-    /// shows just those and folds everything else behind "+N" — the row is meant to answer
-    /// "can I watch this?", not list every service on earth.
+    /// The user's own services among the subscription providers. When any match, the sheet shows
+    /// just those and folds everything else — other services, originating channels, even Rent or
+    /// Buy — behind one "+N". The row is meant to answer "can I watch this?", and the answer is yes.
     private var pinnedNetworks: [Network] {
         guard settings.hasSelectedProviders else { return [] }
         let selected = settings.selectedProviderIDs
@@ -72,7 +72,11 @@ struct DetailProviderRow: View {
             if !otherStream.isEmpty { folded.append(FoldedGroup(title: "Stream", networks: otherStream)) }
             if !otherAds.isEmpty { folded.append(FoldedGroup(title: "Free with Ads", networks: otherAds)) }
             if !originatingNetworks.isEmpty { folded.append(FoldedGroup(title: "Network", networks: originatingNetworks)) }
-            rows.append(Row(id: "Stream", inline: pinned, folded: folded))
+            // If it streams on a service you already pay for, renting is a footnote (it's leaving,
+            // TMDB is stale, you want to own it) — keep it reachable in the popover, not on its
+            // own row. Return here so the Rent or Buy row below is skipped.
+            if !rentOrBuyNetworks.isEmpty { folded.append(FoldedGroup(title: "Rent or Buy", networks: rentOrBuyNetworks)) }
+            return [Row(id: "Stream", inline: pinned, folded: folded)]
         } else {
             let network = FoldedGroup(title: "Network", networks: originatingNetworks)
             if !streamNetworks.isEmpty {
