@@ -567,6 +567,21 @@ final class PersistenceController {
     /// screenshot mode) or the user is signed out / restricted.
     private(set) var isCloudAccountAvailable: Bool?
 
+    #if DEBUG
+    /// Development only. Asks `NSPersistentCloudKitContainer` to create every record type and
+    /// field in the CloudKit *Development* schema by round-tripping temporary records. The
+    /// just-in-time schema only learns a field the first time a record carrying a non-nil value
+    /// for it is exported — an optional attribute nobody has set yet (`watchingStartedAt` on a
+    /// library with nothing in Watching) never shows up in the Console on its own, so there's
+    /// nothing to deploy. Run from the Settings debug section on a signed-in device, then
+    /// "Deploy Schema Changes" in the Console. Synchronous and slow-ish (a few seconds).
+    func initializeCloudKitSchema() throws {
+        guard isCloudKitEnabled else { throw PersistenceError.cloudKitDisabled }
+        try container.initializeCloudKitSchema(options: [])
+        AppLog.sync.notice("CloudKit Development schema initialized")
+    }
+    #endif
+
     func refreshAccountStatus() async {
         guard isCloudKitEnabled else {
             isCloudAccountAvailable = false
@@ -827,9 +842,12 @@ final class PersistenceController {
         case noShare
         case notParticipant
         case storeUnavailable(Error?)
+        case cloudKitDisabled
 
         var errorDescription: String? {
             switch self {
+            case .cloudKitDisabled:
+                "CloudKit is off for this launch (--no-cloudkit)."
             case .noGroup:
                 "Your watchlist hasn’t finished loading yet. Try again in a moment."
             case .noShare:

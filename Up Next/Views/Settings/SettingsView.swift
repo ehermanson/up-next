@@ -12,6 +12,9 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingLegacyImport = false
+    #if DEBUG
+    @State private var schemaResult: String?
+    #endif
 
     @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .dark
 
@@ -284,6 +287,32 @@ struct SettingsView: View {
             }
             .buttonStyle(.bordered)
             .tint(.orange)
+
+            // Creates every record type/field in the Development schema regardless of what the
+            // library holds — the Console only shows a field once some record exported with it.
+            Button {
+                do {
+                    try PersistenceController.shared.initializeCloudKitSchema()
+                    schemaResult = "Development schema initialized. Open CloudKit Console → Schema and deploy to Production."
+                } catch {
+                    schemaResult = error.localizedDescription
+                }
+            } label: {
+                Label("Initialize CloudKit Schema", systemImage: "icloud.and.arrow.up")
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
+            .buttonStyle(.bordered)
+            .tint(.orange)
+            .alert("CloudKit Schema", isPresented: Binding(
+                get: { schemaResult != nil },
+                set: { if !$0 { schemaResult = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(schemaResult ?? "")
+            }
         }
         .padding(.top, 8)
     }
