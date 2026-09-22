@@ -96,12 +96,22 @@ struct DetailProviderRow: View {
         return Row(id: caption, inline: Array(networks.prefix(Self.inlineLimit)), folded: folded)
     }
 
+    /// "Stream" only means something next to "Free with Ads" / "Rent or Buy" — a lone Netflix
+    /// logo already says it's on Netflix. Those two keep their caption even alone; *that* is the
+    /// information (it's free / it costs money).
+    private func showsCaption(for row: Row, in rows: [Row]) -> Bool {
+        guard !row.id.isEmpty else { return false }
+        if row.id == "Stream", rows.count == 1 { return false }
+        return true
+    }
+
     var body: some View {
         if !networks.isEmpty {
+            let rows = rows
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(rows) { row in
                     VStack(alignment: .leading, spacing: 4) {
-                        if !row.id.isEmpty {
+                        if showsCaption(for: row, in: rows) {
                             Text(row.id)
                                 .font(.caption)
                                 .fontWeight(.medium)
