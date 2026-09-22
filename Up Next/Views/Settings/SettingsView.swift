@@ -137,10 +137,8 @@ struct SettingsView: View {
         return "\(count) selected"
     }
 
-    /// The *other* person in the share. `partnerParticipant` is the first non-owner, which is the
-    /// participant themselves on their own device — same split `sharingStatus` makes above.
     private var householdPartnerName: String {
-        PersistenceController.shared.role == .participant ? ownerName : partnerName
+        PersistenceController.shared.liveShare?.otherDisplayName ?? "your partner"
     }
 
     // MARK: - Region

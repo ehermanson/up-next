@@ -283,7 +283,7 @@ struct ContentView: View {
     }
 
     private var blockedInvitationMessage: String {
-        let partner = persistence.liveShare?.partnerParticipant?.displayName ?? "your partner"
+        let partner = persistence.liveShare?.otherDisplayName ?? "your partner"
         let library = persistence.blockedShareInvitationOwnerName.map { "\($0)’s watchlist" } ?? "this watchlist"
         return "You’re sharing your watchlist with \(partner). To join \(library) instead, stop sharing yours first in Settings → Sharing."
     }

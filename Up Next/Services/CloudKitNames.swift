@@ -30,10 +30,20 @@ extension CKShare.Participant {
 }
 
 extension CKShare {
-    /// The first non-owner participant — the "partner" in this app's one-owner-one-partner model.
+    /// The first non-owner participant. **Owner-side only**: on a participant's own device this is
+    /// the participant themselves. Anything that names "the other person" must use
+    /// `otherParticipant` / `otherDisplayName` instead.
     var partnerParticipant: CKShare.Participant? {
         participants.first { $0.role != .owner }
     }
+
+    /// The other person in the share from this device's point of view: the owner when the current
+    /// user is a participant, else the first non-owner participant.
+    var otherParticipant: CKShare.Participant? {
+        currentUserParticipant?.role == .owner ? partnerParticipant : owner
+    }
+
+    var otherDisplayName: String? { otherParticipant?.displayName }
 
     var ownerDisplayName: String? { owner.userIdentity.displayName }
 }

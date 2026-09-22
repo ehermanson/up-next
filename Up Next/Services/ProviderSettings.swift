@@ -25,6 +25,19 @@ enum StorageKey {
 final class ProviderSettings {
     static let shared = ProviderSettings()
 
+    /// Where the device-local preferences (and the services cache) live. Under `--screenshots` a
+    /// throwaway suite is used and wiped on launch, so the demo preselect — six services,
+    /// onboarding done — never lands in the real defaults, where it would later seed a real root
+    /// as the "cache" on the next normal launch onto an empty store.
+    nonisolated static let defaults: UserDefaults = {
+        let suiteName = "com.erichermanson.upnext.screenshots"
+        guard ProcessInfo.processInfo.arguments.contains("--screenshots"),
+              let suite = UserDefaults(suiteName: suiteName)
+        else { return .standard }
+        suite.removePersistentDomain(forName: suiteName)
+        return suite
+    }()
+
     private static let selectedProvidersKey = "selectedProviderIDs"
     var selectedProviderIDs: Set<Int> {
         didSet {
@@ -41,7 +54,7 @@ final class ProviderSettings {
     private static let onlyMyServicesInDiscoverKey = "discover.onlyMyServices"
     var onlyMyServicesInDiscover: Bool {
         didSet {
-            UserDefaults.standard.set(onlyMyServicesInDiscover, forKey: Self.onlyMyServicesInDiscoverKey)
+            Self.defaults.set(onlyMyServicesInDiscover, forKey: Self.onlyMyServicesInDiscoverKey)
         }
     }
 
@@ -51,9 +64,9 @@ final class ProviderSettings {
     var regionOverride: String? {
         didSet {
             if let regionOverride, !regionOverride.isEmpty {
-                UserDefaults.standard.set(regionOverride, forKey: Self.regionOverrideKey)
+                Self.defaults.set(regionOverride, forKey: Self.regionOverrideKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: Self.regionOverrideKey)
+                Self.defaults.removeObject(forKey: Self.regionOverrideKey)
             }
         }
     }
@@ -66,7 +79,7 @@ final class ProviderSettings {
     /// The region every TMDB lookup should use. Reads `UserDefaults` directly rather than the
     /// shared instance so `TMDBService` can call it from outside the main actor.
     nonisolated static var effectiveRegion: String {
-        if let override = UserDefaults.standard.string(forKey: regionOverrideKey), !override.isEmpty {
+        if let override = Self.defaults.string(forKey: regionOverrideKey), !override.isEmpty {
             return override
         }
         return deviceRegion
@@ -75,14 +88,14 @@ final class ProviderSettings {
     private static let hasCompletedProviderOnboardingKey = "hasCompletedProviderOnboarding"
     var hasCompletedProviderOnboarding: Bool {
         didSet {
-            UserDefaults.standard.set(hasCompletedProviderOnboarding, forKey: Self.hasCompletedProviderOnboardingKey)
+            Self.defaults.set(hasCompletedProviderOnboarding, forKey: Self.hasCompletedProviderOnboardingKey)
         }
     }
 
     private static let hasDismissedSharePitchKey = "sharing.pitchDismissed"
     var hasDismissedSharePitch: Bool {
         didSet {
-            UserDefaults.standard.set(hasDismissedSharePitch, forKey: Self.hasDismissedSharePitchKey)
+            Self.defaults.set(hasDismissedSharePitch, forKey: Self.hasDismissedSharePitchKey)
         }
     }
 
@@ -99,25 +112,25 @@ final class ProviderSettings {
     }
 
     private init() {
-        if let data = UserDefaults.standard.data(forKey: Self.selectedProvidersKey),
+        if let data = Self.defaults.data(forKey: Self.selectedProvidersKey),
            let ids = try? JSONDecoder().decode(Set<Int>.self, from: data) {
             selectedProviderIDs = ids
         } else {
             selectedProviderIDs = []
         }
 
-        if UserDefaults.standard.object(forKey: Self.onlyMyServicesInDiscoverKey) != nil {
-            onlyMyServicesInDiscover = UserDefaults.standard.bool(forKey: Self.onlyMyServicesInDiscoverKey)
+        if Self.defaults.object(forKey: Self.onlyMyServicesInDiscoverKey) != nil {
+            onlyMyServicesInDiscover = Self.defaults.bool(forKey: Self.onlyMyServicesInDiscoverKey)
         } else {
             onlyMyServicesInDiscover = true
         }
 
-        let storedRegion = UserDefaults.standard.string(forKey: Self.regionOverrideKey)
+        let storedRegion = Self.defaults.string(forKey: Self.regionOverrideKey)
         regionOverride = (storedRegion?.isEmpty == false) ? storedRegion : nil
 
-        hasCompletedProviderOnboarding = UserDefaults.standard.bool(forKey: Self.hasCompletedProviderOnboardingKey)
+        hasCompletedProviderOnboarding = Self.defaults.bool(forKey: Self.hasCompletedProviderOnboardingKey)
 
-        hasDismissedSharePitch = UserDefaults.standard.bool(forKey: Self.hasDismissedSharePitchKey)
+        hasDismissedSharePitch = Self.defaults.bool(forKey: Self.hasDismissedSharePitchKey)
     }
 
     /// Returns true if provider should be shown.
@@ -140,7 +153,7 @@ final class ProviderSettings {
 
     private func saveSelectedProviders() {
         if let data = try? JSONEncoder().encode(selectedProviderIDs) {
-            UserDefaults.standard.set(data, forKey: Self.selectedProvidersKey)
+            Self.defaults.set(data, forKey: Self.selectedProvidersKey)
         }
     }
 

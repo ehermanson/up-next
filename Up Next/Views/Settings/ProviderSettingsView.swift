@@ -117,14 +117,8 @@ struct ProviderSettingsView: View {
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
-    /// The *other* person in the share: `partnerParticipant` is the first non-owner, which is the
-    /// participant themselves on their own device.
     private var sharingPartnerName: String {
-        let persistence = PersistenceController.shared
-        let name = persistence.role == .participant
-            ? persistence.liveShare?.ownerDisplayName
-            : persistence.liveShare?.partnerParticipant?.displayName
-        return name ?? "your partner"
+        PersistenceController.shared.liveShare?.otherDisplayName ?? "your partner"
     }
 
     // MARK: - Loading

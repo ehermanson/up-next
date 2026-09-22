@@ -632,10 +632,7 @@ final class PersistenceController {
     func partnerDisplayName() -> String {
         let fallback = "Your partner"
         guard let share = existingShare() else { return fallback }
-        let name = role == .participant
-            ? share.ownerDisplayName
-            : share.partnerParticipant?.displayName
-        return name ?? fallback
+        return share.otherDisplayName ?? fallback
     }
 
     /// "Added by" attribution for the detail sheet, sourced entirely from the CloudKit record
