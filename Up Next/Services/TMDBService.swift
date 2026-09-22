@@ -496,7 +496,13 @@ final class TMDBService {
                 originCountry: tmdbNetwork.originCountry
             )
             allNetworks.append(network)
-            categories[network.id] = "stream"
+            // A show's originating channel isn't somewhere to stream it — TMDB lists every network
+            // a long-runner ever aired on (Raw: USA, Spike, TNN). Only when the name resolves to a
+            // real provider (AMC → AMC+, HBO → HBO Max) does it count as "stream"; otherwise it's
+            // a "network", which the filters ignore and the detail sheet folds behind "+N".
+            let resolvesToProvider = Self.networkToProviderID[tmdbNetwork.name] != nil
+                || (alias?.id ?? -1) >= 0
+            categories[network.id] = resolvesToProvider ? "stream" : "network"
         }
 
         return TVShow(

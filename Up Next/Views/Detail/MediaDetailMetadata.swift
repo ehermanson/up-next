@@ -5,67 +5,123 @@ struct DetailProviderRow: View {
     let networks: [Network]
     let providerCategories: [Int: String]
     @State private var tooltipNetworkID: Int?
+    /// Which row's "+N" popover is open (keyed by the row's caption).
+    @State private var overflowRowID: String?
 
     private let logoSize: CGFloat = 44
+    /// Logos shown inline per row before the rest fold into the "+N" tile.
+    private static let inlineLimit = 5
+    private let settings = ProviderSettings.shared
 
     private var hasCategories: Bool {
         !providerCategories.isEmpty
     }
 
-    /// `networks` in a stable display order. `networks` comes from an unordered SwiftData
-    /// relationship, so the per-category sections below filter this instead of `networks`
+    /// `networks` in a stable display order. `networks` comes from an unordered Core Data
+    /// relationship, so the per-category groups below filter this instead of `networks`
     /// directly — otherwise the logos would reshuffle on every render.
     private var sortedNetworks: [Network] {
         displayOrderedNetworks(networks, categories: providerCategories)
     }
 
-    private var streamNetworks: [Network] {
-        sortedNetworks.filter { providerCategories[$0.id] == "stream" }
+    private func networks(in categories: Set<String>) -> [Network] {
+        sortedNetworks.filter { categories.contains(providerCategories[$0.id] ?? "") }
     }
 
-    private var adsNetworks: [Network] {
-        sortedNetworks.filter { providerCategories[$0.id] == "ads" }
+    private var streamNetworks: [Network] { networks(in: ["stream"]) }
+    private var adsNetworks: [Network] { networks(in: ["ads"]) }
+    private var rentOrBuyNetworks: [Network] { networks(in: ["rent", "buy"]) }
+    /// Originating channels (USA, Spike) — where the show aired, not where to watch it. Never
+    /// inline next to real providers; they ride along in the Stream row's "+N" popover, and only
+    /// get their own row when the title streams nowhere.
+    private var originatingNetworks: [Network] { networks(in: ["network"]) }
+
+    /// The user's own services among the subscription providers. When any match, the Stream row
+    /// shows just those and folds everything else behind "+N" — the row is meant to answer
+    /// "can I watch this?", not list every service on earth.
+    private var pinnedNetworks: [Network] {
+        guard settings.hasSelectedProviders else { return [] }
+        let selected = settings.selectedProviderIDs
+        return (streamNetworks + adsNetworks).filter { selected.contains($0.id) }
     }
 
-    private var rentOrBuyNetworks: [Network] {
-        sortedNetworks.filter { providerCategories[$0.id] == "rent" || providerCategories[$0.id] == "buy" }
+    private struct FoldedGroup: Identifiable {
+        let title: String
+        let networks: [Network]
+        var id: String { title }
+    }
+
+    private struct Row: Identifiable {
+        /// Caption above the logos; empty for the uncategorised fallback.
+        let id: String
+        let inline: [Network]
+        let folded: [FoldedGroup]
+
+        var foldedCount: Int { folded.reduce(0) { $0 + $1.networks.count } }
+    }
+
+    private var rows: [Row] {
+        guard hasCategories else { return [row("", sortedNetworks)] }
+        var rows: [Row] = []
+        let pinned = pinnedNetworks
+        if !pinned.isEmpty {
+            let pinnedIDs = Set(pinned.map(\.id))
+            var folded: [FoldedGroup] = []
+            let otherStream = streamNetworks.filter { !pinnedIDs.contains($0.id) }
+            let otherAds = adsNetworks.filter { !pinnedIDs.contains($0.id) }
+            if !otherStream.isEmpty { folded.append(FoldedGroup(title: "Stream", networks: otherStream)) }
+            if !otherAds.isEmpty { folded.append(FoldedGroup(title: "Free with Ads", networks: otherAds)) }
+            if !originatingNetworks.isEmpty { folded.append(FoldedGroup(title: "Network", networks: originatingNetworks)) }
+            rows.append(Row(id: "Stream", inline: pinned, folded: folded))
+        } else {
+            let network = FoldedGroup(title: "Network", networks: originatingNetworks)
+            if !streamNetworks.isEmpty {
+                rows.append(row("Stream", streamNetworks, extra: network))
+                if !adsNetworks.isEmpty { rows.append(row("Free with Ads", adsNetworks)) }
+            } else if !adsNetworks.isEmpty {
+                rows.append(row("Free with Ads", adsNetworks, extra: network))
+            } else if !originatingNetworks.isEmpty {
+                rows.append(row("Network", originatingNetworks))
+            }
+        }
+        if !rentOrBuyNetworks.isEmpty { rows.append(row("Rent or Buy", rentOrBuyNetworks)) }
+        return rows
+    }
+
+    private func row(_ caption: String, _ networks: [Network], extra: FoldedGroup? = nil) -> Row {
+        var folded: [FoldedGroup] = []
+        let rest = Array(networks.dropFirst(Self.inlineLimit))
+        if !rest.isEmpty { folded.append(FoldedGroup(title: caption, networks: rest)) }
+        if let extra, !extra.networks.isEmpty { folded.append(extra) }
+        return Row(id: caption, inline: Array(networks.prefix(Self.inlineLimit)), folded: folded)
     }
 
     var body: some View {
         if !networks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                if hasCategories {
-                    providerSection("Stream", networks: streamNetworks)
-                    providerSection("Free with Ads", networks: adsNetworks)
-                    providerSection("Rent or Buy", networks: rentOrBuyNetworks)
-                } else {
-                    providerLogoRow(networks: sortedNetworks)
+                ForEach(rows) { row in
+                    VStack(alignment: .leading, spacing: 4) {
+                        if !row.id.isEmpty {
+                            Text(row.id)
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                        }
+                        providerLogoRow(row)
+                    }
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func providerSection(_ title: String, networks: [Network]) -> some View {
-        if !networks.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-                providerLogoRow(networks: networks)
-            }
-        }
-    }
-
-    private func providerLogoRow(networks: [Network]) -> some View {
+    private func providerLogoRow(_ row: Row) -> some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                ForEach(networks, id: \.id) { network in
+                ForEach(row.inline, id: \.id) { network in
                     Button {
                         tooltipNetworkID = tooltipNetworkID == network.id ? nil : network.id
                     } label: {
-                        providerLogo(for: network)
+                        ProviderLogoView(network: network, size: logoSize)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(network.name)
@@ -80,14 +136,60 @@ struct DetailProviderRow: View {
                             .presentationCompactAdaptation(.popover)
                     }
                 }
+
+                if row.foldedCount > 0 {
+                    Button {
+                        overflowRowID = overflowRowID == row.id ? nil : row.id
+                    } label: {
+                        Text("+\(row.foldedCount)")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .fontDesign(.rounded)
+                            .foregroundStyle(.secondary)
+                            .frame(width: logoSize, height: logoSize)
+                            .cellSurface(cornerRadius: logoSize * 0.22)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(row.foldedCount) more")
+                    .popover(isPresented: Binding(
+                        get: { overflowRowID == row.id },
+                        set: { if !$0 { overflowRowID = nil } }
+                    )) {
+                        FoldedProvidersList(groups: row.folded)
+                            .presentationCompactAdaptation(.popover)
+                    }
+                }
             }
             .padding(.vertical, 2)
         }
         .scrollIndicators(.hidden)
     }
 
-    private func providerLogo(for network: Network) -> some View {
-        ProviderLogoView(network: network, size: logoSize)
+    /// The "+N" popover: every folded provider with its name, grouped by how it's available.
+    private struct FoldedProvidersList: View {
+        let groups: [FoldedGroup]
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(groups) { group in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(group.title)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.secondary)
+                        ForEach(group.networks, id: \.id) { network in
+                            HStack(spacing: 10) {
+                                ProviderLogoView(network: network, size: 28)
+                                Text(network.name)
+                                    .font(.subheadline)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(14)
+            .frame(minWidth: 200, alignment: .leading)
+        }
     }
 }
 

@@ -126,7 +126,7 @@ final class Movie: NSManagedObject, MediaItemProtocol, Identifiable {
     @NSManaged var castCharactersRaw: [String]?
     @NSManaged var genresRaw: [String]?
 
-    /// Provider ID → category ("stream", "ads", "rent", "buy")
+    /// Provider ID → category ("stream", "ads", "rent", "buy"; "network" for an originating channel)
     @NSManaged var providerCategoriesRaw: [Int: String]?
 
     /// Content rating (e.g., "PG-13", "R")
@@ -257,7 +257,7 @@ final class TVShow: NSManagedObject, MediaItemProtocol, Identifiable {
     @NSManaged var castCharactersRaw: [String]?
     @NSManaged var genresRaw: [String]?
 
-    /// Provider ID → category ("stream", "ads", "rent", "buy")
+    /// Provider ID → category ("stream", "ads", "rent", "buy"; "network" for an originating channel)
     @NSManaged var providerCategoriesRaw: [Int: String]?
 
     /// Number of seasons (specific to TV shows)
@@ -582,7 +582,8 @@ func displayOrderedNetworks(_ networks: [Network]?, categories: [Int: String]) -
         case "ads": return 1
         case "rent": return 2
         case "buy": return 3
-        default: return 4
+        case "network": return 4   // originating channel — informational, never a place to watch
+        default: return 5
         }
     }
     // Prefer a record with a logo when duplicate records contain different cached metadata.
