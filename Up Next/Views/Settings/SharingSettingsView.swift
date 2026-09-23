@@ -60,8 +60,10 @@ struct SharingSection: View {
                 iCloudUnavailableCard
             } else if persistence.role == .participant {
                 participantCard
+                supportingCards
             } else if persistence.isSharingLive, let share = persistence.liveShare {
                 sharedCard(share: share)
+                supportingCards
             } else {
                 unsharedCard
             }
@@ -189,6 +191,8 @@ struct SharingSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            participantRows(share)
+
             Button {
                 showingManageSheet = true
             } label: {
@@ -256,6 +260,10 @@ struct SharingSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let share = persistence.liveShare {
+                participantRows(share)
+            }
+
             Button(role: .destructive) {
                 showingLeaveConfirmation = true
             } label: {
@@ -285,6 +293,103 @@ struct SharingSection: View {
         return "Leave \(name)’s watchlist?"
     }
 
+    // MARK: - People
+
+    /// One row per person on the share: name (or a role fallback when iOS withholds it), "You"
+    /// where applicable, and where they stand — Owner / Joined / Invited.
+    private func participantRows(_ share: CKShare) -> some View {
+        let people = share.participants.filter { $0.acceptanceStatus != .removed }
+            .sorted { ($0.role == .owner ? 0 : 1) < ($1.role == .owner ? 0 : 1) }
+        return VStack(spacing: 8) {
+            ForEach(Array(people.enumerated()), id: \.offset) { _, person in
+                let isMe = person.userIdentity.userRecordID == share.currentUserParticipant?.userIdentity.userRecordID
+                HStack(spacing: 12) {
+                    Image(systemName: "person.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color.accentColor)
+                        .symbolRenderingMode(.hierarchical)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(person.displayName ?? (person.role == .owner ? "Owner" : "Invited person"))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        if isMe {
+                            Text("You")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Text(person.role == .owner ? "Owner" : person.acceptanceStatus == .accepted ? "Joined" : "Invited")
+                        .font(.caption)
+                        .fontDesign(.rounded)
+                        .foregroundStyle(person.acceptanceStatus == .pending && person.role != .owner ? .orange : .secondary)
+                }
+                .padding(12)
+                .cellSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+            }
+        }
+    }
+
+    // MARK: - What's shared / Activity
+
+    /// Shown under whichever card applies, so the screen explains itself instead of floating one
+    /// card in a void.
+    @ViewBuilder
+    private var supportingCards: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("What’s Shared")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            sharedPoint("bookmark.circle", "Up Next and Watched, for TV shows and movies — with seasons, ratings and notes.")
+            sharedPoint("folder", "Every collection.")
+            sharedPoint("play.tv", "Streaming services — one set for the household.")
+            sharedPoint("person.crop.circle", "Each title’s detail shows who added it. Region and appearance stay per device.")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+
+        NavigationLink {
+            ActivityView()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 24)
+                Text("Activity")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text("What’s changed, and who changed it")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(.rect)
+            .padding(16)
+        }
+        .buttonStyle(.plain)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    private func sharedPoint(_ icon: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 18)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     // MARK: - Joining
 
     private var joiningRow: some View {
@@ -308,6 +413,8 @@ struct SharingSection: View {
         if persistence.liveShare != nil {
             RemoteActivityNotifier.requestPermissionIfNeeded()
         }
+        // Then the server's copy — the only place an accepted invitation shows up.
+        Task { await persistence.refreshLiveShareFromServer() }
     }
 
     private func leaveShare() async {

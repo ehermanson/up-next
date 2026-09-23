@@ -678,6 +678,30 @@ final class PersistenceController {
         liveShare = existingShare()
     }
 
+    /// The local mirror of the share only changes when *records* import, and a participant
+    /// accepting the invitation changes the share record alone — no managed object, no history
+    /// transaction, none of the usual refresh hooks. So "Invitation sent — waiting" sat on the
+    /// owner's screen after the join was long done. Fetches the share from the server, adopts it
+    /// for display and writes it back into the mirror. Cheap (one record); safe to call on appear.
+    func refreshLiveShareFromServer() async {
+        guard isCloudKitEnabled, let local = existingShare() else {
+            refreshLiveShare()
+            return
+        }
+        let database = role == .participant ? Self.ckContainer.sharedCloudDatabase : Self.ckContainer.privateCloudDatabase
+        guard let fetched = try? await database.record(for: local.recordID) as? CKShare else {
+            refreshLiveShare()
+            return
+        }
+        liveShare = fetched
+        let store: NSPersistentStore = role == .participant ? sharedStore : privateStore
+        do {
+            try container.persistUpdatedShare(fetched, in: store)
+        } catch {
+            AppLog.sharing.error("persistUpdatedShare failed: \(error)")
+        }
+    }
+
     /// True once sharing is actually live on this device: a participant, or an owner whose share
     /// has at least one non-owner participant. A `CKShare` nobody has been invited to (the share
     /// sheet was cancelled after the share was created) counts as *not* shared.

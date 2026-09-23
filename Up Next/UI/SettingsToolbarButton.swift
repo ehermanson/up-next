@@ -26,6 +26,9 @@ struct SettingsToolbarButton: View {
         // (bootstrap, accept/leave, remote changes) already refreshes `liveShare` itself.
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
+            // The mirror can't know about an accepted invitation (see
+            // `refreshLiveShareFromServer`) — ask the server so the glyph flips when they join.
+            Task { await persistence.refreshLiveShareFromServer() }
             if reduceMotion {
                 persistence.refreshLiveShare()
             } else {
