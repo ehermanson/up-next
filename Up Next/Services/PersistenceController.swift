@@ -1,3 +1,4 @@
+import UIKit
 import CloudKit
 import CoreData
 import Foundation
@@ -785,6 +786,13 @@ final class PersistenceController {
                 tasks.cancelAll()
                 return share
             }
+            // What Messages shows in the bubble and what the system's "Open …?" prompt names.
+            // Without these it reads "Shared from Up Next" and 'Open "cloudkit.zoneshare"?'.
+            share[CKShare.SystemFieldKey.title] = "Up Next Watchlist" as CKRecordValue
+            share[CKShare.SystemFieldKey.shareType] = "com.erichermanson.upnext.watchlist" as CKRecordValue
+            if let icon = UIImage(named: "LaunchIcon"), let png = icon.pngData() {
+                share[CKShare.SystemFieldKey.thumbnailImageData] = png as CKRecordValue
+            }
             appendSyncActivity(kind: "share", startDate: started, errorText: nil)
             return share
         } catch {
@@ -1128,12 +1136,19 @@ final class PersistenceController {
     /// re-tapping the link for the share they're already in accepts silently, having nothing to
     /// lose; everything else is parked for `ContentView` to confirm.
     func receiveShareInvitation(_ metadata: CKShare.Metadata) {
+        let owner = metadata.ownerIdentity.displayName ?? "unknown owner"
+        func note(_ outcome: String) {
+            appendSyncActivity(kind: "invite", startDate: .now, errorText: "From \(owner): \(outcome)")
+            AppLog.sharing.notice("share invitation from \(owner, privacy: .private): \(outcome, privacy: .public)")
+        }
         if role == .owner {
             guard !isSharingLive else {
                 blockedShareInvitation = metadata
+                note("blocked — this device is already sharing its own watchlist")
                 return
             }
             pendingShareInvitation = metadata
+            note("parked for the Join alert (owner, not sharing)")
             return
         }
 
@@ -1142,10 +1157,12 @@ final class PersistenceController {
         // shared library this device is in, which needs the same confirmation an owner gets.
         let currentShare = liveShare ?? existingShare()
         guard let currentShareID = currentShare?.recordID, currentShareID != metadata.share.recordID else {
+            note("accepting directly (same share, or join in progress)")
             Task { @MainActor in
                 do {
                     try await acceptShare(metadata: metadata)
                 } catch {
+                    appendSyncActivity(kind: "invite", startDate: .now, errorText: "Accept failed: \(Self.describeSyncError(error))")
                     AppLog.sharing.error("failed to accept CloudKit share: \(error)")
                 }
             }
@@ -1155,6 +1172,7 @@ final class PersistenceController {
         // Non-nil is the signal `ContentView` keys on; empty means the name was withheld.
         pendingInvitationCurrentOwnerName = currentShare?.ownerDisplayName ?? ""
         pendingShareInvitation = metadata
+        note("parked for the Join alert (already in another share)")
     }
 
     func declinePendingShareInvitation() {

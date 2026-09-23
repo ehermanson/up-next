@@ -117,7 +117,25 @@ struct ContentView: View {
             presentOnboardingIfNeeded()
         }
         .onChange(of: persistence.pendingShareInvitation == nil) { _, decided in
-            if decided { presentOnboardingIfNeeded() }
+            if decided {
+                presentOnboardingIfNeeded()
+            } else {
+                // An alert attached here can't present while a sheet is up, and a fresh install
+                // has the onboarding sheet up at exactly the moment the link is tapped — the
+                // invitation would sit parked with nothing on screen. Clear the way.
+                showingOnboarding = false
+                showingSettings = false
+                showingSearch = false
+                showingLegacyImport = false
+            }
+        }
+        .onChange(of: persistence.blockedShareInvitation == nil) { _, cleared in
+            if !cleared {
+                showingOnboarding = false
+                showingSettings = false
+                showingSearch = false
+                showingLegacyImport = false
+            }
         }
         // Joining or leaving swaps the whole store out from under the view models: the library is
         // gone for the duration and `group` is nil, so they have to drop what they're holding.
