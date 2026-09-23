@@ -134,6 +134,25 @@ struct SharingSection: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // Creating the share queues behind any export in flight (a whole library on a first
+            // launch against a fresh CloudKit environment), and a failed sync means it can't
+            // succeed at all — say so here rather than letting the share sheet spin.
+            if persistence.isSyncing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Syncing your watchlist to iCloud… Sharing works once that finishes.")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            } else if let error = persistence.lastSyncError {
+                Text("iCloud sync failed, so sharing can’t start yet: \(error)")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             ShareLink(item: LibraryShareItem(existingShare: persistence.liveShare), preview: SharePreview("Up Next watchlist")) {
                 Label("Share Your Watchlist", systemImage: "person.2")
                     .font(.subheadline.weight(.semibold))

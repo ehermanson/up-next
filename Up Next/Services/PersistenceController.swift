@@ -256,6 +256,7 @@ final class PersistenceController {
         try applyRoleRule()
         sweepOrphanedDetailWrappers()
         refreshLiveShare()
+        observeSyncEvents()
         Task { await refreshAccountStatus() }
 
         if remoteChangeObserver == nil {
@@ -638,8 +639,123 @@ final class PersistenceController {
         guard let group else {
             throw PersistenceError.noGroup
         }
-        let (_, share, _) = try await container.share([group], to: nil)
-        return share
+        // `share(_:to:)` moves the whole graph into a new zone and queues behind any export in
+        // flight — on a device's first launch against a fresh CloudKit environment that's the
+        // entire library, and the system share sheet just spins with no way to tell. A bounded
+        // wait turns "forever" into an error that names the cause. The underlying operation
+        // isn't cancellable; if it lands later, `liveShare` picks the share up on the next refresh
+        // and `LibraryShareItem` hands that existing share to the sheet instead of a second one.
+        return try await withThrowingTaskGroup(of: CKShare.self) { tasks in
+            tasks.addTask { @MainActor in
+                let (_, share, _) = try await self.container.share([group], to: nil)
+                return share
+            }
+            tasks.addTask {
+                try await Task.sleep(for: .seconds(Self.shareTimeout))
+                throw PersistenceError.shareTimedOut
+            }
+            guard let share = try await tasks.next() else { throw PersistenceError.shareTimedOut }
+            tasks.cancelAll()
+            return share
+        }
+    }
+
+    private static let shareTimeout: TimeInterval = 60
+
+    // MARK: - Sync status
+
+    /// One CloudKit mirroring event (setup / import / export), reduced to what a status line
+    /// needs. Kept per type in `lastSyncEvents` — the latest of each, across both stores.
+    struct SyncEventSummary {
+        let type: NSPersistentCloudKitContainer.EventType
+        let startDate: Date
+        let endDate: Date?
+        let errorText: String?
+
+        var isInFlight: Bool { endDate == nil }
+        var succeeded: Bool { endDate != nil && errorText == nil }
+    }
+
+    /// Latest setup / import / export event, so the app can say what iCloud is doing instead of
+    /// leaving a spinner unexplained. Observable; read by Settings → About and the Sharing screen.
+    private(set) var lastSyncEvents: [NSPersistentCloudKitContainer.EventType: SyncEventSummary] = [:]
+    private var syncEventToken: NSObjectProtocol?
+
+    var isSyncing: Bool { lastSyncEvents.values.contains { $0.isInFlight } }
+
+    /// The most recent event that ended in an error, if the latest of its type did — a failure
+    /// followed by a successful retry of the same kind is not an error.
+    var lastSyncError: String? {
+        lastSyncEvents.values
+            .filter { $0.errorText != nil }
+            .max { $0.startDate < $1.startDate }?
+            .errorText
+    }
+
+    var lastSuccessfulSync: Date? {
+        lastSyncEvents.values.filter(\.succeeded).compactMap(\.endDate).max()
+    }
+
+    /// One line for a Settings row: "Off" / "Syncing…" / "Failed" / "Synced 2 min ago" / "Waiting…".
+    var syncStatusSummary: String {
+        guard isCloudKitEnabled else { return "Off" }
+        if isSyncing { return "Syncing…" }
+        if lastSyncError != nil { return "Failed" }
+        if let date = lastSuccessfulSync {
+            let formatter = RelativeDateTimeFormatter()
+            formatter.unitsStyle = .short
+            return "Synced \(formatter.localizedString(for: date, relativeTo: .now))"
+        }
+        return "Waiting…"
+    }
+
+    /// Records every mirroring event the container reports. Separate from the one-shot import
+    /// observer `awaitInitialImportThenRetry` installs; this one lives for the whole launch.
+    private func observeSyncEvents() {
+        guard isCloudKitEnabled, syncEventToken == nil else { return }
+        syncEventToken = NotificationCenter.default.addObserver(
+            forName: NSPersistentCloudKitContainer.eventChangedNotification,
+            object: container,
+            queue: nil
+        ) { [weak self] note in
+            guard let event = note.userInfo?[NSPersistentCloudKitContainer.eventNotificationUserInfoKey]
+                    as? NSPersistentCloudKitContainer.Event
+            else { return }
+            let summary = SyncEventSummary(
+                type: event.type,
+                startDate: event.startDate,
+                endDate: event.endDate,
+                errorText: event.error.map(Self.describeSyncError)
+            )
+            guard let self else { return }
+            Task { @MainActor in
+                self.lastSyncEvents[summary.type] = summary
+                if let text = summary.errorText {
+                    AppLog.sync.error("CloudKit \(Self.name(of: summary.type), privacy: .public) failed: \(text, privacy: .public)")
+                }
+            }
+        }
+    }
+
+    private static func name(of type: NSPersistentCloudKitContainer.EventType) -> String {
+        switch type {
+        case .setup: "setup"
+        case .import: "import"
+        case .export: "export"
+        @unknown default: "event"
+        }
+    }
+
+    /// Human text plus the domain/code, and the first per-record failure when CloudKit hands back
+    /// a partial error — "Failed to modify some records" on its own says nothing.
+    nonisolated private static func describeSyncError(_ error: Error) -> String {
+        let nsError = error as NSError
+        var text = "\(nsError.localizedDescription) (\(nsError.domain) \(nsError.code))"
+        if let partial = nsError.userInfo[CKPartialErrorsByItemIDKey] as? [AnyHashable: NSError],
+           let first = partial.values.first {
+            text += " — \(first.localizedDescription) (\(first.code))"
+        }
+        return text
     }
 
     /// A share link that was opened but not yet accepted. Joining replaces this device's own
@@ -885,11 +1001,14 @@ final class PersistenceController {
         case notParticipant
         case storeUnavailable(Error?)
         case cloudKitDisabled
+        case shareTimedOut
 
         var errorDescription: String? {
             switch self {
             case .cloudKitDisabled:
                 "CloudKit is off for this launch (--no-cloudkit)."
+            case .shareTimedOut:
+                "iCloud hasn’t finished syncing your watchlist, so a share link couldn’t be created yet. Check Settings → About for sync status and try again in a few minutes."
             case .noGroup:
                 "Your watchlist hasn’t finished loading yet. Try again in a moment."
             case .noShare:

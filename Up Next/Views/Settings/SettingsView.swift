@@ -209,6 +209,10 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            syncStatusRow
+
+            Divider()
+
             TMDBAttributionView()
 
             Text(versionString)
@@ -219,6 +223,35 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity)
         .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    /// What iCloud is doing right now, with the actual error text when it fails — the one place
+    /// a TestFlight or App Store build can explain a share sheet that spins or titles that don't
+    /// arrive on the other phone.
+    private var syncStatusRow: some View {
+        let persistence = PersistenceController.shared
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                Image(systemName: persistence.lastSyncError != nil ? "exclamationmark.icloud" : "icloud")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 24)
+                Text("iCloud Sync")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Text(persistence.syncStatusSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            if let error = persistence.lastSyncError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private var versionString: String {
