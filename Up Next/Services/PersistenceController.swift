@@ -263,6 +263,7 @@ final class PersistenceController {
         try applyRoleRule()
         sweepOrphanedDetailWrappers()
         sweepUnreferencedNetworks()
+        sweepDanglingEntries(olderThan: 60 * 60)
         pruneActivity()
         refreshLiveShare()
         observeSyncEvents()
@@ -303,6 +304,30 @@ final class PersistenceController {
             }
         }
         #endif
+    }
+
+    /// Watchlist / collection entries whose movie or show row is gone. Nothing can render them and
+    /// nothing can recover them (the TMDB id lived on the row). An import can legitimately land an
+    /// entry a moment before its media row, hence the age gate at bootstrap; the explicit
+    /// Remove Duplicates pass uses 0. Returns how many went.
+    @discardableResult
+    private func sweepDanglingEntries(olderThan age: TimeInterval) -> Int {
+        var dropped = 0
+        let cutoff = Date.now.addingTimeInterval(-age)
+        for entity in ["ListItem", "CustomListItem"] {
+            let request = NSFetchRequest<NSManagedObject>(entityName: entity)
+            request.affectedStores = [activeStore]
+            request.predicate = NSPredicate(format: "movie == nil AND tvShow == nil AND (addedAtRaw == nil OR addedAtRaw < %@)", cutoff as NSDate)
+            for row in (try? viewContext.fetch(request)) ?? [] {
+                viewContext.delete(row)
+                dropped += 1
+            }
+        }
+        if dropped > 0 {
+            save()
+            AppLog.persistence.notice("swept \(dropped) entries with no title row")
+        }
+        return dropped
     }
 
     /// A `Network` row nothing points at is garbage: the metadata refresh replaces a title's
@@ -1514,6 +1539,13 @@ final class PersistenceController {
         var removedItems = 0
         var mergedCollections = 0
 
+        // First, before anything chooses a "keeper": entries whose movie/show row is gone. They
+        // can't render and carry no TMDB id to recover — and if they're left in, a copy of a
+        // collection made of them can win the merge below over the copy with real rows (that is
+        // exactly what emptied a collection once). Age-gated: mid-import an entry can arrive a
+        // moment before its media row.
+        let droppedEmpty = sweepDanglingEntries(olderThan: 0)
+
         // Same-named lists ("TV Shows" twice): `reconciledRoot` folds these when it merges roots,
         // but lists that import *after* that pass arrive as extra lists under the one root and
         // never get folded — each holds one clean copy, so a per-list pass would find nothing.
@@ -1537,9 +1569,17 @@ final class PersistenceController {
             }
         }
 
-        let byName = Dictionary(grouping: group.customLists ?? [], by: \.name)
+        let byName = Dictionary(grouping: (group.customLists ?? []).filter { !$0.isDeleted }, by: \.name)
         for lists in byName.values where lists.count > 1 {
-            let sorted = lists.sorted { $0.id.uuidString < $1.id.uuidString }
+            // The keeper is the copy with the most real entries — never a UUID coin-flip that
+            // can hand the merge to a hollow copy — then the lowest id for determinism.
+            func renderable(_ list: CustomList) -> Int {
+                (list.items ?? []).filter { !$0.isDeleted && ($0.movie != nil || $0.tvShow != nil) }.count
+            }
+            let sorted = lists.sorted {
+                let a = renderable($0), b = renderable($1)
+                return a != b ? a > b : $0.id.uuidString < $1.id.uuidString
+            }
             let keep = sorted[0]
             var keys = Set((keep.items ?? []).compactMap(\.mediaKey))
             for extra in sorted.dropFirst() {
@@ -1571,19 +1611,6 @@ final class PersistenceController {
             }
         }
 
-        // Entries whose movie/show row is gone can't render and carry no TMDB id to recover —
-        // nothing but an empty card. Only here, on explicit request: mid-import an entry can
-        // legitimately arrive a moment before its media row.
-        var droppedEmpty = 0
-        for entity in ["ListItem", "CustomListItem"] {
-            let request = NSFetchRequest<NSManagedObject>(entityName: entity)
-            request.affectedStores = [activeStore]
-            request.predicate = NSPredicate(format: "movie == nil AND tvShow == nil")
-            for row in (try? viewContext.fetch(request)) ?? [] {
-                viewContext.delete(row)
-                droppedEmpty += 1
-            }
-        }
         save()
         // Media rows nothing points at anymore (imports can leave spares behind too).
         var sweptMedia = 0
