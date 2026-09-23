@@ -645,18 +645,27 @@ final class PersistenceController {
         // wait turns "forever" into an error that names the cause. The underlying operation
         // isn't cancellable; if it lands later, `liveShare` picks the share up on the next refresh
         // and `LibraryShareItem` hands that existing share to the sheet instead of a second one.
-        return try await withThrowingTaskGroup(of: CKShare.self) { tasks in
-            tasks.addTask { @MainActor in
-                let (_, share, _) = try await self.container.share([group], to: nil)
+        let started = Date.now
+        do {
+            let share = try await withThrowingTaskGroup(of: CKShare.self) { tasks in
+                tasks.addTask { @MainActor in
+                    let (_, share, _) = try await self.container.share([group], to: nil)
+                    return share
+                }
+                tasks.addTask {
+                    try await Task.sleep(for: .seconds(Self.shareTimeout))
+                    throw PersistenceError.shareTimedOut
+                }
+                guard let share = try await tasks.next() else { throw PersistenceError.shareTimedOut }
+                tasks.cancelAll()
                 return share
             }
-            tasks.addTask {
-                try await Task.sleep(for: .seconds(Self.shareTimeout))
-                throw PersistenceError.shareTimedOut
-            }
-            guard let share = try await tasks.next() else { throw PersistenceError.shareTimedOut }
-            tasks.cancelAll()
+            appendSyncActivity(kind: "share", startDate: started, errorText: nil)
             return share
+        } catch {
+            appendSyncActivity(kind: "share", startDate: started, errorText: Self.describeSyncError(error))
+            AppLog.sharing.error("createShare failed: \(error)")
+            throw error
         }
     }
 
@@ -680,6 +689,42 @@ final class PersistenceController {
     /// leaving a spinner unexplained. Observable; read by Settings → About and the Sharing screen.
     private(set) var lastSyncEvents: [NSPersistentCloudKitContainer.EventType: SyncEventSummary] = [:]
     private var syncEventToken: NSObjectProtocol?
+
+    /// One line of the persisted activity log (Settings → About → iCloud Sync). Finished events
+    /// and share attempts only, newest first, capped — a transient partial failure is the whole
+    /// diagnosis and it must survive being replaced by the next successful export, and a relaunch.
+    struct SyncActivityEntry: Codable, Identifiable {
+        var id = UUID()
+        let kind: String
+        let startDate: Date
+        let endDate: Date
+        let errorText: String?
+    }
+
+    private static let syncActivityKey = "sync.activityLog"
+    private static let syncActivityLimit = 40
+
+    private(set) var syncActivity: [SyncActivityEntry] = {
+        guard let data = UserDefaults.standard.data(forKey: PersistenceController.syncActivityKey),
+              let entries = try? JSONDecoder().decode([SyncActivityEntry].self, from: data)
+        else { return [] }
+        return entries
+    }()
+
+    private func appendSyncActivity(kind: String, startDate: Date, endDate: Date = .now, errorText: String?) {
+        syncActivity.insert(SyncActivityEntry(kind: kind, startDate: startDate, endDate: endDate, errorText: errorText), at: 0)
+        if syncActivity.count > Self.syncActivityLimit {
+            syncActivity.removeLast(syncActivity.count - Self.syncActivityLimit)
+        }
+        if let data = try? JSONEncoder().encode(syncActivity) {
+            UserDefaults.standard.set(data, forKey: Self.syncActivityKey)
+        }
+    }
+
+    func clearSyncActivity() {
+        syncActivity = []
+        UserDefaults.standard.removeObject(forKey: Self.syncActivityKey)
+    }
 
     var isSyncing: Bool { lastSyncEvents.values.contains { $0.isInFlight } }
 
@@ -730,6 +775,14 @@ final class PersistenceController {
             guard let self else { return }
             Task { @MainActor in
                 self.lastSyncEvents[summary.type] = summary
+                if let endDate = summary.endDate {
+                    self.appendSyncActivity(
+                        kind: Self.name(of: summary.type),
+                        startDate: summary.startDate,
+                        endDate: endDate,
+                        errorText: summary.errorText
+                    )
+                }
                 if let text = summary.errorText {
                     AppLog.sync.error("CloudKit \(Self.name(of: summary.type), privacy: .public) failed: \(text, privacy: .public)")
                 }
@@ -751,9 +804,19 @@ final class PersistenceController {
     nonisolated private static func describeSyncError(_ error: Error) -> String {
         let nsError = error as NSError
         var text = "\(nsError.localizedDescription) (\(nsError.domain) \(nsError.code))"
-        if let partial = nsError.userInfo[CKPartialErrorsByItemIDKey] as? [AnyHashable: NSError],
-           let first = partial.values.first {
-            text += " — \(first.localizedDescription) (\(first.code))"
+        if let partial = nsError.userInfo[CKPartialErrorsByItemIDKey] as? [AnyHashable: NSError], !partial.isEmpty {
+            // Distinct per-item failures with counts, plus one sample item so the record (and its
+            // zone) can be found in the Console. "Failed to modify some records" alone says nothing.
+            var counts: [String: (count: Int, sample: String)] = [:]
+            for (item, itemError) in partial {
+                let key = "\(itemError.localizedDescription) (\(itemError.code))"
+                let existing = counts[key]
+                counts[key] = (count: (existing?.count ?? 0) + 1, sample: existing?.sample ?? "\(item)")
+            }
+            let lines = counts.sorted { $0.value.count > $1.value.count }.prefix(4).map { key, value in
+                "\(value.count)× \(key) e.g. \(value.sample)"
+            }
+            text += " — " + lines.joined(separator: "; ")
         }
         return text
     }

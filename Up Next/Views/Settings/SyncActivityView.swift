@@ -1,0 +1,122 @@
+import SwiftUI
+
+/// Settings → About → iCloud Sync: the persisted log of finished CloudKit events and share
+/// attempts, newest first, with the full error text. This is the support surface for a TestFlight
+/// or App Store build — the one place a spinning share sheet or a partner who never sees a title
+/// can be explained without a Mac attached. "Copy All" puts the whole log on the pasteboard.
+struct SyncActivityView: View {
+    private let persistence = PersistenceController.shared
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                summaryCard
+
+                if persistence.syncActivity.isEmpty {
+                    Text("No iCloud activity recorded yet.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 24)
+                } else {
+                    ForEach(persistence.syncActivity) { entry in
+                        entryCard(entry)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
+        .background(AppBackground())
+        .navigationTitle("iCloud Sync")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Copy All", systemImage: "doc.on.doc") {
+                        UIPasteboard.general.string = transcript
+                    }
+                    Button("Clear Log", systemImage: "trash", role: .destructive) {
+                        persistence.clearSyncActivity()
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .disabled(persistence.syncActivity.isEmpty)
+            }
+        }
+    }
+
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Status")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Text(persistence.syncStatusSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Every finished sync and every attempt to create a share link, newest first. Errors here are what to send along when sharing or syncing isn’t working.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    private func entryCard(_ entry: PersistenceController.SyncActivityEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: entry.errorText == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(entry.errorText == nil ? .green : .orange)
+                Text(entry.kind.capitalized)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Text(Self.timeFormatter.string(from: entry.endDate))
+                    .font(.caption)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(.secondary)
+            }
+            Text(durationLabel(entry))
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            if let error = entry.errorText {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    private func durationLabel(_ entry: PersistenceController.SyncActivityEntry) -> String {
+        let seconds = max(0, entry.endDate.timeIntervalSince(entry.startDate))
+        return seconds < 1 ? "under a second" : "\(Int(seconds.rounded())) s"
+    }
+
+    private var transcript: String {
+        persistence.syncActivity.map { entry in
+            let stamp = Self.transcriptFormatter.string(from: entry.endDate)
+            let outcome = entry.errorText ?? "OK"
+            return "\(stamp) \(entry.kind) (\(durationLabel(entry))): \(outcome)"
+        }.joined(separator: "\n")
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    private static let transcriptFormatter: ISO8601DateFormatter = ISO8601DateFormatter()
+}

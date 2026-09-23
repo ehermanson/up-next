@@ -230,28 +230,37 @@ struct SettingsView: View {
     /// arrive on the other phone.
     private var syncStatusRow: some View {
         let persistence = PersistenceController.shared
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
-                Image(systemName: persistence.lastSyncError != nil ? "exclamationmark.icloud" : "icloud")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 24)
-                Text("iCloud Sync")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Spacer()
-                Text(persistence.syncStatusSummary)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        return NavigationLink {
+            SyncActivityView()
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 12) {
+                    Image(systemName: persistence.lastSyncError != nil ? "exclamationmark.icloud" : "icloud")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 24)
+                    Text("iCloud Sync")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(persistence.syncStatusSummary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                if let error = persistence.lastSyncError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
             }
-            if let error = persistence.lastSyncError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            .contentShape(.rect)
         }
+        .buttonStyle(.plain)
     }
 
     private var versionString: String {
