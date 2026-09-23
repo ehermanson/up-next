@@ -987,6 +987,19 @@ final class PersistenceController {
             return (try? viewContext.count(for: request)) ?? -1
         }
         lines.append("Entries without a title row: \(dangling("ListItem")) watchlist, \(dangling("CustomListItem")) collection (\(count("CustomListItem")) collection entries total)")
+        // Media-row hygiene: rows nothing points at are garbage (each is a CloudKit record), and
+        // several rows per TMDB id means the canonical lookup was bypassed somewhere.
+        for (entity, label) in [("Movie", "movie"), ("TVShow", "show")] {
+            let request = NSFetchRequest<NSManagedObject>(entityName: entity)
+            request.affectedStores = [activeStore]
+            let rows = (try? viewContext.fetch(request)) ?? []
+            let unreferenced = rows.filter {
+                (($0.value(forKey: "listItemSet") as? NSSet)?.count ?? 0) == 0
+                    && (($0.value(forKey: "customListItemSet") as? NSSet)?.count ?? 0) == 0
+            }.count
+            let ids = Set(rows.compactMap { $0.value(forKey: "id") as? String })
+            lines.append("\(label.capitalized) rows: \(rows.count) total, \(unreferenced) unreferenced, \(ids.count) distinct TMDB ids")
+        }
         // Direct probes with unsanitized errors. Saving a throwaway share is the definitive test
         // for the `cloudkit.share` system type in *this* environment (Production can't create
         // types, so it either exists or the save says exactly why not).
@@ -1003,9 +1016,10 @@ final class PersistenceController {
                     let changes = try await ck.privateCloudDatabase.recordZoneChanges(inZoneWith: zone.zoneID, since: nil)
                     let types = Dictionary(grouping: changes.modificationResultsByID.values.compactMap { try? $0.get().record.recordType }, by: { $0 })
                         .map { "\($0.value.count)× \($0.key)" }.sorted().joined(separator: ", ")
-                    lines.append("Stale zone \(zone.zoneID.zoneName.suffix(8)): \(changes.modificationResultsByID.count) records (\(types.isEmpty ? "none" : types))")
+                    let isLive = existingShare()?.recordID.zoneID == zone.zoneID
+                    lines.append("\(isLive ? "Live share zone" : "Stale share zone") \(zone.zoneID.zoneName.suffix(8)): \(changes.modificationResultsByID.count) records (\(types.isEmpty ? "none" : types))")
                 } catch {
-                    lines.append("Stale zone \(zone.zoneID.zoneName.suffix(8)): \(Self.describeSyncError(error))")
+                    lines.append("Share zone \(zone.zoneID.zoneName.suffix(8)): \(Self.describeSyncError(error))")
                 }
             }
         } catch {
