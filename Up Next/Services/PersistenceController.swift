@@ -845,6 +845,12 @@ final class PersistenceController {
         let records = container.records(for: ids)
         let acknowledged = records.values.filter { $0.recordChangeTag != nil }.count
         lines.append("Titles: \(ids.count) local, \(records.count) mirrored, \(acknowledged) server-acknowledged")
+        func count(_ entity: String) -> Int {
+            let request = NSFetchRequest<NSFetchRequestResult>(entityName: entity)
+            request.affectedStores = [privateStore]
+            return (try? viewContext.count(for: request)) ?? -1
+        }
+        lines.append("Structure: \(count("WatchListGroup")) root(s), \(count("MediaList")) lists, \(count("CustomList")) collections, \(count("Movie")) movie rows, \(count("TVShow")) show rows, \(count("Network")) network rows")
         // Direct probes with unsanitized errors. Saving a throwaway share is the definitive test
         // for the `cloudkit.share` system type in *this* environment (Production can't create
         // types, so it either exists or the save says exactly why not).
@@ -1370,6 +1376,19 @@ final class PersistenceController {
     /// the lowest-ordered entry per title per list, merges same-named collections (unique
     /// members only), and drops media rows nothing references anymore. Returns a summary.
     func removeDuplicates() -> String {
+        // A second root that arrived after bootstrap may not have been folded in yet — do that
+        // first so everything below sees one root, or the duplicates would be invisible to it.
+        var mergedRoots = 0
+        if role == .owner {
+            let request = NSFetchRequest<NSFetchRequestResult>(entityName: "WatchListGroup")
+            request.affectedStores = [privateStore]
+            let rootCount = (try? viewContext.count(for: request)) ?? 1
+            if rootCount > 1, let winner = try? reconciledRoot(in: privateStore) {
+                mergedRoots = rootCount - 1
+                group = winner
+                ProviderSettings.shared.adoptSelection(from: winner)
+            }
+        }
         guard let group else { return "no group" }
         var removedItems = 0
         var mergedCollections = 0
@@ -1426,7 +1445,7 @@ final class PersistenceController {
         save()
         sweepUnreferencedNetworks()
         remoteChangeCount += 1
-        let summary = "Removed \(removedItems) duplicate entries, merged \(mergedCollections) duplicate collections."
+        let summary = "Merged \(mergedRoots) extra root(s); removed \(removedItems) duplicate entries; merged \(mergedCollections) duplicate collections."
         appendSyncActivity(kind: "dedupe", startDate: .now, errorText: summary)
         AppLog.persistence.notice("dedupe: \(summary, privacy: .public)")
         return summary
