@@ -896,6 +896,16 @@ final class PersistenceController {
             }
             text += " — " + lines.joined(separator: "; ")
         }
+        // Whatever else CloudKit / Core Data tucked into userInfo (underlying errors, server
+        // descriptions, the record ids a mirroring export gave up on) — the keys vary by failure,
+        // so dump the lot rather than expand a fixed list. Capped; these can run long.
+        let dump = String(describing: nsError.userInfo)
+        if dump.count > 2 {
+            text += "\nuserInfo: " + String(dump.prefix(2500))
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            text += "\nunderlying: \(underlying.localizedDescription) (\(underlying.domain) \(underlying.code))"
+        }
         return text
     }
 
