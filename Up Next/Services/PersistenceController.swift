@@ -263,6 +263,21 @@ final class PersistenceController {
             remoteChangeObserver = RemoteChangeObserver(persistence: self)
             remoteChangeObserver?.start()
         }
+
+        #if DEBUG
+        // Simulator exercise for `repairSync()` against the demo seed (`--seed-demo --repair-sync`):
+        // waits for the seed to land, then rebuilds. Verifies the deep copy keeps the library.
+        if ProcessInfo.processInfo.arguments.contains("--repair-sync") {
+            Task {
+                try? await Task.sleep(for: .seconds(25))
+                do {
+                    try await repairSync()
+                } catch {
+                    AppLog.sync.error("--repair-sync failed: \(error)")
+                }
+            }
+        }
+        #endif
     }
 
     /// Deletes `ListItem`s that were left behind by a detail sheet. Discover and collection detail
@@ -1131,6 +1146,100 @@ final class PersistenceController {
         group = nil
         try bootstrap()
         remoteChangeCount += 1
+    }
+
+    // MARK: - Sync repair
+
+    /// The stuck state this repairs: an owner whose root carries a local `CKShare` while the root
+    /// record has never been acknowledged by the server. `container.share` moved the graph into a
+    /// share zone and created the share, the server never accepted the share record, and every
+    /// export since retries it — the whole library sits behind that failure unexported, and the
+    /// share sheet spins on `.existing(share)` forever. Seen on the first TestFlight (Production)
+    /// launch after months of Development builds.
+    func isStuckBehindUnacceptedShare() -> Bool {
+        guard isCloudKitEnabled, role == .owner, let group, group.managedObjectContext != nil else { return false }
+        guard existingShare() != nil else { return false }
+        return container.record(for: group.objectID)?.recordChangeTag == nil
+    }
+
+    /// Rebuilds the private store's contents as fresh objects in the default zone and drops the
+    /// old graph plus its stale share zone. Local data is the source of truth (nothing of it is on
+    /// the server, by definition of the stuck state), so nothing is lost: every attribute and
+    /// relationship reachable from the root is deep-copied — titles, watched seasons, ratings,
+    /// notes, order, collections, household services. There is no API to move objects *out* of a
+    /// share zone, which is why this is a copy and not a fix-up. Owner only.
+    func repairSync() async throws {
+        guard role == .owner, let oldGroup = group, oldGroup.managedObjectContext != nil else {
+            throw PersistenceError.noGroup
+        }
+        let started = Date.now
+        let staleZoneID = existingShare()?.recordID.zoneID
+        var copies: [NSManagedObjectID: NSManagedObject] = [:]
+
+        func clone(_ object: NSManagedObject) -> NSManagedObject {
+            if let done = copies[object.objectID] { return done }
+            let copy = NSEntityDescription.insertNewObject(forEntityName: object.entity.name!, into: viewContext)
+            viewContext.assign(copy, to: privateStore)
+            copies[object.objectID] = copy
+            for name in object.entity.attributesByName.keys {
+                copy.setValue(object.value(forKey: name), forKey: name)
+            }
+            for (name, relationship) in object.entity.relationshipsByName {
+                if relationship.isToMany {
+                    let targets = (object.value(forKey: name) as? Set<NSManagedObject>) ?? []
+                    copy.setValue(NSSet(array: targets.map(clone)), forKey: name)
+                } else if let target = object.value(forKey: name) as? NSManagedObject {
+                    copy.setValue(clone(target), forKey: name)
+                }
+            }
+            return copy
+        }
+
+        let newGroup = clone(oldGroup) as! WatchListGroup
+        // A fresh identity: the old root's id may still be referenced by stale share metadata,
+        // and `reconciledRoot` keys on it.
+        newGroup.id = UUID()
+        let copiedCount = copies.count
+
+        // Everything the old graph reached is now duplicated; drop the originals *and* any
+        // stragglers in the private store (detail-sheet wrappers, orphaned media rows) — all of
+        // it is assigned to the dead zone.
+        let keep = Set(copies.values.map(\.objectID))
+        for entity in container.managedObjectModel.entities {
+            guard let name = entity.name else { continue }
+            let request = NSFetchRequest<NSManagedObject>(entityName: name)
+            request.affectedStores = [privateStore]
+            request.includesPropertyValues = false
+            for object in try viewContext.fetch(request) where !keep.contains(object.objectID) {
+                viewContext.delete(object)
+            }
+        }
+        try viewContext.save()
+        group = newGroup
+
+        // Server side: the zone the old graph lived in, with its unaccepted share. Failure here
+        // is not fatal — the local rebuild already succeeded and the new graph exports to the
+        // default zone regardless; a leftover empty zone is harmless.
+        var zoneNote = "no stale zone"
+        if let staleZoneID {
+            do {
+                try await container.purgeObjectsAndRecordsInZone(with: staleZoneID, in: privateStore)
+                zoneNote = "purged zone \(staleZoneID.zoneName)"
+            } catch {
+                zoneNote = "zone \(staleZoneID.zoneName) not purged: \(Self.describeSyncError(error))"
+                AppLog.sync.error("repair: stale zone purge failed: \(error)")
+            }
+        }
+
+        try applyRoleRule()
+        refreshLiveShare()
+        remoteChangeCount += 1
+        appendSyncActivity(
+            kind: "repair",
+            startDate: started,
+            errorText: "Rebuilt \(copiedCount) objects into a fresh root; \(zoneNote)."
+        )
+        AppLog.sync.notice("repair: rebuilt \(copiedCount) objects; \(zoneNote, privacy: .public)")
     }
 
     private func purgeAllObjects(in store: NSPersistentStore) throws {

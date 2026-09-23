@@ -7,6 +7,10 @@ import SwiftUI
 struct SyncActivityView: View {
     private let persistence = PersistenceController.shared
     @State private var isChecking = false
+    @State private var isRepairing = false
+    @State private var showingRepairConfirmation = false
+    @State private var repairError: String?
+    @State private var isStuck = false
 
     var body: some View {
         ScrollView {
@@ -29,6 +33,32 @@ struct SyncActivityView: View {
             .padding(.vertical, 16)
         }
         .background(AppBackground())
+        .onAppear { isStuck = persistence.isStuckBehindUnacceptedShare() }
+        .confirmationDialog("Repair iCloud Sync?", isPresented: $showingRepairConfirmation, titleVisibility: .visible) {
+            Button("Repair") {
+                isRepairing = true
+                Task {
+                    do {
+                        try await persistence.repairSync()
+                    } catch {
+                        repairError = error.localizedDescription
+                    }
+                    isStuck = persistence.isStuckBehindUnacceptedShare()
+                    isRepairing = false
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Rebuilds your watchlist’s connection to iCloud. Your titles, watched state, ratings, notes and collections all stay. Any share link you’d created stops working — share again afterwards.")
+        }
+        .alert("Couldn’t Repair", isPresented: Binding(
+            get: { repairError != nil },
+            set: { if !$0 { repairError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(repairError ?? "")
+        }
         .navigationTitle("iCloud Sync")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -78,6 +108,26 @@ struct SyncActivityView: View {
             }
             .buttonStyle(.bordered)
             .disabled(isChecking)
+
+            if persistence.role == .owner {
+                if isStuck {
+                    Text("Your watchlist is stuck behind a share iCloud never accepted, so nothing is syncing and sharing can’t start. Repair rebuilds the connection without losing anything.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button {
+                    showingRepairConfirmation = true
+                } label: {
+                    Label(isRepairing ? "Repairing…" : "Repair iCloud Sync", systemImage: "wrench.and.screwdriver")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+                .tint(isStuck ? .orange : .accentColor)
+                .disabled(isRepairing)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -88,7 +138,7 @@ struct SyncActivityView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: icon(for: entry))
-                    .foregroundStyle(entry.kind == "check" ? Color.accentColor : entry.errorText == nil ? .green : .orange)
+                    .foregroundStyle(entry.kind == "check" || entry.kind == "repair" ? Color.accentColor : entry.errorText == nil ? .green : .orange)
                 Text(entry.kind.capitalized)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -116,6 +166,7 @@ struct SyncActivityView: View {
 
     private func icon(for entry: PersistenceController.SyncActivityEntry) -> String {
         if entry.kind == "check" { return "stethoscope" }
+        if entry.kind == "repair" { return "wrench.and.screwdriver" }
         return entry.errorText == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
     }
 
