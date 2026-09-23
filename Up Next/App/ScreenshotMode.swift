@@ -110,6 +110,9 @@ enum ScreenshotMode {
     @MainActor
     static func seed(library: MediaLibraryViewModel, lists: CustomListViewModel) async {
         guard isEnabled, !isReady else { return }
+        // Curated demo titles aren't activity; the Activity screen stays empty in screenshots.
+        PersistenceController.shared.isSuppressingActivity = true
+        defer { PersistenceController.shared.isSuppressingActivity = false }
 
         // The in-memory store starts empty, which trips `MediaLibraryViewModel.loadItems`'s DEBUG
         // demo-data fallback (`seedStubData`) before this function ever runs — including its own

@@ -231,6 +231,7 @@ final class MediaLibraryViewModel {
         )
         persistence.insert(item)
         tvShows.append(item)
+        persistence.recordActivity(.added, title: row.title, mediaKey: MediaIDKey.make(.tvShow, row.id), contextName: list.name)
 
         syncUnwatched(for: .tvShow)
         persistence.save()
@@ -258,6 +259,7 @@ final class MediaLibraryViewModel {
         )
         persistence.insert(item)
         movies.append(item)
+        persistence.recordActivity(.added, title: row.title, mediaKey: MediaIDKey.make(.movie, row.id), contextName: list.name)
 
         syncUnwatched(for: .movie)
         persistence.save()
@@ -332,6 +334,16 @@ final class MediaLibraryViewModel {
         let movie = pending.item.movie
         let tvShow = pending.item.tvShow
         let itemID = pending.item.objectID
+        // Here rather than in `removeItem`: an undone swipe never happened as far as the other
+        // person is concerned. Read before the delete — the media row may go with it.
+        if let media = pending.item.media {
+            persistence.recordActivity(
+                .removed,
+                title: media.title,
+                mediaKey: MediaIDKey.make(pending.mediaType, media.id),
+                contextName: pending.item.list?.name
+            )
+        }
         context.delete(pending.item)
         deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: context)
         persistence.save()
@@ -602,6 +614,9 @@ final class MediaLibraryViewModel {
 
         #if DEBUG
         if allowsDemoSeeding, tvShows.isEmpty && movies.isEmpty {
+            // A demo library isn't anyone doing anything.
+            persistence?.isSuppressingActivity = true
+            defer { persistence?.isSuppressingActivity = false }
             await seedStubData()
             didSeed = true
         }

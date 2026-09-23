@@ -106,6 +106,11 @@ struct SeasonChecklistCard: View {
     /// single crest that hands off instantly.
     @State private var pulseCounts: [Int: Int] = [:]
 
+    /// When a season circle *on this card* was last tapped. `lastLocalWatchedEdit` also covers the
+    /// pill's Mark as Watched, which fills every season and logs its own activity — the caught-up
+    /// event is only this card's to write when a circle completed the set.
+    @State private var lastSeasonToggle: Date?
+
     private var totalSeasons: Int {
         tvShow.numberOfSeasons ?? 0
     }
@@ -183,6 +188,10 @@ struct SeasonChecklistCard: View {
         .onChange(of: isCaughtUp) { _, caughtUp in
             guard allowsWatchedChanges, caughtUp, isLocalWatchedEdit else { return }
             lastLocalWatchedEdit = nil
+            if let toggled = lastSeasonToggle, Date.now.timeIntervalSince(toggled) < 2 {
+                lastSeasonToggle = nil
+                recordCaughtUpActivity()
+            }
             celebrateCatchUp()
         }
     }
@@ -192,6 +201,17 @@ struct SeasonChecklistCard: View {
     private var isLocalWatchedEdit: Bool {
         guard let lastLocalWatchedEdit else { return false }
         return Date.now.timeIntervalSince(lastLocalWatchedEdit) < 2
+    }
+
+    /// One `watched` event for the check that completes the set — never one per season. Saved with
+    /// the season marks themselves, when the sheet closes.
+    private func recordCaughtUpActivity() {
+        guard listItem.list != nil else { return }
+        PersistenceController.shared.recordActivity(
+            .watched,
+            title: tvShow.title,
+            mediaKey: MediaIDKey.make(.tvShow, tvShow.id)
+        )
     }
 
     /// Checking the last aired season: pop a contextual toast and send a wave back across every
@@ -276,6 +296,7 @@ struct SeasonChecklistCard: View {
                 // A bounded target with a separate gutter; no row-sized watched button.
                 Button {
                     lastLocalWatchedEdit = .now
+                    lastSeasonToggle = .now
                     listItem.toggleSeason(season)
                 } label: {
                     watchedCircle(season: season, isWatched: isWatched, isAnnounced: isAnnounced)

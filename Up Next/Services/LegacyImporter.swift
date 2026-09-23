@@ -92,6 +92,9 @@ final class LegacyImporter {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
+        // A 1.x library arriving isn't "someone added 80 titles" — keep it out of the activity log.
+        PersistenceController.shared.isSuppressingActivity = true
+        defer { PersistenceController.shared.isSuppressingActivity = false }
 
         // Until the view model's lists resolve, `addTVShow` / `addMovie` queue the row and replay
         // it later — there'd be no `ListItem` to copy the 1.x watched state onto. Wait it out.

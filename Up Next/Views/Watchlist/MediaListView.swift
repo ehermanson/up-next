@@ -605,6 +605,8 @@ struct MediaListView: View {
         // diff coherently instead of animating partially out of sync.
         withAnimation(Self.listChangeAnimation) {
             item.toggleWatched()
+            // Before `onWatchedToggled()`, which saves — the event rides the same save.
+            PersistenceController.shared.recordWatchedActivity(for: item)
 
             if let index = allItems.firstIndex(where: { $0.media?.id == item.media?.id }) {
                 allItems[index] = item

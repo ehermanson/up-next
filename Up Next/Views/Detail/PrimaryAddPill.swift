@@ -315,10 +315,15 @@ struct PrimaryAddPill: View {
     }
 
     /// One animation (reduce-motion gated) and one save for every state transition the menu offers,
-    /// plus the stamp `SeasonChecklistCard` uses to tell a local edit from a partner's.
-    private func applyStateChange(_ change: () -> Void) {
+    /// plus the stamp `SeasonChecklistCard` uses to tell a local edit from a partner's. Only the
+    /// watched marks are logged as activity — Start Watching / Drop / Pick Back Up aren't worth a
+    /// ping to the other person.
+    private func applyStateChange(logsWatchedActivity: Bool = false, _ change: () -> Void) {
         lastLocalWatchedEdit = .now
         withAnimation(reduceMotion ? nil : Motion.pop, change)
+        if logsWatchedActivity {
+            PersistenceController.shared.recordWatchedActivity(for: listItem)
+        }
         PersistenceController.shared.save()
     }
 
@@ -326,7 +331,7 @@ struct PrimaryAddPill: View {
     /// now. Also finalises Watching (clears `watchingStartedAt`) and reverses any drop, so the
     /// state ends cleanly at "Watched" instead of the "watching+watched" limbo.
     private func markLibraryWatched() {
-        applyStateChange {
+        applyStateChange(logsWatchedActivity: true) {
             listItem.droppedAt = nil
             listItem.watchingStartedAt = nil
             if let tvShow = listItem.tvShow, let total = tvShow.numberOfSeasons, total > 0 {
@@ -340,7 +345,7 @@ struct PrimaryAddPill: View {
     }
 
     private func markLibraryUnwatched() {
-        applyStateChange {
+        applyStateChange(logsWatchedActivity: true) {
             listItem.droppedAt = nil
             if let tvShow = listItem.tvShow, (tvShow.numberOfSeasons ?? 0) > 0 {
                 listItem.watchedSeasons = []

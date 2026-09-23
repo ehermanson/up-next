@@ -1,3 +1,4 @@
+import CoreData
 import SwiftUI
 
 /// Settings root, reached from every tab via `SettingsToolbarButton`. Rows push their own
@@ -19,6 +20,10 @@ struct SettingsView: View {
 
     @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .dark
 
+    /// Newest `ActivityEvent`, for the Activity row's value. Refreshed on appear (including the
+    /// pop back from the Activity screen) and when the other person's edits import.
+    @State private var newestActivity: Date?
+
     @State private var regions: [TMDBWatchProviderRegion] = []
     @State private var isLoadingRegions = true
 
@@ -29,6 +34,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     sharingRow
+                    activityRow
                     streamingServicesRow
                     regionRow
                     if LegacyStoreReader.storeExists(), !LegacyImporter.hasCompletedImport { legacyImportRow }
@@ -57,6 +63,8 @@ struct SettingsView: View {
         .task {
             await loadRegions()
         }
+        .onAppear(perform: loadNewestActivity)
+        .onChange(of: PersistenceController.shared.remoteChangeCount) { loadNewestActivity() }
         .sheet(isPresented: $showingLegacyImport) {
             LegacyImportView(library: library, lists: lists)
         }
@@ -108,6 +116,31 @@ struct SettingsView: View {
             return persistence.liveShare?.otherDisplayName.map { "Shared with \($0)" } ?? "Shared"
         }
         return "Not shared yet"
+    }
+
+    // MARK: - Activity
+
+    private var activityRow: some View {
+        NavigationLink {
+            ActivityView()
+        } label: {
+            row(icon: "clock.arrow.circlepath", title: "Activity", value: activityStatus)
+        }
+        .buttonStyle(.plain)
+        .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    private var activityStatus: String {
+        guard let newestActivity else { return "Nothing yet" }
+        return newestActivity.formatted(.relative(presentation: .named, unitsStyle: .abbreviated))
+    }
+
+    private func loadNewestActivity() {
+        guard let group = PersistenceController.shared.group, group.managedObjectContext != nil, !group.isDeleted else {
+            newestActivity = nil
+            return
+        }
+        newestActivity = group.activities?.filter { !$0.isDeleted }.compactMap(\.createdAtRaw).max()
     }
 
     // MARK: - Streaming Services

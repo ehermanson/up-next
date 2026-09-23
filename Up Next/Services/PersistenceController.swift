@@ -263,6 +263,7 @@ final class PersistenceController {
         try applyRoleRule()
         sweepOrphanedDetailWrappers()
         sweepUnreferencedNetworks()
+        pruneActivity()
         refreshLiveShare()
         observeSyncEvents()
         Task { await refreshAccountStatus() }
@@ -318,6 +319,26 @@ final class PersistenceController {
         save()
         AppLog.persistence.notice("swept \(orphans.count) unreferenced Network rows")
     }
+
+    /// Keeps the activity log bounded: nothing older than 90 days, and at most the newest 500.
+    /// Every event is a CloudKit record on the root, so an unbounded log is an unbounded zone.
+    /// Either role may prune — the deletes sync, and both devices pruning the same rows is harmless.
+    private func pruneActivity() {
+        let request = NSFetchRequest<ActivityEvent>(entityName: "ActivityEvent")
+        request.sortDescriptors = [NSSortDescriptor(key: "createdAtRaw", ascending: false)]
+        request.affectedStores = [activeStore]
+        guard let events = try? viewContext.fetch(request), !events.isEmpty else { return }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: .now) ?? .distantPast
+        let expired = events.enumerated().filter { index, event in
+            index >= Self.activityLimit || (event.createdAtRaw ?? .distantPast) < cutoff
+        }
+        guard !expired.isEmpty else { return }
+        for (_, event) in expired { viewContext.delete(event) }
+        save()
+        AppLog.persistence.notice("pruned \(expired.count) activity events")
+    }
+
+    private static let activityLimit = 500
 
     /// Deletes `ListItem`s that were left behind by a detail sheet. Discover and collection detail
     /// sheets wrap a media row in a transient `ListItem` with `list == nil` and delete it on
@@ -572,6 +593,48 @@ final class PersistenceController {
 
     func clearLastSaveError() {
         lastSaveError = nil
+    }
+
+    // MARK: - Activity
+
+    /// True while a bulk path (1.x import, demo seed) is adding titles — none of those are "someone
+    /// did something" moments, and 50 events for an import would drown the Activity screen.
+    var isSuppressingActivity = false
+
+    /// The one place activity is written. No-op without a live root (mid-join), or while suppressed.
+    /// Not saved here — the caller's mutation and its event land in the same save.
+    func recordActivity(
+        _ kind: ActivityEvent.Kind,
+        title: String,
+        mediaKey: String? = nil,
+        contextName: String? = nil
+    ) {
+        guard !isSuppressingActivity else { return }
+        guard let group, group.managedObjectContext != nil, !group.isDeleted else { return }
+        // Only what's already in memory: nil when unshared (or iOS withholds it), which is fine —
+        // the reader prefers its own view of the other person's name anyway.
+        let actorName = liveShare?.currentUserParticipant?.displayName
+        _ = ActivityEvent(
+            kind: kind,
+            title: title,
+            mediaKey: mediaKey,
+            contextName: contextName,
+            actorName: actorName,
+            group: group
+        )
+        AppLog.sharing.debug("activity: \(kind.rawValue, privacy: .public) \(title, privacy: .private)")
+    }
+
+    /// A library title's watched mark, phrased from its state *after* the change — so a dropped
+    /// show's "Pick Back Up" reads as unwatched. Library marks carry no context (see
+    /// `ActivityEvent.contextName`). Wrapper items (`list == nil`) are never library edits.
+    func recordWatchedActivity(for item: ListItem) {
+        guard item.list != nil, let media = item.media else { return }
+        recordActivity(
+            item.isWatched ? .watched : .unwatched,
+            title: media.title,
+            mediaKey: MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
+        )
     }
 
     func fetch<T: NSManagedObject>(_ request: NSFetchRequest<T>) -> [T] {

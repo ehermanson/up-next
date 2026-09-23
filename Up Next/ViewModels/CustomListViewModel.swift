@@ -66,6 +66,7 @@ final class CustomListViewModel {
         // that succeeded.
         let list = CustomList(name: name, iconName: iconName, group: persistence.group)
         persistence.insert(list)
+        persistence.recordActivity(.collectionCreated, title: name)
         persistence.save()
         customLists.append(list)
         changeToken += 1
@@ -86,12 +87,17 @@ final class CustomListViewModel {
             context.delete(item)
             deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: context)
         }
+        persistence.recordActivity(.collectionDeleted, title: list.name)
         context.delete(list)
         persistence.save()
         changeToken += 1
     }
 
     func updateList(_ list: CustomList, name: String, iconName: String) {
+        // An icon change alone isn't worth telling anyone about.
+        if list.name != name {
+            persistence?.recordActivity(.collectionRenamed, title: name)
+        }
         list.name = name
         list.iconName = iconName
         persistence?.save()
@@ -120,6 +126,9 @@ final class CustomListViewModel {
         // `list`'s context automatically; `persistence.insert` is a harmless no-op once that's done.
         let item = CustomListItem(movie: canonicalMovie, tvShow: canonicalTVShow, customList: list, addedAt: .now)
         persistence.insert(item)
+        if let media = item.media {
+            persistence.recordActivity(.collectionAdded, title: media.title, mediaKey: item.mediaKey, contextName: list.name)
+        }
         persistence.save()
         changeToken += 1
     }
@@ -188,6 +197,16 @@ final class CustomListViewModel {
         let movie = pending.item.movie
         let tvShow = pending.item.tvShow
         let itemID = pending.item.objectID
+        // Logged at commit, not in `removeItem`, so an undone removal leaves no trace. Read before
+        // the delete — the media row may go with it.
+        if let media = pending.item.media, pending.list.managedObjectContext != nil, !pending.list.isDeleted {
+            persistence.recordActivity(
+                .collectionRemoved,
+                title: media.title,
+                mediaKey: pending.item.mediaKey,
+                contextName: pending.list.name
+            )
+        }
         context.delete(pending.item)
         deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: context)
         persistence.save()
@@ -231,6 +250,14 @@ final class CustomListViewModel {
     /// Movies / TV Shows tabs are never created, read or modified from here.
     func toggleWatched(_ item: CustomListItem) {
         item.toggleWatched()
+        if let media = item.media {
+            persistence?.recordActivity(
+                item.isWatched ? .watched : .unwatched,
+                title: media.title,
+                mediaKey: item.mediaKey,
+                contextName: item.customList?.name
+            )
+        }
         persistence?.save()
         changeToken += 1
     }

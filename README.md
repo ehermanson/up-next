@@ -15,6 +15,7 @@ Just a fun personal project to replace the running list of movies and TV shows m
 - **Provider filtering**: See only titles available on your streaming services, by region
 - **Shared watchlist**: Share your entire watchlist with one other person (Apple Account) — changes sync across devices. Settings is reachable from every tab; once they join, the toolbar gear becomes the shared-with-people symbol, and each title's detail shows who added it and when
 - **Activity notifications**: "Sarah added Elf to Movies" as a notification when the app is closed, or a toast while it's open — only for the other person's edits, never your own devices
+- **Activity**: Settings → Activity shows what's changed on the shared watchlist, grouped by day — titles added and removed, watched marks, collection changes, yours and the other person's. Their changes, removals included, arrive as a notification (or an in-app toast while the app is open).
 - **Updating from 1.7**: The first launch offers to bring your Up Next lists over (titles, watched seasons, ratings, notes and collections). The old data is left in place, and you can run the import later from Settings.
 - **Metadata**: Ratings, cast, descriptions, season/episode totals, and where to watch pulled from The Movie Database (TMDB) — the detail sheet leads with the services you subscribe to and tucks the rest behind a “+N” tap. Show details let you browse every season before adding a title, including from search and collections.
 

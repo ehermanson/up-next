@@ -18,6 +18,9 @@ final class WatchListGroup: NSManagedObject {
     /// All custom lists (collections) in this group
     @NSManaged var customListSet: NSSet?
 
+    /// The shared activity log (`ActivityEvent`) — on the root so it syncs to both people.
+    @NSManaged var activitySet: NSSet?
+
     /// Household streaming services (TMDB provider ids), shared with the partner like everything
     /// else on the root. `nil` = never set (pre-2.0-services owner, fresh root); `[]` = none.
     @NSManaged var selectedProviderIDsRaw: [Int]?
@@ -54,6 +57,11 @@ final class WatchListGroup: NSManagedObject {
     var customLists: [CustomList]? {
         get { (customListSet as? Set<CustomList>).map(Array.init) }
         set { customListSet = newValue.map { NSSet(array: $0) } }
+    }
+
+    var activities: [ActivityEvent]? {
+        get { (activitySet as? Set<ActivityEvent>).map(Array.init) }
+        set { activitySet = newValue.map { NSSet(array: $0) } }
     }
 
     convenience init(
