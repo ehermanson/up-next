@@ -597,6 +597,31 @@ final class PersistenceController {
         AppLog.sync.notice("CloudKit Development schema initialized")
     }
 
+    /// `initializeCloudKitSchema` covers the `CD_*` types but not `cloudkit.share`, the system
+    /// record type CloudKit only creates the first time a share is actually saved. Deploy without
+    /// it and every share attempt in Production fails with "Cannot create new type cloudkit.share
+    /// in production schema" — and the mirroring delegate, whose setup saves the zone's share,
+    /// never initializes, so nothing exports at all. This saves a throwaway root + `CKShare` in a
+    /// temporary zone (Development) and deletes the zone again, purely so the type exists.
+    func ensureShareRecordTypeExists() async throws {
+        guard isCloudKitEnabled else { throw PersistenceError.cloudKitDisabled }
+        let database = Self.ckContainer.privateCloudDatabase
+        let zone = CKRecordZone(zoneName: "schema-probe-\(UUID().uuidString)")
+        _ = try await database.save(zone)
+        do {
+            let rootID = CKRecord.ID(recordName: UUID().uuidString, zoneID: zone.zoneID)
+            let root = CKRecord(recordType: "CD_WatchListGroup", recordID: rootID)
+            let share = CKShare(rootRecord: root)
+            share.publicPermission = .none
+            _ = try await database.modifyRecords(saving: [root, share], deleting: [], savePolicy: .allKeys)
+            AppLog.sync.notice("cloudkit.share record type ensured in Development")
+        } catch {
+            try? await database.deleteRecordZone(withID: zone.zoneID)
+            throw error
+        }
+        try await database.deleteRecordZone(withID: zone.zoneID)
+    }
+
     /// Development only: proves (or disproves) that this build can talk to the container at all,
     /// then runs `initializeCloudKitSchema()`. Everything is reported as text for the debug alert
     /// so a device that isn't attached to Xcode still gives a usable answer.
@@ -624,6 +649,12 @@ final class PersistenceController {
             lines.append("Schema init: OK")
         } catch {
             lines.append("Schema init: \(error.localizedDescription)")
+        }
+        do {
+            try await ensureShareRecordTypeExists()
+            lines.append("cloudkit.share type: OK")
+        } catch {
+            lines.append("cloudkit.share type: \(Self.describeSyncError(error))")
         }
         return lines.joined(separator: "\n")
     }
