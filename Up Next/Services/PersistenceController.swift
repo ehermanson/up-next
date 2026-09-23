@@ -264,6 +264,7 @@ final class PersistenceController {
         sweepOrphanedDetailWrappers()
         sweepUnreferencedNetworks()
         sweepDanglingEntries(olderThan: 60 * 60)
+        scheduleUnreferencedMediaSweep()
         pruneActivity()
         refreshLiveShare()
         observeSyncEvents()
@@ -328,6 +329,44 @@ final class PersistenceController {
             AppLog.persistence.notice("swept \(dropped) entries with no title row")
         }
         return dropped
+    }
+
+    /// Movie / show rows nothing points at. Unlike networks these can't be swept at bootstrap: a
+    /// participant's import can land a media row a beat before the entry that references it. So
+    /// this waits a few minutes after launch and only runs when nothing is syncing and any join is
+    /// long settled — then every unreferenced row is a leftover (a removed title whose row the
+    /// other device hadn't cleaned, surgery debt) and just a CloudKit record for nothing.
+    private func scheduleUnreferencedMediaSweep() {
+        guard isCloudKitEnabled else {
+            sweepUnreferencedMedia()
+            return
+        }
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(180))
+            guard let self, !isSyncing, !isJoiningSharedLibrary else { return }
+            if let joinedAt = joinCompletedAt, Date.now.timeIntervalSince(joinedAt) < 10 * 60 { return }
+            sweepUnreferencedMedia()
+        }
+    }
+
+    @discardableResult
+    private func sweepUnreferencedMedia() -> Int {
+        var swept = 0
+        for entity in ["Movie", "TVShow"] {
+            let request = NSFetchRequest<NSManagedObject>(entityName: entity)
+            request.affectedStores = [activeStore]
+            request.predicate = NSPredicate(format: "listItemSet.@count == 0 AND customListItemSet.@count == 0")
+            for row in (try? viewContext.fetch(request)) ?? [] {
+                viewContext.delete(row)
+                swept += 1
+            }
+        }
+        if swept > 0 {
+            save()
+            sweepUnreferencedNetworks()
+            AppLog.persistence.notice("swept \(swept) unreferenced media rows")
+        }
+        return swept
     }
 
     /// A `Network` row nothing points at is garbage: the metadata refresh replaces a title's
@@ -1627,18 +1666,7 @@ final class PersistenceController {
 
         save()
         // Media rows nothing points at anymore (imports can leave spares behind too).
-        var sweptMedia = 0
-        for entity in ["Movie", "TVShow"] {
-            let request = NSFetchRequest<NSManagedObject>(entityName: entity)
-            request.affectedStores = [privateStore]
-            request.predicate = NSPredicate(format: "listItemSet.@count == 0 AND customListItemSet.@count == 0")
-            for row in (try? viewContext.fetch(request)) ?? [] {
-                viewContext.delete(row)
-                sweptMedia += 1
-            }
-        }
-        save()
-        sweepUnreferencedNetworks()
+        let sweptMedia = sweepUnreferencedMedia()
         remoteChangeCount += 1
         let summary = "Merged \(mergedRoots) extra root(s) and \(mergedLists) duplicate lists; removed \(removedItems) duplicate entries; merged \(mergedCollections) duplicate collections; swept \(sweptMedia) unreferenced media rows; dropped \(droppedEmpty) entries with no title."
         appendSyncActivity(kind: "dedupe", startDate: .now, errorText: summary)
