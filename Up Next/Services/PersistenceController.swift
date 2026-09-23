@@ -1393,7 +1393,15 @@ final class PersistenceController {
         var removedItems = 0
         var mergedCollections = 0
 
-        for list in group.lists ?? [] {
+        // Same-named lists ("TV Shows" twice): `reconciledRoot` folds these when it merges roots,
+        // but lists that import *after* that pass arrive as extra lists under the one root and
+        // never get folded — each holds one clean copy, so a per-list pass would find nothing.
+        let listCount = (group.lists ?? []).count
+        mergeDuplicateLists(in: group)
+        viewContext.processPendingChanges()
+        let mergedLists = listCount - (group.lists ?? []).filter { !$0.isDeleted }.count
+
+        for list in (group.lists ?? []) where !list.isDeleted {
             var keptByMedia: [String: ListItem] = [:]
             for item in (list.items ?? []).sorted(by: { $0.order < $1.order }) {
                 guard let key = item.movie.map({ "movie:\($0.id)" }) ?? item.tvShow.map({ "tv:\($0.id)" }) else { continue }
@@ -1443,9 +1451,21 @@ final class PersistenceController {
         }
 
         save()
+        // Media rows nothing points at anymore (imports can leave spares behind too).
+        var sweptMedia = 0
+        for entity in ["Movie", "TVShow"] {
+            let request = NSFetchRequest<NSManagedObject>(entityName: entity)
+            request.affectedStores = [privateStore]
+            request.predicate = NSPredicate(format: "listItemSet.@count == 0 AND customListItemSet.@count == 0")
+            for row in (try? viewContext.fetch(request)) ?? [] {
+                viewContext.delete(row)
+                sweptMedia += 1
+            }
+        }
+        save()
         sweepUnreferencedNetworks()
         remoteChangeCount += 1
-        let summary = "Merged \(mergedRoots) extra root(s); removed \(removedItems) duplicate entries; merged \(mergedCollections) duplicate collections."
+        let summary = "Merged \(mergedRoots) extra root(s) and \(mergedLists) duplicate lists; removed \(removedItems) duplicate entries; merged \(mergedCollections) duplicate collections; swept \(sweptMedia) unreferenced media rows."
         appendSyncActivity(kind: "dedupe", startDate: .now, errorText: summary)
         AppLog.persistence.notice("dedupe: \(summary, privacy: .public)")
         return summary
