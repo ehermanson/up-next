@@ -955,6 +955,13 @@ final class PersistenceController {
             return (try? viewContext.count(for: request)) ?? -1
         }
         lines.append("Structure: \(count("WatchListGroup")) root(s), \(count("MediaList")) lists, \(count("CustomList")) collections, \(count("Movie")) movie rows, \(count("TVShow")) show rows, \(count("Network")) network rows")
+        func dangling(_ entity: String) -> Int {
+            let request = NSFetchRequest<NSFetchRequestResult>(entityName: entity)
+            request.affectedStores = [activeStore]
+            request.predicate = NSPredicate(format: "movie == nil AND tvShow == nil")
+            return (try? viewContext.count(for: request)) ?? -1
+        }
+        lines.append("Entries without a title row: \(dangling("ListItem")) watchlist, \(dangling("CustomListItem")) collection (\(count("CustomListItem")) collection entries total)")
         // Direct probes with unsanitized errors. Saving a throwaway share is the definitive test
         // for the `cloudkit.share` system type in *this* environment (Production can't create
         // types, so it either exists or the save says exactly why not).
@@ -1564,6 +1571,19 @@ final class PersistenceController {
             }
         }
 
+        // Entries whose movie/show row is gone can't render and carry no TMDB id to recover —
+        // nothing but an empty card. Only here, on explicit request: mid-import an entry can
+        // legitimately arrive a moment before its media row.
+        var droppedEmpty = 0
+        for entity in ["ListItem", "CustomListItem"] {
+            let request = NSFetchRequest<NSManagedObject>(entityName: entity)
+            request.affectedStores = [activeStore]
+            request.predicate = NSPredicate(format: "movie == nil AND tvShow == nil")
+            for row in (try? viewContext.fetch(request)) ?? [] {
+                viewContext.delete(row)
+                droppedEmpty += 1
+            }
+        }
         save()
         // Media rows nothing points at anymore (imports can leave spares behind too).
         var sweptMedia = 0
@@ -1579,7 +1599,7 @@ final class PersistenceController {
         save()
         sweepUnreferencedNetworks()
         remoteChangeCount += 1
-        let summary = "Merged \(mergedRoots) extra root(s) and \(mergedLists) duplicate lists; removed \(removedItems) duplicate entries; merged \(mergedCollections) duplicate collections; swept \(sweptMedia) unreferenced media rows."
+        let summary = "Merged \(mergedRoots) extra root(s) and \(mergedLists) duplicate lists; removed \(removedItems) duplicate entries; merged \(mergedCollections) duplicate collections; swept \(sweptMedia) unreferenced media rows; dropped \(droppedEmpty) entries with no title."
         appendSyncActivity(kind: "dedupe", startDate: .now, errorText: summary)
         AppLog.persistence.notice("dedupe: \(summary, privacy: .public)")
         return summary
