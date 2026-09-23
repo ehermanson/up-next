@@ -253,8 +253,15 @@ final class PersistenceController {
             throw PersistenceError.storeUnavailable(storeLoadError)
         }
 
+        // A sync reset left the library on disk as a snapshot and destroyed the stores; put it
+        // back before the role rule can seed an empty root over it.
+        if FileManager.default.fileExists(atPath: Self.resetSnapshotURL.path) {
+            try restoreResetSnapshot()
+        }
+
         try applyRoleRule()
         sweepOrphanedDetailWrappers()
+        sweepUnreferencedNetworks()
         refreshLiveShare()
         observeSyncEvents()
         Task { await refreshAccountStatus() }
@@ -267,6 +274,16 @@ final class PersistenceController {
         #if DEBUG
         // Simulator exercise for `repairSync()` against the demo seed (`--seed-demo --repair-sync`):
         // waits for the seed to land, then rebuilds. Verifies the deep copy keeps the library.
+        if ProcessInfo.processInfo.arguments.contains("--reset-sync") {
+            Task {
+                try? await Task.sleep(for: .seconds(25))
+                do {
+                    try await resetSync()
+                } catch {
+                    AppLog.sync.error("--reset-sync failed: \(error)")
+                }
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--repair-sync") {
             Task {
                 try? await Task.sleep(for: .seconds(25))
@@ -278,6 +295,21 @@ final class PersistenceController {
             }
         }
         #endif
+    }
+
+    /// A `Network` row nothing points at is garbage: the metadata refresh replaces a title's
+    /// provider rows and `deleteUnreferencedNetworks` doesn't always catch the old ones (the demo
+    /// seed shows dozens after one relaunch). They'd otherwise export as records forever. Safe at
+    /// bootstrap — no refresh is in flight yet, and a live `Network` is always related in the
+    /// same save that inserts it.
+    private func sweepUnreferencedNetworks() {
+        let request = NSFetchRequest<Network>(entityName: "Network")
+        request.predicate = NSPredicate(format: "movieSet.@count == 0 AND tvShowSet.@count == 0")
+        let orphans = (try? viewContext.fetch(request)) ?? []
+        guard !orphans.isEmpty else { return }
+        for network in orphans { viewContext.delete(network) }
+        save()
+        AppLog.persistence.notice("swept \(orphans.count) unreferenced Network rows")
     }
 
     /// Deletes `ListItem`s that were left behind by a detail sheet. Discover and collection detail
@@ -597,30 +629,6 @@ final class PersistenceController {
         AppLog.sync.notice("CloudKit Development schema initialized")
     }
 
-    /// `initializeCloudKitSchema` covers the `CD_*` types but not `cloudkit.share`, the system
-    /// record type CloudKit only creates the first time a share is actually saved. Deploy without
-    /// it and every share attempt in Production fails with "Cannot create new type cloudkit.share
-    /// in production schema" — and the mirroring delegate, whose setup saves the zone's share,
-    /// never initializes, so nothing exports at all. This saves a throwaway root + `CKShare` in a
-    /// temporary zone (Development) and deletes the zone again, purely so the type exists.
-    func ensureShareRecordTypeExists() async throws {
-        guard isCloudKitEnabled else { throw PersistenceError.cloudKitDisabled }
-        let database = Self.ckContainer.privateCloudDatabase
-        let zone = CKRecordZone(zoneName: "schema-probe-\(UUID().uuidString)")
-        _ = try await database.save(zone)
-        do {
-            let rootID = CKRecord.ID(recordName: UUID().uuidString, zoneID: zone.zoneID)
-            let root = CKRecord(recordType: "CD_WatchListGroup", recordID: rootID)
-            let share = CKShare(rootRecord: root)
-            share.publicPermission = .none
-            _ = try await database.modifyRecords(saving: [root, share], deleting: [], savePolicy: .allKeys)
-            AppLog.sync.notice("cloudkit.share record type ensured in Development")
-        } catch {
-            try? await database.deleteRecordZone(withID: zone.zoneID)
-            throw error
-        }
-        try await database.deleteRecordZone(withID: zone.zoneID)
-    }
 
     /// Development only: proves (or disproves) that this build can talk to the container at all,
     /// then runs `initializeCloudKitSchema()`. Everything is reported as text for the debug alert
@@ -660,6 +668,57 @@ final class PersistenceController {
     }
 
     #endif
+
+    /// `initializeCloudKitSchema` covers the `CD_*` types but not `cloudkit.share`, the system
+    /// record type CloudKit only creates the first time a share is actually saved. Deploy without
+    /// it and every share attempt in Production fails with "Cannot create new type cloudkit.share
+    /// in production schema" — and the mirroring delegate, whose setup saves the zone's share,
+    /// never initializes, so nothing exports at all. This saves a throwaway root + `CKShare` in a
+    /// temporary zone (Development) and deletes the zone again, purely so the type exists.
+    func ensureShareRecordTypeExists() async throws {
+        guard isCloudKitEnabled else { throw PersistenceError.cloudKitDisabled }
+        let database = Self.ckContainer.privateCloudDatabase
+        let zone = CKRecordZone(zoneName: "schema-probe-\(UUID().uuidString)")
+        _ = try await database.save(zone)
+        do {
+            let rootID = CKRecord.ID(recordName: UUID().uuidString, zoneID: zone.zoneID)
+            let root = CKRecord(recordType: "CD_WatchListGroup", recordID: rootID)
+            let share = CKShare(rootRecord: root)
+            share.publicPermission = .none
+            _ = try await database.modifyRecords(saving: [root, share], deleting: [], savePolicy: .allKeys)
+            AppLog.sync.notice("cloudkit.share record type ensured in Development")
+        } catch {
+            try? await database.deleteRecordZone(withID: zone.zoneID)
+            throw error
+        }
+        try await database.deleteRecordZone(withID: zone.zoneID)
+    }
+
+    /// Reads this process's own unified log — the mirroring delegate runs in-process, so its full
+    /// `com.apple.coredata` lines (the ones a sanitized `Event.error` hides) are readable here
+    /// without a Mac attached. Errors, faults and anything CloudKit-flavoured from the last
+    /// `minutes`, newest last, capped.
+    func recentCoreDataLog(minutes: Int = 30) -> String {
+        do {
+            let store = try OSLogStore(scope: .currentProcessIdentifier)
+            let position = store.position(date: Date.now.addingTimeInterval(-Double(minutes * 60)))
+            let predicate = NSPredicate(format: "subsystem == %@ OR subsystem == %@", "com.apple.coredata", "com.erichermanson.upnext")
+            let entries = try store.getEntries(at: position, matching: predicate)
+            let formatter = ISO8601DateFormatter()
+            var lines: [String] = []
+            for case let entry as OSLogEntryLog in entries {
+                let message = entry.composedMessage
+                let isInteresting = entry.level == .error || entry.level == .fault
+                    || message.contains("CKError") || message.contains("CloudKit") || message.contains("ailed")
+                guard isInteresting else { continue }
+                lines.append("\(formatter.string(from: entry.date)) [\(entry.subsystem):\(entry.category)] \(message)")
+            }
+            let kept = lines.suffix(150)
+            return kept.isEmpty ? "No matching log entries in the last \(minutes) minutes." : kept.joined(separator: "\n")
+        } catch {
+            return "Log unavailable: \(error.localizedDescription)"
+        }
+    }
 
     private static func describe(_ status: CKAccountStatus) -> String {
         switch status {
@@ -780,6 +839,30 @@ final class PersistenceController {
         let records = container.records(for: ids)
         let acknowledged = records.values.filter { $0.recordChangeTag != nil }.count
         lines.append("Titles: \(ids.count) local, \(records.count) mirrored, \(acknowledged) server-acknowledged")
+        // Direct probes with unsanitized errors. Saving a throwaway share is the definitive test
+        // for the `cloudkit.share` system type in *this* environment (Production can't create
+        // types, so it either exists or the save says exactly why not).
+        do {
+            try await ensureShareRecordTypeExists()
+            lines.append("Share-type probe: OK (cloudkit.share exists here)")
+        } catch {
+            lines.append("Share-type probe: \(Self.describeSyncError(error))")
+        }
+        do {
+            let zones = try await ck.privateCloudDatabase.allRecordZones()
+            for zone in zones where zone.zoneID.zoneName.hasPrefix("com.apple.coredata.cloudkit.share.") {
+                do {
+                    let changes = try await ck.privateCloudDatabase.recordZoneChanges(inZoneWith: zone.zoneID, since: nil)
+                    let types = Dictionary(grouping: changes.modificationResultsByID.values.compactMap { try? $0.get().record.recordType }, by: { $0 })
+                        .map { "\($0.value.count)× \($0.key)" }.sorted().joined(separator: ", ")
+                    lines.append("Stale zone \(zone.zoneID.zoneName.suffix(8)): \(changes.modificationResultsByID.count) records (\(types.isEmpty ? "none" : types))")
+                } catch {
+                    lines.append("Stale zone \(zone.zoneID.zoneName.suffix(8)): \(Self.describeSyncError(error))")
+                }
+            }
+        } catch {
+            lines.append("Stale zone scan: \(Self.describeSyncError(error))")
+        }
         // A "check" is informational; it goes in the error slot so the text is shown in full.
         appendSyncActivity(kind: "check", startDate: started, errorText: lines.joined(separator: "\n"))
     }
@@ -1271,6 +1354,138 @@ final class PersistenceController {
             errorText: "Rebuilt \(copiedCount) objects into a fresh root; \(zoneNote)."
         )
         AppLog.sync.notice("repair: rebuilt \(copiedCount) objects; \(zoneNote, privacy: .public)")
+    }
+
+    // MARK: - Sync reset
+
+    /// Where `resetSync()` parks the library between the store being destroyed and the next
+    /// launch restoring it.
+    private static var resetSnapshotURL: URL {
+        applicationSupportDirectory().appendingPathComponent("sync-reset-snapshot.archive")
+    }
+
+    /// The last resort, for a store whose CloudKit mirroring metadata is inconsistent (exports die
+    /// with "Cannot create objectID … (entityID)" / "unhandled exception while analyzing
+    /// history" and the delegate resets itself every cycle). There is no API to repair that
+    /// metadata, so this hands Core Data a store it has never synced from: every object in the
+    /// private store is snapshotted to disk, Up Next's zones are deleted on the server (so nothing
+    /// stale imports back as duplicates), both store files are destroyed, and the process exits.
+    /// `bootstrap()` restores the snapshot on the next launch before anything else runs. Nothing
+    /// is lost — it's the same deep copy `repairSync()` makes, via a file. Owner only.
+    func resetSync() async throws -> Never {
+        guard role == .owner, group != nil else { throw PersistenceError.noGroup }
+        let started = Date.now
+        let snapshot = try snapshotPrivateStore()
+        let privateURL = privateStore.url
+        let sharedURL = sharedStore.url
+
+        // Server first, and it must succeed: a fresh store that imports the old zones would
+        // rebuild the library twice over.
+        var zoneNote = "CloudKit off"
+        if isCloudKitEnabled {
+            let database = Self.ckContainer.privateCloudDatabase
+            let zones = try await database.allRecordZones()
+                .filter { $0.zoneID.zoneName != CKRecordZone.ID.defaultZoneName }
+            for zone in zones {
+                try await database.deleteRecordZone(withID: zone.zoneID)
+            }
+            zoneNote = "deleted \(zones.count) zone(s)"
+        }
+
+        try snapshot.write(to: Self.resetSnapshotURL, options: .atomic)
+        appendSyncActivity(
+            kind: "reset",
+            startDate: started,
+            errorText: "Snapshotted \(snapshot.count / 1024) KB; \(zoneNote); stores destroyed — restored on next launch."
+        )
+        AppLog.sync.notice("reset: snapshot written, \(zoneNote, privacy: .public); destroying stores")
+
+        // Forget everything keyed to the old stores.
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("historyToken.") {
+            defaults.removeObject(forKey: key)
+        }
+        defaults.removeObject(forKey: Self.initialImportSettledKey)
+        defaults.removeObject(forKey: Self.pendingSharedJoinKey)
+
+        let coordinator = container.persistentStoreCoordinator
+        for store in coordinator.persistentStores {
+            try coordinator.remove(store)
+        }
+        for url in [privateURL, sharedURL].compactMap({ $0 }) {
+            try coordinator.destroyPersistentStore(at: url, type: .sqlite, options: nil)
+        }
+        exit(0)
+    }
+
+    /// Every object in the private store — entity, all attributes, relationships as object-URI
+    /// lists — archived with secure coding. Attribute values are all plist/Foundation types.
+    private func snapshotPrivateStore() throws -> Data {
+        var rows: [[String: Any]] = []
+        for entity in container.managedObjectModel.entities {
+            guard let name = entity.name else { continue }
+            let request = NSFetchRequest<NSManagedObject>(entityName: name)
+            request.affectedStores = [privateStore]
+            for object in try viewContext.fetch(request) {
+                var attributes: [String: Any] = [:]
+                for key in entity.attributesByName.keys {
+                    if let value = object.value(forKey: key) { attributes[key] = value }
+                }
+                var relationships: [String: [String]] = [:]
+                for (key, relationship) in entity.relationshipsByName {
+                    if relationship.isToMany {
+                        let targets = (object.value(forKey: key) as? Set<NSManagedObject>) ?? []
+                        relationships[key] = targets.map { $0.objectID.uriRepresentation().absoluteString }
+                    } else if let target = object.value(forKey: key) as? NSManagedObject {
+                        relationships[key] = [target.objectID.uriRepresentation().absoluteString]
+                    }
+                }
+                rows.append([
+                    "entity": name,
+                    "uri": object.objectID.uriRepresentation().absoluteString,
+                    "attributes": attributes,
+                    "relationships": relationships,
+                ])
+            }
+        }
+        return try NSKeyedArchiver.archivedData(withRootObject: rows as NSArray, requiringSecureCoding: true)
+    }
+
+    private func restoreResetSnapshot() throws {
+        let started = Date.now
+        let url = Self.resetSnapshotURL
+        let data = try Data(contentsOf: url)
+        let classes: [AnyClass] = [NSArray.self, NSDictionary.self, NSString.self, NSNumber.self,
+                                   NSDate.self, NSUUID.self, NSURL.self, NSData.self]
+        guard let rows = try NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [[String: Any]] else {
+            throw PersistenceError.storeUnavailable(nil)
+        }
+        var objects: [String: NSManagedObject] = [:]
+        for row in rows {
+            guard let entityName = row["entity"] as? String, let uri = row["uri"] as? String else { continue }
+            let object = NSEntityDescription.insertNewObject(forEntityName: entityName, into: viewContext)
+            viewContext.assign(object, to: privateStore)
+            for (key, value) in (row["attributes"] as? [String: Any]) ?? [:] {
+                object.setValue(value, forKey: key)
+            }
+            objects[uri] = object
+        }
+        for row in rows {
+            guard let uri = row["uri"] as? String, let object = objects[uri] else { continue }
+            for (key, uris) in (row["relationships"] as? [String: [String]]) ?? [:] {
+                guard let relationship = object.entity.relationshipsByName[key] else { continue }
+                let targets = uris.compactMap { objects[$0] }
+                if relationship.isToMany {
+                    object.setValue(NSSet(array: targets), forKey: key)
+                } else {
+                    object.setValue(targets.first, forKey: key)
+                }
+            }
+        }
+        try viewContext.save()
+        try FileManager.default.removeItem(at: url)
+        appendSyncActivity(kind: "restore", startDate: started, errorText: "Restored \(objects.count) objects into a fresh store.")
+        AppLog.sync.notice("reset: restored \(objects.count) objects into a fresh store")
     }
 
     private func purgeAllObjects(in store: NSPersistentStore) throws {

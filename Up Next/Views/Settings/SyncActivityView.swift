@@ -11,6 +11,8 @@ struct SyncActivityView: View {
     @State private var showingRepairConfirmation = false
     @State private var repairError: String?
     @State private var isStuck = false
+    @State private var showingResetConfirmation = false
+    @State private var isResetting = false
 
     var body: some View {
         ScrollView {
@@ -51,6 +53,22 @@ struct SyncActivityView: View {
         } message: {
             Text("Rebuilds your watchlist’s connection to iCloud. Your titles, watched state, ratings, notes and collections all stay. Any share link you’d created stops working — share again afterwards.")
         }
+        .confirmationDialog("Reset iCloud Sync?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
+            Button("Reset and Close App", role: .destructive) {
+                isResetting = true
+                Task {
+                    do {
+                        try await persistence.resetSync()
+                    } catch {
+                        repairError = error.localizedDescription
+                        isResetting = false
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Wipes everything Up Next has put in iCloud and rebuilds it from what’s on this device. Your titles, watched state, ratings, notes and collections all stay. Any share link stops working. Up Next will close when it’s done — reopen it to finish.")
+        }
         .alert("Couldn’t Repair", isPresented: Binding(
             get: { repairError != nil },
             set: { if !$0 { repairError = nil } }
@@ -67,13 +85,15 @@ struct SyncActivityView: View {
                     Button("Copy All", systemImage: "doc.on.doc") {
                         UIPasteboard.general.string = transcript
                     }
+                    Button("Copy Core Data Log", systemImage: "doc.text.magnifyingglass") {
+                        UIPasteboard.general.string = persistence.recentCoreDataLog()
+                    }
                     Button("Clear Log", systemImage: "trash", role: .destructive) {
                         persistence.clearSyncActivity()
                     }
                 } label: {
                     Image(systemName: "ellipsis")
                 }
-                .disabled(persistence.syncActivity.isEmpty)
             }
         }
     }
@@ -127,6 +147,22 @@ struct SyncActivityView: View {
                 .buttonStyle(.bordered)
                 .tint(isStuck ? .orange : .accentColor)
                 .disabled(isRepairing)
+
+                Button {
+                    showingResetConfirmation = true
+                } label: {
+                    Label(isResetting ? "Resetting…" : "Reset iCloud Sync", systemImage: "arrow.counterclockwise.icloud")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .disabled(isResetting)
+                Text("For when Repair isn’t enough: exports keep failing even though iCloud accepts the schema. Starts sync over from a clean store.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -138,7 +174,7 @@ struct SyncActivityView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: icon(for: entry))
-                    .foregroundStyle(entry.kind == "check" || entry.kind == "repair" ? Color.accentColor : entry.errorText == nil ? .green : .orange)
+                    .foregroundStyle(["check", "repair", "reset", "restore"].contains(entry.kind) ? Color.accentColor : entry.errorText == nil ? .green : .orange)
                 Text(entry.kind.capitalized)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -167,6 +203,7 @@ struct SyncActivityView: View {
     private func icon(for entry: PersistenceController.SyncActivityEntry) -> String {
         if entry.kind == "check" { return "stethoscope" }
         if entry.kind == "repair" { return "wrench.and.screwdriver" }
+        if entry.kind == "reset" || entry.kind == "restore" { return "arrow.counterclockwise.icloud" }
         return entry.errorText == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
     }
 
