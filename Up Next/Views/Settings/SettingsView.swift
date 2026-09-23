@@ -155,18 +155,11 @@ struct SettingsView: View {
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
-    /// Services are part of the household now, so the row says so — the picker itself repeats it
-    /// in full. No suffix when nothing is picked: "None selected · Shared with Sarah" reads as if
-    /// the sharing were what's missing.
+    /// Just the count — the picker itself says the services are household-wide when a share is
+    /// live, and a "Shared with …" suffix here crowded the row title off the line.
     private var streamingServicesStatus: String {
         let count = settings.selectedProviderIDs.count
-        guard count > 0 else { return "None selected" }
-        let persistence = PersistenceController.shared
-        if persistence.isSharingLive {
-            let shared = persistence.liveShare?.otherDisplayName.map { "Shared with \($0)" } ?? "Shared"
-            return "\(count) selected \u{00B7} \(shared)"
-        }
-        return "\(count) selected"
+        return count == 0 ? "None selected" : "\(count) selected"
     }
 
     // MARK: - Region
@@ -312,24 +305,30 @@ struct SettingsView: View {
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 24)
 
+            // The title never wraps or yields: a long value (a name, a relative date) truncates
+            // instead. With the priority the other way round, "Streaming Services" once rendered
+            // one letter per line beside "11 selected · Shared with Erika Herman…".
             Text(title)
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
 
-            Spacer()
+            Spacer(minLength: 8)
 
             HStack(spacing: 4) {
                 Text(value)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
-            .layoutPriority(1)
         }
         .frame(maxWidth: .infinity)
         .contentShape(.rect)
