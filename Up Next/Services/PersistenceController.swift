@@ -696,7 +696,7 @@ final class PersistenceController {
         liveShare = fetched
         let store: NSPersistentStore = role == .participant ? sharedStore : privateStore
         do {
-            try container.persistUpdatedShare(fetched, in: store)
+            try await container.persistUpdatedShare(fetched, in: store)
         } catch {
             AppLog.sharing.error("persistUpdatedShare failed: \(error)")
         }
