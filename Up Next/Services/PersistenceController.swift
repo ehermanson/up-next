@@ -284,6 +284,12 @@ final class PersistenceController {
                 }
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("--dedupe-sync") {
+            Task {
+                try? await Task.sleep(for: .seconds(15))
+                _ = removeDuplicates()
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--repair-sync") {
             Task {
                 try? await Task.sleep(for: .seconds(25))
@@ -1356,6 +1362,76 @@ final class PersistenceController {
         AppLog.sync.notice("repair: rebuilt \(copiedCount) objects; \(zoneNote, privacy: .public)")
     }
 
+    // MARK: - Duplicate removal
+
+    /// Collapses a library that got merged with a copy of itself — a second root importing
+    /// (e.g. a reset whose zone deletion hadn't propagated) folds its lists into ours via
+    /// `mergeDuplicateLists`, so every title appears twice and every collection is doubled. Keeps
+    /// the lowest-ordered entry per title per list, merges same-named collections (unique
+    /// members only), and drops media rows nothing references anymore. Returns a summary.
+    func removeDuplicates() -> String {
+        guard let group else { return "no group" }
+        var removedItems = 0
+        var mergedCollections = 0
+
+        for list in group.lists ?? [] {
+            var keptByMedia: [String: ListItem] = [:]
+            for item in (list.items ?? []).sorted(by: { $0.order < $1.order }) {
+                guard let key = item.movie.map({ "movie:\($0.id)" }) ?? item.tvShow.map({ "tv:\($0.id)" }) else { continue }
+                if keptByMedia[key] == nil {
+                    keptByMedia[key] = item
+                    continue
+                }
+                let movie = item.movie, tvShow = item.tvShow, itemID = item.objectID
+                viewContext.delete(item)
+                deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: viewContext)
+                removedItems += 1
+            }
+        }
+
+        let byName = Dictionary(grouping: group.customLists ?? [], by: \.name)
+        for lists in byName.values where lists.count > 1 {
+            let sorted = lists.sorted { $0.id.uuidString < $1.id.uuidString }
+            let keep = sorted[0]
+            var keys = Set((keep.items ?? []).compactMap(\.mediaKey))
+            for extra in sorted.dropFirst() {
+                for item in extra.items ?? [] {
+                    if let key = item.mediaKey, keys.insert(key).inserted {
+                        item.customList = keep
+                    } else {
+                        let movie = item.movie, tvShow = item.tvShow, itemID = item.objectID
+                        viewContext.delete(item)
+                        deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: viewContext)
+                        removedItems += 1
+                    }
+                }
+                viewContext.processPendingChanges()
+                viewContext.delete(extra)
+                mergedCollections += 1
+            }
+        }
+        // Collections can also hold the same title twice after a merge.
+        for list in group.customLists ?? [] where !list.isDeleted {
+            var seen = Set<String>()
+            for item in (list.items ?? []).sorted(by: { $0.addedAt < $1.addedAt }) {
+                guard let key = item.mediaKey else { continue }
+                if seen.insert(key).inserted { continue }
+                let movie = item.movie, tvShow = item.tvShow, itemID = item.objectID
+                viewContext.delete(item)
+                deleteMediaIfUnreferenced(movie: movie, tvShow: tvShow, ignoring: itemID, in: viewContext)
+                removedItems += 1
+            }
+        }
+
+        save()
+        sweepUnreferencedNetworks()
+        remoteChangeCount += 1
+        let summary = "Removed \(removedItems) duplicate entries, merged \(mergedCollections) duplicate collections."
+        appendSyncActivity(kind: "dedupe", startDate: .now, errorText: summary)
+        AppLog.persistence.notice("dedupe: \(summary, privacy: .public)")
+        return summary
+    }
+
     // MARK: - Sync reset
 
     /// Where `resetSync()` parks the library between the store being destroyed and the next
@@ -1389,7 +1465,19 @@ final class PersistenceController {
             for zone in zones {
                 try await database.deleteRecordZone(withID: zone.zoneID)
             }
-            zoneNote = "deleted \(zones.count) zone(s)"
+            // Zone deletion is eventually consistent: the first run of this exited immediately
+            // and the fresh store's first import fetched the old graph back, duplicating every
+            // title. Wait until a fresh zone list no longer shows them.
+            let deleted = Set(zones.map(\.zoneID))
+            var remaining = deleted
+            for _ in 0..<10 where !remaining.isEmpty {
+                try await Task.sleep(for: .seconds(2))
+                let current = Set(try await database.allRecordZones().map(\.zoneID))
+                remaining = deleted.intersection(current)
+            }
+            zoneNote = remaining.isEmpty
+                ? "deleted \(zones.count) zone(s), confirmed gone"
+                : "deleted \(zones.count) zone(s) but \(remaining.count) still listed after 20 s"
         }
 
         try snapshot.write(to: Self.resetSnapshotURL, options: .atomic)

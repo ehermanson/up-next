@@ -12,6 +12,7 @@ struct SyncActivityView: View {
     @State private var repairError: String?
     @State private var isStuck = false
     @State private var showingResetConfirmation = false
+    @State private var showingDedupeConfirmation = false
     @State private var isResetting = false
 
     var body: some View {
@@ -52,6 +53,14 @@ struct SyncActivityView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Rebuilds your watchlist’s connection to iCloud. Your titles, watched state, ratings, notes and collections all stay. Any share link you’d created stops working — share again afterwards.")
+        }
+        .confirmationDialog("Remove Duplicates?", isPresented: $showingDedupeConfirmation, titleVisibility: .visible) {
+            Button("Remove Duplicates") {
+                _ = persistence.removeDuplicates()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Keeps one copy of each title per list and merges collections that share a name. Watched state, ratings and notes on the kept copy stay.")
         }
         .confirmationDialog("Reset iCloud Sync?", isPresented: $showingResetConfirmation, titleVisibility: .visible) {
             Button("Reset and Close App", role: .destructive) {
@@ -149,6 +158,16 @@ struct SyncActivityView: View {
                 .disabled(isRepairing)
 
                 Button {
+                    showingDedupeConfirmation = true
+                } label: {
+                    Label("Remove Duplicates", systemImage: "rectangle.on.rectangle.slash")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
                     showingResetConfirmation = true
                 } label: {
                     Label(isResetting ? "Resetting…" : "Reset iCloud Sync", systemImage: "arrow.counterclockwise.icloud")
@@ -174,7 +193,7 @@ struct SyncActivityView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: icon(for: entry))
-                    .foregroundStyle(["check", "repair", "reset", "restore"].contains(entry.kind) ? Color.accentColor : entry.errorText == nil ? .green : .orange)
+                    .foregroundStyle(["check", "repair", "reset", "restore", "dedupe"].contains(entry.kind) ? Color.accentColor : entry.errorText == nil ? .green : .orange)
                 Text(entry.kind.capitalized)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -204,6 +223,7 @@ struct SyncActivityView: View {
         if entry.kind == "check" { return "stethoscope" }
         if entry.kind == "repair" { return "wrench.and.screwdriver" }
         if entry.kind == "reset" || entry.kind == "restore" { return "arrow.counterclockwise.icloud" }
+        if entry.kind == "dedupe" { return "rectangle.on.rectangle.slash" }
         return entry.errorText == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
     }
 
