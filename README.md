@@ -82,7 +82,7 @@ Then select the `Up Next` scheme and run on an iOS 26.1+ simulator or device.
 
 - No third-party dependencies — networking and persistence handled natively
 - CloudKit sharing is zone-based; one share rooted at the app's `WatchListGroup`, everything else flows from there
-- See `CLAUDE.md` for architecture details, file structure, and development patterns
+- See `AGENTS.md` for architecture details, file structure, and development patterns
 - App Store screenshots are generated via DEBUG screenshot mode (`--screenshots` launch argument)
 
 ### Collection recommendation experiment
