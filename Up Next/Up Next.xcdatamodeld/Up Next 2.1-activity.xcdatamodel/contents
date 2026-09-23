@@ -2,6 +2,7 @@
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24A335" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithCloudKit="YES" userDefinedModelVersionIdentifier="">
     <entity name="ActivityEvent" representedClassName=".ActivityEvent" syncable="YES">
         <attribute name="actorName" optional="YES" attributeType="String"/>
+        <attribute name="actorRecordName" optional="YES" attributeType="String"/>
         <attribute name="contextName" optional="YES" attributeType="String"/>
         <attribute name="createdAtRaw" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="idRaw" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
@@ -109,7 +110,7 @@
         <relationship name="listSet" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="MediaList" inverseName="group" inverseEntity="MediaList"/>
     </entity>
     <elements>
-        <element name="ActivityEvent" positionX="-81" positionY="-36" width="128" height="164"/>
+        <element name="ActivityEvent" positionX="-81" positionY="-36" width="128" height="179"/>
         <element name="CustomList" positionX="-63" positionY="-18" width="128" height="89"/>
         <element name="CustomListItem" positionX="-45" positionY="0" width="128" height="89"/>
         <element name="ListItem" positionX="-27" positionY="18" width="128" height="164"/>

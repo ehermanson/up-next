@@ -38,6 +38,10 @@ final class ActivityEvent: NSManagedObject, Identifiable {
     /// The writer's own display name when iOS gave it one — a fallback for the reader, whose view
     /// of the other participant's name may be withheld.
     @NSManaged var actorName: String?
+    /// The writer's CloudKit user record name (`CKContainer.userRecordID`), so "who" is a
+    /// fetchable attribute — per-person filters and badges are a predicate, not a record lookup
+    /// per row. The record's `creatorUserRecordID` remains the truth for "mine vs theirs".
+    @NSManaged var actorRecordName: String?
 
     // MARK: - Inverse relationships for CloudKit
     @NSManaged var group: WatchListGroup?
@@ -72,6 +76,7 @@ final class ActivityEvent: NSManagedObject, Identifiable {
         mediaKey: String? = nil,
         contextName: String? = nil,
         actorName: String? = nil,
+        actorRecordName: String? = nil,
         createdAt: Date = .now,
         group: WatchListGroup?,
         context: NSManagedObjectContext? = nil
@@ -84,6 +89,7 @@ final class ActivityEvent: NSManagedObject, Identifiable {
         self.mediaKey = mediaKey
         self.contextName = contextName
         self.actorName = actorName
+        self.actorRecordName = actorRecordName
         self.createdAt = createdAt
         self.group = group
         if context == nil { assignToStore(of: [group], self) }

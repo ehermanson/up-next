@@ -597,6 +597,11 @@ final class PersistenceController {
 
     // MARK: - Activity
 
+    /// This account's CloudKit user record name, fetched once per launch (`refreshAccountStatus`)
+    /// and stamped on every `ActivityEvent` as `actorRecordName`. Nil until fetched or offline —
+    /// an event without it is still attributed correctly by its record's creator.
+    private(set) var currentUserRecordName: String?
+
     /// True while a bulk path (1.x import, demo seed) is adding titles — none of those are "someone
     /// did something" moments, and 50 events for an import would drown the Activity screen.
     var isSuppressingActivity = false
@@ -620,6 +625,7 @@ final class PersistenceController {
             mediaKey: mediaKey,
             contextName: contextName,
             actorName: actorName,
+            actorRecordName: currentUserRecordName,
             group: group
         )
         AppLog.sharing.debug("activity: \(kind.rawValue, privacy: .public) \(title, privacy: .private)")
@@ -808,6 +814,9 @@ final class PersistenceController {
         }
         let status = try? await Self.ckContainer.accountStatus()
         isCloudAccountAvailable = status == .available
+        if status == .available, currentUserRecordName == nil {
+            currentUserRecordName = try? await Self.ckContainer.userRecordID().recordName
+        }
     }
 
     /// Creates (and returns) the single `CKShare` rooted at `group`.
