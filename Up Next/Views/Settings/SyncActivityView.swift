@@ -6,6 +6,7 @@ import SwiftUI
 /// can be explained without a Mac attached. "Copy All" puts the whole log on the pasteboard.
 struct SyncActivityView: View {
     private let persistence = PersistenceController.shared
+    @State private var isChecking = false
 
     var body: some View {
         ScrollView {
@@ -62,6 +63,21 @@ struct SyncActivityView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                isChecking = true
+                Task {
+                    await persistence.runCloudKitCheck()
+                    isChecking = false
+                }
+            } label: {
+                Label(isChecking ? "Checking…" : "Check iCloud Now", systemImage: "stethoscope")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isChecking)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -71,8 +87,8 @@ struct SyncActivityView: View {
     private func entryCard(_ entry: PersistenceController.SyncActivityEntry) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Image(systemName: entry.errorText == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(entry.errorText == nil ? .green : .orange)
+                Image(systemName: icon(for: entry))
+                    .foregroundStyle(entry.kind == "check" ? Color.accentColor : entry.errorText == nil ? .green : .orange)
                 Text(entry.kind.capitalized)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -96,6 +112,11 @@ struct SyncActivityView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
+    }
+
+    private func icon(for entry: PersistenceController.SyncActivityEntry) -> String {
+        if entry.kind == "check" { return "stethoscope" }
+        return entry.errorText == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
     }
 
     private func durationLabel(_ entry: PersistenceController.SyncActivityEntry) -> String {

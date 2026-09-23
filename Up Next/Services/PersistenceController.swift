@@ -613,6 +613,8 @@ final class PersistenceController {
         return lines.joined(separator: "\n")
     }
 
+    #endif
+
     private static func describe(_ status: CKAccountStatus) -> String {
         switch status {
         case .available: "available"
@@ -623,7 +625,6 @@ final class PersistenceController {
         @unknown default: "unknown"
         }
     }
-    #endif
 
     func refreshAccountStatus() async {
         guard isCloudKitEnabled else {
@@ -646,6 +647,19 @@ final class PersistenceController {
         // isn't cancellable; if it lands later, `liveShare` picks the share up on the next refresh
         // and `LibraryShareItem` hands that existing share to the sheet instead of a second one.
         let started = Date.now
+        // Detached on purpose: if `container.share` wedges the main thread, the in-group timeout
+        // below can never be delivered, and this is the only line that will explain the silence.
+        let watchdog = Task.detached {
+            try? await Task.sleep(for: .seconds(Self.shareTimeout))
+            guard !Task.isCancelled else { return }
+            Self.writeSyncActivity(SyncActivityEntry(
+                kind: "share",
+                startDate: started,
+                endDate: .now,
+                errorText: "Still running after \(Int(Self.shareTimeout)) s — container.share has not returned; the app’s main thread may be blocked inside it."
+            ))
+        }
+        defer { watchdog.cancel() }
         do {
             let share = try await withThrowingTaskGroup(of: CKShare.self) { tasks in
                 tasks.addTask { @MainActor in
@@ -670,6 +684,59 @@ final class PersistenceController {
     }
 
     private static let shareTimeout: TimeInterval = 60
+
+    /// Everything the Console would tell us, from the phone: which build/environment this is,
+    /// account state, the zones in both databases, whether the root record has actually been
+    /// acknowledged by the server, and how many titles have. Logged as a "check" entry.
+    func runCloudKitCheck() async {
+        let started = Date.now
+        var lines: [String] = []
+        let receipt = Bundle.main.appStoreReceiptURL?.lastPathComponent ?? ""
+        let buildKind = receipt == "sandboxReceipt" ? "TestFlight" : receipt == "receipt" ? "App Store" : "Xcode"
+        lines.append("Build: \(buildKind); container \(Self.containerIdentifier)")
+        guard isCloudKitEnabled else {
+            lines.append("CloudKit: off for this launch")
+            appendSyncActivity(kind: "check", startDate: started, errorText: lines.joined(separator: "\n"))
+            return
+        }
+        let ck = Self.ckContainer
+        do {
+            lines.append("Account: \(Self.describe(try await ck.accountStatus()))")
+        } catch {
+            lines.append("Account: \(Self.describeSyncError(error))")
+        }
+        do {
+            let zones = try await ck.privateCloudDatabase.allRecordZones().map(\.zoneID.zoneName).sorted()
+            lines.append("Private zones: \(zones.isEmpty ? "none" : zones.joined(separator: ", "))")
+        } catch {
+            lines.append("Private zones: \(Self.describeSyncError(error))")
+        }
+        do {
+            let zones = try await ck.sharedCloudDatabase.allRecordZones().map(\.zoneID.zoneName).sorted()
+            lines.append("Shared zones: \(zones.isEmpty ? "none" : zones.joined(separator: ", "))")
+        } catch {
+            lines.append("Shared zones: \(Self.describeSyncError(error))")
+        }
+        lines.append("Role: \(role == .participant ? "participant" : "owner"); share on root: \(existingShare() != nil ? "yes" : "no")")
+        if let group {
+            if let record = container.record(for: group.objectID) {
+                lines.append("Root record: zone \(record.recordID.zoneID.zoneName), server-acknowledged: \(record.recordChangeTag != nil ? "yes" : "no")")
+            } else {
+                lines.append("Root record: not mirrored to CloudKit yet")
+            }
+        } else {
+            lines.append("Root record: no group")
+        }
+        let request = NSFetchRequest<NSManagedObjectID>(entityName: "ListItem")
+        request.resultType = .managedObjectIDResultType
+        request.predicate = NSPredicate(format: "list != nil")
+        let ids = (try? viewContext.fetch(request)) ?? []
+        let records = container.records(for: ids)
+        let acknowledged = records.values.filter { $0.recordChangeTag != nil }.count
+        lines.append("Titles: \(ids.count) local, \(records.count) mirrored, \(acknowledged) server-acknowledged")
+        // A "check" is informational; it goes in the error slot so the text is shown in full.
+        appendSyncActivity(kind: "check", startDate: started, errorText: lines.joined(separator: "\n"))
+    }
 
     // MARK: - Sync status
 
@@ -704,20 +771,31 @@ final class PersistenceController {
     private static let syncActivityKey = "sync.activityLog"
     private static let syncActivityLimit = 40
 
-    private(set) var syncActivity: [SyncActivityEntry] = {
-        guard let data = UserDefaults.standard.data(forKey: PersistenceController.syncActivityKey),
+    private(set) var syncActivity: [SyncActivityEntry] = PersistenceController.loadSyncActivity()
+
+    private func appendSyncActivity(kind: String, startDate: Date, endDate: Date = .now, errorText: String?) {
+        Self.writeSyncActivity(SyncActivityEntry(kind: kind, startDate: startDate, endDate: endDate, errorText: errorText))
+        syncActivity = Self.loadSyncActivity()
+    }
+
+    nonisolated private static func loadSyncActivity() -> [SyncActivityEntry] {
+        guard let data = UserDefaults.standard.data(forKey: syncActivityKey),
               let entries = try? JSONDecoder().decode([SyncActivityEntry].self, from: data)
         else { return [] }
         return entries
-    }()
+    }
 
-    private func appendSyncActivity(kind: String, startDate: Date, endDate: Date = .now, errorText: String?) {
-        syncActivity.insert(SyncActivityEntry(kind: kind, startDate: startDate, endDate: endDate, errorText: errorText), at: 0)
-        if syncActivity.count > Self.syncActivityLimit {
-            syncActivity.removeLast(syncActivity.count - Self.syncActivityLimit)
+    /// Read-merge-write against the defaults, not the in-memory array, so the off-main watchdog
+    /// in `createShare` can add a line while the main actor is wedged and nothing overwrites it.
+    nonisolated private static func writeSyncActivity(_ entry: SyncActivityEntry) {
+        var entries = loadSyncActivity()
+        entries.insert(entry, at: 0)
+        entries.sort { $0.endDate > $1.endDate }
+        if entries.count > syncActivityLimit {
+            entries.removeLast(entries.count - syncActivityLimit)
         }
-        if let data = try? JSONEncoder().encode(syncActivity) {
-            UserDefaults.standard.set(data, forKey: Self.syncActivityKey)
+        if let data = try? JSONEncoder().encode(entries) {
+            UserDefaults.standard.set(data, forKey: syncActivityKey)
         }
     }
 
