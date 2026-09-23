@@ -199,7 +199,7 @@ if launched with `-screenshots` (keep the existing DEBUG screenshot mode working
 | E | agent (sonnet) | A, B | `App/Watch_ListApp.swift`, `App/ContentView.swift`, `Views/Watchlist/*.swift`, `Views/Detail/*.swift`, `Views/Search/*.swift`, `Views/Discover/*.swift`, `UI/*.swift`, `Services/TMDBService.swift` | No `SwiftData` imports remain; `@ObservedObject` conversions; previews compile |
 | G | orchestrator | C, D, E | anything | `xcodebuild` green; app runs in Simulator single-user |
 | F | agent (sonnet) | G | sharing files listed above, `Views/Settings/ProviderSettingsView.swift` | Share create / accept / manage / leave wired; role switches |
-| H | agent (haiku) | F | `CLAUDE.md`, `README.md` | Docs describe the Core Data stack, sharing, new container, setup steps |
+| H | agent (haiku) | F | `AGENTS.md`, `README.md` | Docs describe the Core Data stack, sharing, new container, setup steps |
 | I | user + orchestrator | F | CloudKit Console, two devices | Schema deployed to Production; two-device test matrix passes |
 
 ### Verification command (from repo root)
