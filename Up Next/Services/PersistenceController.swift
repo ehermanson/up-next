@@ -1013,9 +1013,11 @@ final class PersistenceController {
         let records = container.records(for: ids)
         let acknowledged = records.values.filter { $0.recordChangeTag != nil }.count
         lines.append("Titles: \(ids.count) local, \(records.count) mirrored, \(acknowledged) server-acknowledged")
+        // The active store: a participant's whole graph lives in the shared store, and the first
+        // participant check read "0 root(s), 0 lists" because this asked the private one.
         func count(_ entity: String) -> Int {
             let request = NSFetchRequest<NSFetchRequestResult>(entityName: entity)
-            request.affectedStores = [privateStore]
+            request.affectedStores = [activeStore]
             return (try? viewContext.count(for: request)) ?? -1
         }
         lines.append("Structure: \(count("WatchListGroup")) root(s), \(count("MediaList")) lists, \(count("CustomList")) collections, \(count("Movie")) movie rows, \(count("TVShow")) show rows, \(count("Network")) network rows")
