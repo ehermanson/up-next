@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Rules and map for working in this repo. Rationale for *why* code is shaped the way it is lives in doc comments next to the code — keep it there, not here. Update this file when the file map, a rule, a build/setup step, or a config option changes; also update README when user-visible behavior changes.
+Rules and map for working in this repo. Rationale for *why* code is shaped the way it is lives in doc comments next to the code — keep it there, not here. Update this file when the file map, a rule, a build/setup step, or a config option changes. README is a short high-level overview for people, not agents — touch it only when a top-level feature changes.
 
 ## Project
 
