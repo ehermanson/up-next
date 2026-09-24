@@ -74,7 +74,7 @@ struct ActivityView: View {
     }
 
     private var otherName: String {
-        persistence.liveShare?.otherDisplayName ?? "Them"
+        persistence.otherPersonName ?? "Them"
     }
 
     var body: some View {
@@ -127,9 +127,9 @@ struct ActivityView: View {
               let creator = record.creatorUserRecordID,
               creator.recordName != CKCurrentUserDefaultName
         else { return "You" }
-        // `liveShare` rather than `otherPersonDisplayName()`: same answer, without a share fetch
-        // per row. iOS may withhold the name here while the writer knew its own.
-        return persistence.liveShare?.otherDisplayName ?? event.actorName ?? "Someone"
+        // `otherPersonName` covers the share *and* the name remembered from the invitation; the
+        // writer's own `actorName` is the last resort.
+        return persistence.otherPersonName ?? event.actorName ?? "Someone"
     }
 }
 

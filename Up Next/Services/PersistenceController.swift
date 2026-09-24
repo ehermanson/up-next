@@ -1285,9 +1285,27 @@ final class PersistenceController {
     /// Elf"). iOS may withhold names from apps without the extended share-access entitlement;
     /// the fallback never guesses at the relationship (`CloudKitNames.swift` owns the formatting).
     func otherPersonDisplayName() -> String {
-        let fallback = "Someone"
-        guard let share = existingShare() else { return fallback }
-        return share.otherDisplayName ?? fallback
+        otherPersonName ?? "Someone"
+    }
+
+    /// The other person's name, or nil when nothing knows it. Order: the share (the owner's
+    /// device learns the participant's name from the share sheet), then the name remembered from
+    /// the invitation — on a participant's device iOS strips the *owner's* name components from
+    /// the share, but the `CKShare.Metadata` that opened the app carried it ("Eric Hermanson wants
+    /// to collaborate"), so it's kept from that moment. Views read this, not `liveShare` directly.
+    var otherPersonName: String? {
+        if let name = liveShare?.otherDisplayName { return name }
+        if role == .participant { return UserDefaults.standard.string(forKey: Self.rememberedOwnerNameKey) }
+        return nil
+    }
+
+    private static let rememberedOwnerNameKey = "sharing.rememberedOwnerName"
+
+    private func rememberOwnerName(from metadata: CKShare.Metadata) {
+        let identity = metadata.ownerIdentity
+        let name = identity.displayName ?? identity.lookupInfo?.emailAddress
+        guard let name, !name.isEmpty else { return }
+        UserDefaults.standard.set(name, forKey: Self.rememberedOwnerNameKey)
     }
 
     /// "Added by" attribution for the detail sheet, sourced entirely from the CloudKit record
@@ -1319,6 +1337,7 @@ final class PersistenceController {
     /// re-tapping the link for the share they're already in accepts silently, having nothing to
     /// lose; everything else is parked for `ContentView` to confirm.
     func receiveShareInvitation(_ metadata: CKShare.Metadata) {
+        rememberOwnerName(from: metadata)
         let owner = metadata.ownerIdentity.displayName ?? "unknown owner"
         func note(_ outcome: String) {
             appendSyncActivity(kind: "invite", startDate: .now, errorText: "From \(owner): \(outcome)")
@@ -1399,6 +1418,7 @@ final class PersistenceController {
         guard privateStore != nil, sharedStore != nil else {
             throw PersistenceError.storeUnavailable(storeLoadError)
         }
+        rememberOwnerName(from: metadata)
         try await container.acceptShareInvitations(from: [metadata], into: sharedStore)
         // Flipped (and `group` dropped by the role rule) *before* `remoteChangeCount` is bumped,
         // so the view models see "joining, no group" in the same pass and cancel their in-flight
@@ -1461,6 +1481,7 @@ final class PersistenceController {
     /// is still local and start over.
     func leaveShare() async throws {
         guard role == .participant else { throw PersistenceError.notParticipant }
+        UserDefaults.standard.removeObject(forKey: Self.rememberedOwnerNameKey)
         isLeavingShare = true
         defer { isLeavingShare = false }
         if let zoneID = existingShare()?.recordID.zoneID {

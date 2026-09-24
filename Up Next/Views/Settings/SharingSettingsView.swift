@@ -256,7 +256,7 @@ struct SharingSection: View {
                     .foregroundStyle(.primary)
             }
 
-            Text(persistence.liveShare?.ownerDisplayName.map { "Shared with you by \($0)." } ?? "Shared with you.")
+            Text(persistence.otherPersonName.map { "Shared with you by \($0)." } ?? "Shared with you.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -288,9 +288,9 @@ struct SharingSection: View {
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
     }
 
-    /// "Leave Sarah’s watchlist?" when CloudKit gave us the owner's name, else a generic fallback.
+    /// "Leave Sarah’s watchlist?" when the owner's name is known, else a generic fallback.
     private var leaveDialogTitle: String {
-        guard let name = persistence.liveShare?.ownerDisplayName else { return "Leave Shared Watchlist?" }
+        guard let name = persistence.otherPersonName else { return "Leave Shared Watchlist?" }
         return "Leave \(name)’s watchlist?"
     }
 
@@ -310,7 +310,9 @@ struct SharingSection: View {
                         .foregroundStyle(Color.accentColor)
                         .symbolRenderingMode(.hierarchical)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(person.displayName ?? (person.role == .owner ? "Owner" : "Invited person"))
+                        Text(person.displayName
+                             ?? (person.role == .owner && persistence.role == .participant ? persistence.otherPersonName : nil)
+                             ?? (person.role == .owner ? "Owner" : "Invited person"))
                             .font(.subheadline)
                             .fontWeight(.semibold)
                         if isMe {

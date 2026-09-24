@@ -57,7 +57,7 @@ struct SettingsToolbarButton: View {
 
     private var accessibilityLabel: String {
         guard isSharingLive else { return "Settings" }
-        guard let name = persistence.liveShare?.otherDisplayName else { return "Settings, sharing is on" }
+        guard let name = persistence.otherPersonName else { return "Settings, sharing is on" }
         return "Settings, shared with \(name)"
     }
 }

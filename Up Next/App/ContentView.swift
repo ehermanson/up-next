@@ -304,7 +304,7 @@ struct ContentView: View {
     private var blockedInvitationMessage: String {
         // iOS may withhold the other person's name; the sentence works without one rather than
         // guessing at what the two people are to each other.
-        let sharing = persistence.liveShare?.otherDisplayName.map { "You’re sharing your watchlist with \($0)." }
+        let sharing = persistence.otherPersonName.map { "You’re sharing your watchlist with \($0)." }
             ?? "You’re already sharing your watchlist."
         let library = persistence.blockedShareInvitationOwnerName.map { "\($0)’s watchlist" } ?? "this watchlist"
         return "\(sharing) To join \(library) instead, stop sharing yours first in Settings → Sharing."
