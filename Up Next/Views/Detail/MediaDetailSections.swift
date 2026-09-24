@@ -237,21 +237,32 @@ struct TrailerButton: View {
     }
 }
 
-/// Small caption-style link at the very bottom of the content column — the TMDB page is a
-/// reference, not an action, so it doesn't belong in the glass control row.
-struct TMDBFooterLink: View {
+/// Reference pages stay in the content footer, outside the glass control row.
+struct DetailReferenceLink: View {
+    let title: String
     let url: URL
+    var prefersNativeApp = false
 
     @State private var isShowingPage = false
 
     var body: some View {
         Button {
-            isShowingPage = true
+            if prefersNativeApp {
+                // Let iOS resolve the HTTPS universal link and honor the user's app preference.
+                // If no app handles it, keep the existing in-app browser fallback.
+                UIApplication.shared.open(url, options: [.universalLinksOnly: true]) { opened in
+                    if !opened { isShowingPage = true }
+                }
+            } else {
+                isShowingPage = true
+            }
         } label: {
-            Text("View on TMDB")
+            Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 8)
+                .frame(minHeight: 44)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

@@ -61,6 +61,8 @@ struct MediaDetailView: View {
     /// Dominant color of the header artwork, reported up by `HeaderImageView` so the sheet
     /// background can wash the same tint over the top — see `HeaderImageView.onTintChange`.
     @State private var heroTint: DominantTint?
+    /// Fetched with details and cached by TMDBService, without persisting a mapping table.
+    @State private var imdbURL: URL?
     /// Display-only season scores from the existing show detail response.
     @State private var seasonRatings: [Int: Double] = [:]
     /// When this device last changed watched state from this sheet. `SeasonChecklistCard` uses it
@@ -73,6 +75,16 @@ struct MediaDetailView: View {
         guard let media = listItem.media else { return nil }
         let type = listItem.tvShow != nil ? "tv" : "movie"
         return URL(string: "https://www.themoviedb.org/\(type)/\(media.id)")
+    }
+
+    @ViewBuilder
+    private var referenceLinks: some View {
+        if let tmdbURL {
+            DetailReferenceLink(title: "View on TMDB", url: tmdbURL)
+        }
+        if let imdbURL {
+            DetailReferenceLink(title: "View on IMDb", url: imdbURL, prefersNativeApp: true)
+        }
     }
 
     private var allNetworks: [Network] {
@@ -212,9 +224,11 @@ struct MediaDetailView: View {
                             transitionIDPrefix: "similar"
                         )
 
-                        if let tmdbURL {
-                            TMDBFooterLink(url: tmdbURL)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 16) { referenceLinks }
+                            VStack(spacing: 0) { referenceLinks }
                         }
+                        .frame(maxWidth: .infinity)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 16)
@@ -378,6 +392,7 @@ struct MediaDetailView: View {
                     currentKey: MediaIDKey.make(.tvShow, id),
                     existingIDs: existingIDs
                 )
+                imdbURL = detail.externalIds?.imdbURL
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
             } else if let movie = listItem.movie {
                 let detail = try await service.getMovieDetails(id: id)
@@ -400,6 +415,7 @@ struct MediaDetailView: View {
                     currentKey: MediaIDKey.make(.movie, id),
                     existingIDs: existingIDs
                 )
+                imdbURL = detail.externalIds?.imdbURL
                 trailerKey = Self.bestTrailerKey(from: detail.videos)
 
                 if let collection = detail.belongsToCollection {

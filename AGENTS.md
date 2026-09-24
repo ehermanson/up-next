@@ -123,6 +123,7 @@ Things you can't derive from reading one file. Each points at the code that expl
 - `ListItem.WatchState` powers the Watched-move Undo; it restores viewing fields only.
 - Collections have their **own** watched state (`CustomListItem.watchedAt`) and never touch a library `ListItem`. `CustomListViewModel.changeToken` must be read by anything deriving membership/sections from collection items.
 - Episode data is read-only and never persisted.
+- Detail footers link to TMDB and, when available, IMDb. `external_ids` is appended to full detail requests; the IMDb URL is display-only state, not a Core Data attribute. IMDb tries a universal link to the native app first, falling back to the in-app browser; TMDB opens in the in-app browser.
 
 ### Networking / TMDB (see `TMDBService.swift`)
 - Provider variants fold onto a canonical name **and id** (`alias(for:)`, `canonicalIDsByName`); aggregators are dropped everywhere; storefronts only from the grid. Originating channels that aren't providers are stored with category `"network"` and ignored by every "on my services" check.

@@ -71,12 +71,14 @@ struct TMDBTVShowDetail: Codable {
     let networks: [TMDBNetwork]?
     let seasons: [TMDBSeason]?
     let watchProviders: TMDBWatchProvidersResponse?
+    let externalIds: TMDBExternalIDs?
 
     enum CodingKeys: String, CodingKey {
         case id, name, overview, posterPath, backdropPath, firstAirDate, voteAverage
         case numberOfSeasons, numberOfEpisodes, episodeRunTime, nextEpisodeToAir, status
         case genres, credits, contentRatings, similar, recommendations, videos
         case networks, seasons
+        case externalIds
         case watchProviders = "watch/providers"
     }
 }
@@ -157,11 +159,13 @@ struct TMDBMovieDetail: Codable {
     let videos: TMDBVideosResponse?
     let belongsToCollection: TMDBBelongsToCollection?
     let watchProviders: TMDBWatchProvidersResponse?
+    let externalIds: TMDBExternalIDs?
 
     enum CodingKeys: String, CodingKey {
         case id, title, overview, posterPath, backdropPath, releaseDate, voteAverage
         case runtime, genres, credits, releaseDates, similar, recommendations, videos
         case belongsToCollection
+        case externalIds
         case watchProviders = "watch/providers"
     }
 }
@@ -317,4 +321,16 @@ nonisolated struct TMDBWatchProviderRegion: Codable, Identifiable, Sendable, Has
     let nativeName: String
 
     var id: String { iso31661 }
+}
+
+/// Display-only IDs appended to detail responses; no Core Data / CloudKit persistence.
+struct TMDBExternalIDs: Codable {
+    let imdbId: String?
+
+    var imdbURL: URL? {
+        guard let imdbId,
+              imdbId.range(of: #"^tt[0-9]+$"#, options: .regularExpression) != nil
+        else { return nil }
+        return URL(string: "https://www.imdb.com/title/\(imdbId)/")
+    }
 }

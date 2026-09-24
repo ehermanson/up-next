@@ -137,7 +137,7 @@ final class TMDBService {
         let endpoint = "/tv/\(id)"
         return try await performRequest(
             endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,content_ratings,videos,similar,recommendations,watch/providers")]
+            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,content_ratings,videos,similar,recommendations,watch/providers,external_ids")]
         )
     }
 
@@ -146,7 +146,7 @@ final class TMDBService {
         let endpoint = "/movie/\(id)"
         return try await performRequest(
             endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,release_dates,videos,similar,recommendations,watch/providers")]
+            queryItems: [URLQueryItem(name: "append_to_response", value: "credits,release_dates,videos,similar,recommendations,watch/providers,external_ids")]
         )
     }
 
