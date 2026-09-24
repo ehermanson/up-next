@@ -157,7 +157,7 @@ DEBUG builds accept `--screenshots` (`ScreenshotMode.swift`): in-memory non-Clou
 
 ## CI (Xcode Cloud)
 
-`ci_scripts/ci_post_clone.sh` writes `Info.plist` from `$TMDB_API_KEY` (required) / `$TYPESAFE_API_KEY` (optional) and sets the build number from `$CI_BUILD_NUMBER`. Distribution Preparation must be "App Store Connect". CloudKit schema deploy rule is under Core Data above.
+`ci_scripts/ci_post_clone.sh` writes `Info.plist` from the template plus `$TMDB_API_KEY` (required) / `$TYPESAFE_API_KEY` (optional) and sets the build number from `$CI_BUILD_NUMBER`. The template carries `ITSAppUsesNonExemptEncryption = false` (HTTPS only), which is what stops App Store Connect asking the export-compliance question on every build. Distribution Preparation must be "App Store Connect". CloudKit schema deploy rule is under Core Data above.
 
 ## Experiments
 
