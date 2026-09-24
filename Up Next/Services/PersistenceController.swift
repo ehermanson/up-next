@@ -883,6 +883,14 @@ final class PersistenceController {
         }
     }
 
+    /// "share …90AF4147" / "coredata zone" / "_defaultZone" — enough to tell the share zone apart.
+    private static func shortZoneName(_ zoneID: CKRecordZone.ID) -> String {
+        let name = zoneID.zoneName
+        if name.hasPrefix("com.apple.coredata.cloudkit.share.") { return "share …\(name.suffix(8))" }
+        if name == "com.apple.coredata.cloudkit.zone" { return "coredata zone" }
+        return name
+    }
+
     private static func describe(_ status: CKAccountStatus) -> String {
         switch status {
         case .available: "available"
@@ -1012,6 +1020,20 @@ final class PersistenceController {
         let records = container.records(for: ids)
         let acknowledged = records.values.filter { $0.recordChangeTag != nil }.count
         lines.append("Titles: \(ids.count) local, \(records.count) mirrored, \(acknowledged) server-acknowledged")
+        // Collections hang off the root directly rather than through a MediaList, so they get
+        // their own line — including *which zone* each record went to. A collection mirrored to
+        // `com.apple.coredata.cloudkit.zone` instead of the share zone is invisible to the
+        // participant even though it's server-acknowledged.
+        for (entity, label) in [("CustomList", "Collections"), ("CustomListItem", "Collection entries")] {
+            let request = NSFetchRequest<NSManagedObjectID>(entityName: entity)
+            request.resultType = .managedObjectIDResultType
+            let ids = (try? viewContext.fetch(request)) ?? []
+            let records = container.records(for: ids)
+            let acknowledged = records.values.filter { $0.recordChangeTag != nil }.count
+            let zones = Dictionary(grouping: records.values, by: { Self.shortZoneName($0.recordID.zoneID) })
+                .map { "\($0.value.count)× \($0.key)" }.sorted().joined(separator: ", ")
+            lines.append("\(label): \(ids.count) local, \(records.count) mirrored, \(acknowledged) server-acknowledged\(zones.isEmpty ? "" : " (\(zones))")")
+        }
         // The active store: a participant's whole graph lives in the shared store, and the first
         // participant check read "0 root(s), 0 lists" because this asked the private one.
         func count(_ entity: String) -> Int {
@@ -1053,11 +1075,21 @@ final class PersistenceController {
             let zones = try await ck.privateCloudDatabase.allRecordZones()
             for zone in zones where zone.zoneID.zoneName.hasPrefix("com.apple.coredata.cloudkit.share.") {
                 do {
-                    let changes = try await ck.privateCloudDatabase.recordZoneChanges(inZoneWith: zone.zoneID, since: nil)
-                    let types = Dictionary(grouping: changes.modificationResultsByID.values.compactMap { try? $0.get().record.recordType }, by: { $0 })
+                    // Paged: the first page alone came back as nothing but CDMR (many-to-many
+                    // join) records and hid every entity that mattered.
+                    var recordTypes: [String] = []
+                    var token: CKServerChangeToken?
+                    var moreComing = true
+                    while moreComing {
+                        let changes = try await ck.privateCloudDatabase.recordZoneChanges(inZoneWith: zone.zoneID, since: token, desiredKeys: [])
+                        recordTypes += changes.modificationResultsByID.values.compactMap { try? $0.get().record.recordType }
+                        token = changes.changeToken
+                        moreComing = changes.moreComing
+                    }
+                    let types = Dictionary(grouping: recordTypes, by: { $0 })
                         .map { "\($0.value.count)× \($0.key)" }.sorted().joined(separator: ", ")
                     let isLive = existingShare()?.recordID.zoneID == zone.zoneID
-                    lines.append("\(isLive ? "Live share zone" : "Stale share zone") \(zone.zoneID.zoneName.suffix(8)): \(changes.modificationResultsByID.count) records (\(types.isEmpty ? "none" : types))")
+                    lines.append("\(isLive ? "Live share zone" : "Stale share zone") \(zone.zoneID.zoneName.suffix(8)): \(recordTypes.count) records (\(types.isEmpty ? "none" : types))")
                 } catch {
                     lines.append("Share zone \(zone.zoneID.zoneName.suffix(8)): \(Self.describeSyncError(error))")
                 }
