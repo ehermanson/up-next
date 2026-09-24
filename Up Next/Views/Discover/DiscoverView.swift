@@ -51,6 +51,7 @@ struct DiscoverView: View {
             }
             .background(AppBackground(drifts: true))
             .navigationTitle("Discover")
+            .tabRootNavigationBar()
             .searchable(text: $viewModel.searchQuery, prompt: "Search movies & TV shows")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

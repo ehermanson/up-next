@@ -170,6 +170,7 @@ struct MediaListView: View {
             .background(AppBackground(drifts: true))
             .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.large)
+            .tabRootNavigationBar()
             .toolbar {
                 if isEditingOrder {
                     ToolbarItem(placement: .topBarTrailing) {

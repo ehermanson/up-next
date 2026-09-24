@@ -74,6 +74,7 @@ struct MyListsView: View {
                 }
             }
             .navigationTitle("Collections")
+            .tabRootNavigationBar()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button("New Collection", systemImage: "plus") {

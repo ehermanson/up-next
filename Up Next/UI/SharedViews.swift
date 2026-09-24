@@ -355,6 +355,26 @@ extension View {
     }
 }
 
+// MARK: - Tab Root Navigation Bar
+
+extension View {
+    /// Tab roots keep the navigation bar transparent once the large title scrolls away. iOS's
+    /// default material band there put a flat slab under the glass toolbar buttons and flattened
+    /// their Liquid Glass; only the system's soft scroll-edge blur is left.
+    ///
+    /// The collapsed inline title is blanked too: iOS centers it unless the trailing items crowd
+    /// it, then moves it leading — so "TV Shows" (beside "+ Edit") sat left while "Movies" and
+    /// "Discover" sat centered. The large title at rest is unaffected.
+    func tabRootNavigationBar() -> some View {
+        toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Color.clear.frame(width: 1, height: 1)
+                }
+            }
+    }
+}
+
 // MARK: - Previews
 
 #Preview("Star Ratings") {
