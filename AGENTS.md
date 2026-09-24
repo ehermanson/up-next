@@ -10,7 +10,7 @@ Rules and map for working in this repo. Rationale for *why* code is shaped the w
 - **Concurrency**: `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` + `SWIFT_APPROACHABLE_CONCURRENCY = YES` — everything unannotated is `@MainActor`. That's why `TMDBService`'s caches need no locking and why `nonisolated` markers in models/services are deliberate. `nonisolated async` still runs on the caller's actor; use `@concurrent` for real background work.
 - **Logging**: `AppLog.<category>` (`Services/AppLog.swift`). No `print`.
 - **Persistence**: Core Data via `NSPersistentCloudKitContainer`, two stores (private + shared scope), container `iCloud.com.erichermanson.upnext.shared`.
-- **Tests**: no Xcode test target. Python unittest for the collection-recommendation harness; `swiftc` runtime checks in `experiments/*/RuntimeChecks.swift` (see their READMEs).
+- **Tests**: no test target.
 
 ## Setup
 
@@ -70,13 +70,10 @@ Up Next/
 ├── UI/              DesignTokens (radii, spacing, surfaces, Chip), AppBackground (mesh), Motion (springs, checkmarkPop), SectionHeader, MediaCardView, NetworkLogosView, CachedAsyncImage, ImageColor (dominantTint), SharedViews (toast, EmptyStateView, StarRatingLabel, AirDateFormat), PosterMosaicView, SettingsToolbarButton, SFSymbolPickerGrid, CloudSharingView, SafariView, TMDBAttributionView
 ├── Up Next.xcdatamodeld/   Versions: `Up Next 2.1-activity` (current), `2.0-services`, `2.0-release`, `2.0-dev` + older, kept for migration
 ├── AppIcon.icon/           Icon Composer icon (wins on iOS 26); Assets.xcassets has the flat fallback + AccentColor + BackgroundBase
-├── Info.plist.template, Up Next.entitlements, PrivacyInfo.xcprivacy
-└── docs/v2-shared-library-plan.md
+└── Info.plist.template, Up Next.entitlements, PrivacyInfo.xcprivacy
 
 ci_scripts/ci_post_clone.sh        Xcode Cloud: writes Info.plist from env, sets build number
-experiments/collection_recommendations/   Python eval harness for Jev (README, findings.md)
-experiments/legacy_import/         swiftc runtime check for LegacyStoreReader
-AppStore/                          Store copy + screenshots
+AppStore/screenshots/              App Store screenshots
 ```
 
 ## Rules and traps
@@ -158,7 +155,3 @@ DEBUG builds accept `--screenshots` (`ScreenshotMode.swift`): in-memory non-Clou
 ## CI (Xcode Cloud)
 
 `ci_scripts/ci_post_clone.sh` writes `Info.plist` from the template plus `$TMDB_API_KEY` (required) / `$TYPESAFE_API_KEY` (optional) and sets the build number from `$CI_BUILD_NUMBER`. The template carries `ITSAppUsesNonExemptEncryption = false` (HTTPS only), which is what stops App Store Connect asking the export-compliance question on every build. Distribution Preparation must be "App Store Connect". CloudKit schema deploy rule is under Core Data above.
-
-## Experiments
-
-`experiments/collection_recommendations/` — standalone Python harness for Jev ranking (`evaluate.py prepare|run|report --batch-size 6`; tests via `python3 -m unittest discover -s experiments/collection_recommendations -p "test_*.py"`). Credentials from `.env.jev.local` (gitignored). Results and limitations in its `findings.md`. Never touches real library data.

@@ -39,8 +39,7 @@ struct LibraryShareItem: Transferable {
 
 /// The sharing block pushed from `SettingsView`'s Sharing row. Exactly one `CKShare` ever exists,
 /// rooted at the app's single `WatchListGroup` — this renders whichever state applies: iCloud off,
-/// owner-unshared, owner-shared (including a pending invite), participant, or joining (see
-/// `docs/v2-shared-library-plan.md`, "Sharing (Task F)").
+/// owner-unshared, owner-shared (including a pending invite), participant, or joining.
 struct SharingSection: View {
     @Environment(\.scenePhase) private var scenePhase
 

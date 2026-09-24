@@ -2,8 +2,7 @@ import Foundation
 import SQLite3
 
 /// Media namespace of a legacy title. Deliberately its own type rather than the app's `MediaType`:
-/// this file is pure Foundation + SQLite so it can be compiled and exercised on its own (see
-/// `experiments/legacy_import/RuntimeChecks.swift`).
+/// this file is pure Foundation + SQLite so it can be compiled and exercised on its own.
 nonisolated enum LegacyMediaType: String, Sendable {
     case tvShow
     case movie

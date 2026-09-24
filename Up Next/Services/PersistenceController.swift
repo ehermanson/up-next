@@ -4,8 +4,7 @@ import CoreData
 import Foundation
 import OSLog
 
-/// Owns the single `NSPersistentCloudKitContainer` for the shared-library store (see
-/// `docs/v2-shared-library-plan.md`). Two stores live under one container: `private.sqlite`
+/// Owns the single `NSPersistentCloudKitContainer` for the shared-library store. Two stores live under one container: `private.sqlite`
 /// (this device's private CloudKit database) and `shared.sqlite` (a window into a share zone
 /// this device has accepted, if any). Exactly one `WatchListGroup` is the share root; the "a
 /// shared group wins" role rule decides whether this device reads/writes the shared store (a
