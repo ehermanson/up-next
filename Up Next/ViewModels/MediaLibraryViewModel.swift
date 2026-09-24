@@ -772,7 +772,7 @@ final class MediaLibraryViewModel {
         // Seed a "Christmas Stuff" custom list. `group:` goes through the init so the list joins
         // the group's context and store up front — setting it afterwards on a context-less object
         // is a Core Data exception (see `inferredContext`).
-        let christmasList = CustomList(name: "Christmas Stuff", iconName: "gift", group: persistence.group)
+        let christmasList = CustomList(name: "Christmas Stuff", group: persistence.group)
         persistence.insert(christmasList)
 
         let christmasMovieIDs = [10719, 12540, 771, 13675]  // Elf, Four Christmases, Home Alone, Rudolph

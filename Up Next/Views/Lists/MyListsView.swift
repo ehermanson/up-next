@@ -170,19 +170,12 @@ private struct MyListsRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                icon
+                PosterMosaicView(posterURLs: mosaicItems.map { $0.media?.thumbnailURL }, size: 64)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 4) {
-                        if !mosaicItems.isEmpty {
-                            Image(systemName: list.iconName)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(list.name)
-                            .font(.body)
-                            .fontWeight(.medium)
-                    }
+                    Text(list.name)
+                        .font(.body)
+                        .fontWeight(.medium)
                     Text("\(itemCount) title\(itemCount == 1 ? "" : "s")")
                         .font(.caption)
                         .fontDesign(.rounded)
@@ -201,20 +194,5 @@ private struct MyListsRow: View {
             .padding(.horizontal, 14)
         }
         .buttonStyle(.plain)
-    }
-
-    /// Empty collection keeps the original SF-symbol tile so it still has an identity; the
-    /// collection's own icon only moves into the small inline badge once a mosaic replaces it.
-    @ViewBuilder
-    private var icon: some View {
-        let posterURLs = mosaicItems.map { $0.media?.thumbnailURL }
-        if posterURLs.isEmpty {
-            Image(systemName: list.iconName)
-                .font(.title2)
-                .frame(width: 64, height: 64)
-                .cellSurface(tint: .accentColor)
-        } else {
-            PosterMosaicView(posterURLs: posterURLs, size: 64)
-        }
     }
 }

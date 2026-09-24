@@ -55,7 +55,7 @@ final class CustomListViewModel {
         changeToken += 1
     }
 
-    func createList(name: String, iconName: String) {
+    func createList(name: String) {
         // No root while a join is still importing: a list created now would be an orphan in the
         // active store, unreachable from the share and invisible to the partner. `ContentView`
         // shows the joining placeholder instead of the tabs in that state, so this is only a guard.
@@ -64,7 +64,7 @@ final class CustomListViewModel {
         // list joins the group's context/store up front — relating a context-less object to a
         // stored one raises a Core Data exception. `persistence.insert` is a harmless no-op when
         // that succeeded.
-        let list = CustomList(name: name, iconName: iconName, group: persistence.group)
+        let list = CustomList(name: name, group: persistence.group)
         persistence.insert(list)
         persistence.recordActivity(.collectionCreated, title: name)
         persistence.save()
@@ -93,13 +93,10 @@ final class CustomListViewModel {
         changeToken += 1
     }
 
-    func updateList(_ list: CustomList, name: String, iconName: String) {
-        // An icon change alone isn't worth telling anyone about.
-        if list.name != name {
-            persistence?.recordActivity(.collectionRenamed, title: name)
-        }
+    func renameList(_ list: CustomList, to name: String) {
+        guard list.name != name else { return }
+        persistence?.recordActivity(.collectionRenamed, title: name)
         list.name = name
-        list.iconName = iconName
         persistence?.save()
         changeToken += 1
     }

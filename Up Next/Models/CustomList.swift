@@ -5,7 +5,8 @@ import CoreData
 final class CustomList: NSManagedObject, Identifiable {
     @NSManaged var idRaw: UUID?
     @NSManaged var name: String
-    @NSManaged var iconName: String
+    // The model still carries `iconName` (defaulted, unread): collections are identified by their
+    // poster mosaic now, and dropping a shipped attribute would need a model version for nothing.
     @NSManaged var createdAtRaw: Date?
     @NSManaged var itemSet: NSSet?
 
@@ -37,7 +38,6 @@ final class CustomList: NSManagedObject, Identifiable {
     convenience init(
         id: UUID = UUID(),
         name: String = "",
-        iconName: String = "list.bullet",
         createdAt: Date = Date.now,
         items: [CustomListItem]? = nil,
         group: WatchListGroup? = nil,
@@ -48,7 +48,6 @@ final class CustomList: NSManagedObject, Identifiable {
         self.init(entity: managedEntity(named: "CustomList"), insertInto: inferredContext(context, relating: [group]))
         self.id = id
         self.name = name
-        self.iconName = iconName
         self.createdAt = createdAt
         self.items = items
         self.group = group

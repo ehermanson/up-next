@@ -42,7 +42,7 @@ struct CustomListDetailView: View {
                     VStack(spacing: 0) {
                         header
                             .padding(.horizontal, DesignTokens.Spacing.screenInset)
-                        EmptyStateView(icon: list.iconName, title: "No Titles Yet") {
+                        EmptyStateView(icon: "popcorn", title: "No Titles Yet") {
                             Button {
                                 showingAddItems = true
                             } label: {
@@ -133,15 +133,18 @@ struct CustomListDetailView: View {
 
     // MARK: - Header
 
-    /// Replaces the nav-bar title's subtitle: the collection's icon and a "N titles · M watched"
-    /// caption. The name itself now lives in `.navigationTitle` — showing it here too would repeat
-    /// it under the nav bar's inline title.
+    /// Replaces the nav-bar title's subtitle: the same poster mosaic as the collection's row and a
+    /// "N titles · M watched" caption. The name itself now lives in `.navigationTitle` — showing it
+    /// here too would repeat it under the nav bar's inline title.
     private var header: some View {
         HStack(spacing: 14) {
-            Image(systemName: list.iconName)
-                .font(.title2)
-                .frame(width: 56, height: 56)
-                .cellSurface(tint: .accentColor)
+            PosterMosaicView(
+                posterURLs: viewModel.visibleItems(in: list)
+                    .sorted { $0.addedAt < $1.addedAt }
+                    .prefix(4)
+                    .map { $0.media?.thumbnailURL },
+                size: 56
+            )
 
             Text(itemSummary)
                 .font(.subheadline)

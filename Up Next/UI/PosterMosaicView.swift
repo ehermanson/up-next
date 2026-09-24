@@ -2,8 +2,8 @@ import SwiftUI
 
 /// A 2×2 poster grid (Apple Music playlist style) summarizing a collection's first four items.
 /// Falls back gracefully as the collection fills up: one poster fills the whole square, two or
-/// three fill the remaining cells with a neutral placeholder, and the caller decides what to show
-/// for zero (this view assumes at least one URL).
+/// three fill the remaining cells with a neutral placeholder, and zero is four placeholder cells —
+/// an empty collection keeps the same shape as a full one.
 struct PosterMosaicView: View {
     let posterURLs: [URL?]
     var size: CGFloat = 64

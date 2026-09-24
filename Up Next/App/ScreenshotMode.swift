@@ -93,13 +93,12 @@ enum ScreenshotMode {
 
     private struct CollectionSeed {
         let name: String
-        let iconName: String
         let movieIDs: [Int]
     }
 
     private static let collectionSeeds: [CollectionSeed] = [
-        CollectionSeed(name: "Christmas", iconName: "gift.fill", movieIDs: [10719, 771, 508, 1581, 508965]),
-        CollectionSeed(name: "Halloween", iconName: "moon.stars.fill", movieIDs: [9479, 4011, 14836]),
+        CollectionSeed(name: "Christmas", movieIDs: [10719, 771, 508, 1581, 508965]),
+        CollectionSeed(name: "Halloween", movieIDs: [9479, 4011, 14836]),
     ]
 
     /// Fetches the curated titles above from TMDB and adds them through `library`/`lists`' normal
@@ -159,7 +158,7 @@ enum ScreenshotMode {
 
         for collectionSeed in collectionSeeds {
             if lists.customLists.first(where: { $0.name == collectionSeed.name }) == nil {
-                lists.createList(name: collectionSeed.name, iconName: collectionSeed.iconName)
+                lists.createList(name: collectionSeed.name)
             }
             guard let list = lists.customLists.first(where: { $0.name == collectionSeed.name }) else { continue }
             for movieID in collectionSeed.movieIDs {

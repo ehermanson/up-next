@@ -57,7 +57,6 @@ nonisolated struct LegacyLibrary: Sendable {
 
     struct Collection: Sendable {
         let name: String
-        let iconName: String
         let createdAt: Date
         let entries: [CollectionEntry]
     }
@@ -294,7 +293,7 @@ nonisolated enum LegacyStoreReader {
 
         var collections: [LegacyLibrary.Collection] = []
         let lists = try Statement(
-            db: db, sql: "SELECT Z_PK, ZNAME, ZICONNAME, ZCREATEDAT FROM ZCUSTOMLIST"
+            db: db, sql: "SELECT Z_PK, ZNAME, ZCREATEDAT FROM ZCUSTOMLIST"
         )
         while lists.step() {
             guard let name = lists.text(1), !name.isEmpty else {
@@ -304,8 +303,7 @@ nonisolated enum LegacyStoreReader {
             let members = (entries[lists.int(0)] ?? []).sorted { $0.addedAt < $1.addedAt }
             collections.append(LegacyLibrary.Collection(
                 name: name,
-                iconName: lists.text(2) ?? "list.bullet",
-                createdAt: lists.date(3) ?? .distantPast,
+                createdAt: lists.date(2) ?? .distantPast,
                 entries: members
             ))
         }

@@ -53,7 +53,7 @@ Up Next/
 │   ├── Detail/      MediaDetailView (shell), PrimaryAddPill (status pill + ellipsis menu), HeaderImageView, MediaDetailSections, MediaDetailCards (SeasonChecklistCard, UserRatingCard, …), MediaDetailMetadata (DetailProviderRow, AddedByCaption), MediaDetailSimilar (More Like This, MediaIDKey), SeasonRatingsSnapshot, SeasonEpisodesView, MediaDetailView+Previews
 │   ├── Search/      WatchlistSearchView (add sheet), RecommendationEngine, CollectionRecommendationEngine, SearchComponents (rows, shimmer, MediaType)
 │   ├── Discover/    DiscoverView
-│   ├── Lists/       MyListsView, CustomListDetailView, CollectionSuggestionsView, CreateListView
+│   ├── Lists/       MyListsView, CustomListDetailView, CollectionSuggestionsView, CreateListView (name + ideas; no icon — collections are identified by their poster mosaic)
 │   └── Settings/    SettingsView (root), ActivityView (shared activity log), ProviderSettingsView (+ RegionPickerView), SharingSettingsView, LegacyImportView, SyncActivityView (About → iCloud Sync, unlocked by long-pressing the version: log, Check, Repair, Reset, Copy Core Data Log)
 ├── Services/
 │   ├── PersistenceController.swift  Container, role rule, remote-change history, sharing API, store-load failure, history pruning
@@ -67,7 +67,7 @@ Up Next/
 │   ├── LegacyStoreReader.swift / LegacyImporter.swift   1.x SQLite reader + one-time importer
 │   ├── AppAppearance.swift          Dark (default) / Light / System
 │   └── AppLog.swift
-├── UI/              DesignTokens (radii, spacing, surfaces, Chip), AppBackground (mesh), Motion (springs, checkmarkPop), SectionHeader, MediaCardView, NetworkLogosView, CachedAsyncImage, ImageColor (dominantTint), SharedViews (toast, EmptyStateView, StarRatingLabel, AirDateFormat), PosterMosaicView, SettingsToolbarButton, SFSymbolPickerGrid, CloudSharingView, SafariView, TMDBAttributionView
+├── UI/              DesignTokens (radii, spacing, surfaces, Chip), AppBackground (mesh), Motion (springs, checkmarkPop), SectionHeader, MediaCardView, NetworkLogosView, CachedAsyncImage, ImageColor (dominantTint), SharedViews (toast, EmptyStateView, StarRatingLabel, AirDateFormat, FlowLayout, tabRootNavigationBar), PosterMosaicView, SettingsToolbarButton, CloudSharingView, SafariView, TMDBAttributionView
 ├── Up Next.xcdatamodeld/   Versions: `Up Next 2.1-activity` (current), `2.0-services`, `2.0-release`, `2.0-dev` + older, kept for migration
 ├── AppIcon.icon/           Icon Composer icon (wins on iOS 26); Assets.xcassets has the flat fallback + AccentColor + BackgroundBase
 └── Info.plist.template, Up Next.entitlements, PrivacyInfo.xcprivacy

@@ -250,7 +250,7 @@ final class LegacyImporter {
         }) {
             return existing
         }
-        lists.createList(name: collection.name, iconName: collection.iconName)
+        lists.createList(name: collection.name)
         // `createList` is a no-op while the group is unresolved; never fall through to some other
         // list that happens to be last.
         guard let created = lists.customLists.last, created.name == collection.name else { return nil }
