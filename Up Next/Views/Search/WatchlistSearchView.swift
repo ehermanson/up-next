@@ -148,7 +148,7 @@ struct WatchlistSearchView: View {
         switch context {
         case .tvShows: return "Add TV Shows"
         case .movies: return "Add Movies"
-        default: return "Add to Watchlist"
+        default: return "Add to Up Next"
         }
     }
 
