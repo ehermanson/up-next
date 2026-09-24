@@ -35,22 +35,21 @@ enum DesignTokens {
         static func backgroundBase(for scheme: ColorScheme) -> Color {
             scheme == .dark
                 ? Color(red: 0.09, green: 0.06, blue: 0.20)
-                : Color(red: 0.87, green: 0.84, blue: 0.98)
+                : Color(red: 0.95, green: 0.95, blue: 0.97)
         }
 
-        /// Light-mode content surface. Dark mode uses `.fill.tertiary` (white-alpha over purple
-        /// reads as frosted lavender); on a light mesh that same fill is black-alpha and goes flat
-        /// gray, so light surfaces are translucent white that lets the mesh glow through. Opaque
-        /// enough (0.82) that a card is a clear step up from the lilac field — at 0.65 it landed
-        /// within a few percent of the page and the whole screen read as one wash.
-        static let lightSurface = Color.white.opacity(0.82)
-        /// Small light-mode surface (chips, cells, badges): a touch more translucent than a card so
-        /// a chip sitting *on* a card still reads as a layer, but well clear of the bare mesh.
-        static let lightSmallSurface = Color.white.opacity(0.72)
-        /// Hairline that ties light-mode cards to the palette.
-        static let lightSurfaceBorder = Color.accentColor.opacity(0.14)
-        /// Faint accent wash over light chips/cells so they read tinted rather than gray.
-        static let lightSurfaceWash = Color.accentColor.opacity(0.06)
+        /// Light-mode card surface: plain white on a near-neutral page, the standard iOS grouped
+        /// idiom. Light mode is deliberately *not* a pale version of dark's purple — two earlier
+        /// passes (opaque white cards with a shadow on a saturated lilac mesh, then accent-tinted
+        /// cards on a near-white lilac page) both read as "everything is lavender" to someone who
+        /// lives in light UIs. The brand lives in the accent (tabs, buttons, progress) and the
+        /// mesh keeps only an imperceptible cool/warm drift; small surfaces use `.fill.tertiary`
+        /// in both schemes.
+        static let lightSurface = Color.white
+        /// Neutral hairline on light cards: white on grouped gray alone is soft. 0.05 rendered
+        /// within two points of the page's own gray and vanished; 0.10 is the least that reads
+        /// as an edge.
+        static let lightSurfaceBorder = Color.primary.opacity(0.10)
         /// Outline for a light-mode control drawn as a shape (the season checkmark ring, the
         /// unselected progress dashes) — `.fill.secondary` is black-alpha and vanishes on lilac.
         static let lightControlBorder = Color.primary.opacity(0.22)
@@ -103,8 +102,8 @@ private struct BorderedTint: ViewModifier {
     }
 }
 
-/// Card/row surface. Dark: `.fill.tertiary`. Light: translucent white with a hairline accent
-/// border and a soft drop shadow so cards float over the mesh instead of sitting flat on it.
+/// Card/row surface. Dark: `.fill.tertiary`. Light: white with a neutral hairline, no shadow —
+/// the white-on-grouped-gray relationship of a system grouped list, plus an edge.
 private struct CardSurface: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
     let cornerRadius: CGFloat
@@ -118,35 +117,25 @@ private struct CardSurface: ViewModifier {
                 shape
                     .fill(DesignTokens.Colors.lightSurface)
                     .overlay(shape.strokeBorder(DesignTokens.Colors.lightSurfaceBorder))
-                    .shadow(color: .black.opacity(0.07), radius: 10, y: 4)
             }
         }
     }
 }
 
-/// Cell/chip surface. Dark: `.fill.tertiary`. Light: translucent white with a faint accent wash
-/// (no border or shadow — too noisy at this size). `tint` overlays a selected state in both.
+/// Cell/chip surface: `.fill.tertiary` in both schemes (white-alpha on dark purple, black-alpha
+/// on white — each the system's own step). `tint` overlays a selected state.
 private struct SmallSurface<S: InsettableShape>: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
     let shape: S
     let tint: Color?
 
     func body(content: Content) -> some View {
         content.background {
-            Group {
-                if colorScheme == .dark {
-                    shape.fill(.fill.tertiary)
-                } else {
-                    shape
-                        .fill(DesignTokens.Colors.lightSmallSurface)
-                        .overlay(shape.fill(DesignTokens.Colors.lightSurfaceWash))
+            shape.fill(.fill.tertiary)
+                .overlay {
+                    if let tint {
+                        shape.fill(tint.opacity(0.25))
+                    }
                 }
-            }
-            .overlay {
-                if let tint {
-                    shape.fill(tint.opacity(0.25))
-                }
-            }
         }
     }
 }

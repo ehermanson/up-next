@@ -45,23 +45,22 @@ struct AppBackground: View {
                 // Slightly warmer corner so the mesh doesn't read as flat purple.
                 Color(red: 0.22, green: 0.12, blue: 0.15),
             ] : [
-                // Same structure as dark: a saturated centre, a cool corner and a warm corner.
-                // Near-white stops collapse into "off-white" and leave white-alpha surfaces,
-                // chips and the system search field with nothing to stand against, so the
-                // field sits a clear step below white (~L 0.80–0.90) with real chroma — the
-                // cards then read as white *on* lilac rather than lilac on lilac.
-                Color(red: 0.87, green: 0.83, blue: 0.98),
-                Color(red: 0.80, green: 0.75, blue: 0.97),
-                Color(red: 0.90, green: 0.86, blue: 0.99),
+                // Near-neutral grouped-background gray (~#F2F2F7) with a cool/warm drift of a
+                // point or two — enough for the mesh to breathe, not enough to read as a color.
+                // Any real chroma here made the whole light design "lavender" (see
+                // `DesignTokens.Colors.lightSurface`).
+                Color(red: 0.95, green: 0.95, blue: 0.97),
+                Color(red: 0.94, green: 0.94, blue: 0.97),
+                Color(red: 0.96, green: 0.96, blue: 0.98),
 
-                Color(red: 0.84, green: 0.80, blue: 0.98),
-                Color(red: 0.76, green: 0.70, blue: 0.96),
-                Color(red: 0.88, green: 0.84, blue: 0.99),
+                Color(red: 0.95, green: 0.95, blue: 0.97),
+                Color(red: 0.94, green: 0.94, blue: 0.96),
+                Color(red: 0.96, green: 0.96, blue: 0.98),
 
-                Color(red: 0.83, green: 0.88, blue: 1.00),
+                Color(red: 0.94, green: 0.95, blue: 0.98),
                 DesignTokens.Colors.backgroundBase,
-                // Warm rose corner, the light counterpart of dark's warm stop.
-                Color(red: 0.99, green: 0.85, blue: 0.89),
+                // Warm corner, the light counterpart of dark's warm stop.
+                Color(red: 0.97, green: 0.95, blue: 0.95),
             ]
         )
         .ignoresSafeArea()

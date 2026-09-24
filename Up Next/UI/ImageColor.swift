@@ -13,16 +13,16 @@ nonisolated struct DominantTint: Equatable, Sendable {
     /// - Dark: saturation clamped up so a washed-out poster still reads as a color, brightness
     ///   held in a narrow deep band so a bright poster doesn't blow out the background and a neon
     ///   one doesn't scream.
-    /// - Light: a pastel of the same hue — a deep color on a light mesh goes muddy, a pastel can
-    ///   be washed over it at real opacity. Saturation is held a notch above the mesh's own so the
-    ///   wash reads as *that title's* color rather than more lilac, and brightness is capped just
-    ///   under white so it never goes lighter than the page it sits on.
+    /// - Light: a pastel of the same hue — a deep color on a light page goes muddy, a pastel can
+    ///   be washed over it at real opacity. Saturation is kept low so the wash stays a hint of
+    ///   *that title's* color on a neutral page rather than a colored band, and brightness is
+    ///   capped just under white so it never goes lighter than the page it sits on.
     func color(for scheme: ColorScheme) -> Color {
         switch scheme {
         case .dark:
             Color(hue: hue, saturation: max(saturation, 0.55), brightness: min(max(brightness, 0.38), 0.55))
         default:
-            Color(hue: hue, saturation: min(max(saturation, 0.40), 0.60), brightness: min(max(brightness, 0.84), 0.93))
+            Color(hue: hue, saturation: min(max(saturation, 0.30), 0.45), brightness: min(max(brightness, 0.86), 0.94))
         }
     }
 }

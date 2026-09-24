@@ -369,8 +369,8 @@ struct SeasonChecklistCard: View {
 
     /// Dark keeps the soft treatment (a green tint + ring, green check — white-alpha fills read
     /// as frosted glass there). Light flips to a solid green disc with a white check: a 15% green
-    /// tint over a white card is invisible, and the unchecked ring's `.fill.secondary` is
-    /// black-alpha that vanishes on lilac, so it gets a real outline instead.
+    /// tint over a white card is invisible, and the unchecked ring's `.fill.secondary` is too
+    /// faint on a white card, so it gets a real outline instead.
     private var isLight: Bool { colorScheme == .light }
 
     private func watchedCircle(season: Int, isWatched: Bool, isAnnounced: Bool) -> some View {
@@ -379,7 +379,7 @@ struct SeasonChecklistCard: View {
                 .fill(
                     isWatched
                         ? AnyShapeStyle(isLight ? Color.green : Color.green.opacity(0.15))
-                        : (isLight ? AnyShapeStyle(DesignTokens.Colors.lightSmallSurface) : AnyShapeStyle(.fill.tertiary))
+                        : AnyShapeStyle(.fill.tertiary)
                 )
             Circle()
                 .strokeBorder(

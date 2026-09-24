@@ -24,24 +24,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
-/// Light-mode styling for the two system controls SwiftUI gives no styling hook for: the
-/// `.searchable` field and the segmented `Picker`. Both default to a black-alpha fill
-/// (`tertiarySystemFill`) which reads as flat gray on the lilac mesh — the one place the light
-/// design looked like a fallback. Registered through the *light* trait's appearance proxy only,
-/// so dark mode keeps the stock system look untouched.
+/// Light-mode styling for the `.searchable` field, which SwiftUI gives no styling hook for. Its
+/// default black-alpha fill (`tertiarySystemFill`) reads as a gray well on the grouped-gray page;
+/// a white capsule makes it one of the app's own card surfaces (`DesignTokens.Colors.lightSurface`),
+/// the way Settings' search field sits white on gray. The segmented `Picker` keeps the stock look —
+/// gray track, white selected segment — which is already the right relationship on this page.
+/// Registered through the *light* trait's appearance proxy only, so dark mode is untouched.
 enum LightModeControlAppearance {
     static func install() {
         let light = UITraitCollection(userInterfaceStyle: .light)
-
-        // Same translucent white as `DesignTokens.Colors.lightSmallSurface`, so the field reads
-        // as one of the app's own surfaces rather than a system well.
-        let surface = UIColor.white.withAlphaComponent(0.72)
         // `UISearchTextField.backgroundColor` is ignored by the iOS 26 search bar; the background
         // *image* is still honoured, so the field gets a resizable capsule in the surface color.
-        UISearchBar.appearance(for: light).setSearchFieldBackgroundImage(capsuleImage(surface), for: .normal)
-        // The segmented track; the selected segment stays the system's opaque white so the
-        // active tab still steps up from it.
-        UISegmentedControl.appearance(for: light).backgroundColor = surface
+        UISearchBar.appearance(for: light).setSearchFieldBackgroundImage(capsuleImage(.white), for: .normal)
     }
 
     /// A capsule the search bar stretches to the field's size. The caps are the field's own

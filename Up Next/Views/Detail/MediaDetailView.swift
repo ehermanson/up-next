@@ -250,7 +250,7 @@ struct MediaDetailView: View {
                     if let heroTint {
                         LinearGradient(
                             colors: [
-                                heroTint.color(for: colorScheme).opacity(colorScheme == .dark ? 0.55 : 0.7),
+                                heroTint.color(for: colorScheme).opacity(colorScheme == .dark ? 0.55 : 0.5),
                                 .clear,
                             ],
                             startPoint: .top,
