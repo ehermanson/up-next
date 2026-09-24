@@ -64,6 +64,7 @@ Up Next/
 │   ├── TMDBModels.swift             Codable TMDB types
 │   ├── SearchRanking.swift          Client-side re-rank of /search
 │   ├── JevRecommendationService.swift  TypeSafe/Jev scoring client with disk cache + TMDB fallback
+│   ├── CollectionIdeas.swift        Suggested collection names + the TMDB /discover query that seeds each while empty
 │   ├── LegacyStoreReader.swift / LegacyImporter.swift   1.x SQLite reader + one-time importer
 │   ├── AppAppearance.swift          Dark (default) / Light / System
 │   └── AppLog.swift
@@ -130,7 +131,7 @@ Things you can't derive from reading one file. Each points at the code that expl
 - Region = `ProviderSettings.effectiveRegion` (override → device → US), `nonisolated` so the service can read it off-main.
 - `RequestDeduplicator` caches responses; invalidate by path prefix, never wholesale.
 - Discover/search loads must run on a view-model-owned task (`runOwnedReload`), never directly on a SwiftUI `.task`/`.refreshable` — SwiftUI cancels those with no replacement and the shimmer never ends.
-- Search: `/search/tv` and `/search/movie` run concurrently; ranking is `SearchRanking` (title-match tier + capped popularity + votes). Recommendation scoring is in `RecommendationEngine`; collection suggestions in `CollectionRecommendationEngine` + `JevRecommendationService` (prompt changes must bump `promptVersion`).
+- Search: `/search/tv` and `/search/movie` run concurrently; ranking is `SearchRanking` (title-match tier + capped popularity + votes). Recommendation scoring is in `RecommendationEngine`; collection suggestions in `CollectionRecommendationEngine` + `JevRecommendationService` (prompt changes must bump `promptVersion`). An empty collection's starting pool is its `CollectionIdea` discover query when the name matches one, else a title search for the name.
 
 ### UI
 - **Exactly one scroll container stays mounted under `.searchable`** (Discover's `ScrollView`, the add sheet's `List`). Every loading/empty/error state is content *inside* it. Swapping the container makes the field jump and drop focus.

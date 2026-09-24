@@ -197,6 +197,7 @@ final class TMDBService {
     }
 
     func collectionMovies(name: String, seeds: [Int], excluding ids: Set<String>) async -> [TMDBMovieSearchResult] {
+        let idea = CollectionIdea.named(name)?.movieQuery
         let genres = (try? await fetchMovieGenres()) ?? []
         let genreNames = Dictionary(uniqueKeysWithValues: genres.map { ($0.id, $0.name) })
         return await CollectionRecommendationEngine.load(
@@ -211,11 +212,18 @@ final class TMDBService {
                 JevTitle(id: $0.id, title: $0.title, year: String(($0.releaseDate ?? "").prefix(4)),
                          overview: $0.overview ?? "", genres: ($0.genreIds ?? []).compactMap { genreNames[$0] }, mediaType: "movie")
             },
-            search: { try await self.searchMovies(query: $0) }
+            initialPool: { name in
+                if let query = idea {
+                    let response: TMDBMovieSearchResponse = try await self.discover("/discover/movie", query)
+                    return response.results
+                }
+                return try await self.searchMovies(query: name)
+            }
         )
     }
 
     func collectionTVShows(name: String, seeds: [Int], excluding ids: Set<String>) async -> [TMDBTVShowSearchResult] {
+        let idea = CollectionIdea.named(name)?.tvQuery
         let genres = (try? await fetchTVGenres()) ?? []
         let genreNames = Dictionary(uniqueKeysWithValues: genres.map { ($0.id, $0.name) })
         return await CollectionRecommendationEngine.load(
@@ -230,8 +238,21 @@ final class TMDBService {
                 JevTitle(id: $0.id, title: $0.name, year: String(($0.firstAirDate ?? "").prefix(4)),
                          overview: $0.overview ?? "", genres: ($0.genreIds ?? []).compactMap { genreNames[$0] }, mediaType: "tv")
             },
-            search: { try await self.searchTVShows(query: $0) }
+            initialPool: { name in
+                if let query = idea {
+                    let response: TMDBTVShowSearchResponse = try await self.discover("/discover/tv", query)
+                    return response.results
+                }
+                return try await self.searchTVShows(query: name)
+            }
         )
+    }
+
+    /// A `/discover` request from a `CollectionIdea` query. Items are sorted so the same idea
+    /// always hits the same `RequestDeduplicator` cache entry.
+    private func discover<T: Decodable>(_ endpoint: String, _ query: [String: String]) async throws -> T {
+        let items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+        return try await performRequest(endpoint: endpoint, queryItems: items)
     }
 
     /// Get details for a movie collection (e.g. "Dune Collection")

@@ -125,15 +125,19 @@ struct CollectionSuggestionsView: View {
         let tvIDs = RecommendationEngine.existingIDs(in: snapshot, mediaType: .tvShow)
         isLoading = true
         defer { isLoading = false }
-        // Empty collections start with movies. Otherwise respect the types already collected.
-        async let movieResults = movieSeeds.isEmpty && !snapshot.isEmpty ? [] :
+        // Empty collections start with movies, unless their `CollectionIdea` says which types it
+        // covers. Otherwise respect the types already collected.
+        let idea = snapshot.isEmpty ? CollectionIdea.named(name) : nil
+        let wantsMovies = idea.map { $0.movieQuery != nil } ?? (!movieSeeds.isEmpty || snapshot.isEmpty)
+        let wantsShows = idea.map { $0.tvQuery != nil } ?? !tvSeeds.isEmpty
+        async let movieResults = !wantsMovies ? [] :
             service.collectionMovies(name: name, seeds: movieSeeds, excluding: movieIDs)
-        async let tvResults = tvSeeds.isEmpty ? [] :
+        async let tvResults = !wantsShows ? [] :
             service.collectionTVShows(name: name, seeds: tvSeeds, excluding: tvIDs)
         let (newMovies, newShows) = await (movieResults, tvResults)
         guard !Task.isCancelled else { return }
-        movies = Array(newMovies.prefix(tvSeeds.isEmpty ? 12 : 6))
-        shows = Array(newShows.prefix(movieSeeds.isEmpty ? 12 : 6))
+        movies = Array(newMovies.prefix(wantsShows ? 6 : 12))
+        shows = Array(newShows.prefix(wantsMovies ? 6 : 12))
     }
 
     private func addMovie(_ result: TMDBMovieSearchResult) {

@@ -40,20 +40,11 @@ struct CreateListView: View {
     }
 
     /// Tappable name starters for a new collection — the sheet's only other content once the
-    /// icon picker went (the poster mosaic identifies a collection now). A holiday leads in the
-    /// months before it; names the user already has are left out.
+    /// icon picker went (the poster mosaic identifies a collection now). Each is a
+    /// `CollectionIdea`, so the new collection's suggestions are about the idea rather than a
+    /// title search for its name. Names the user already has are left out.
     private var nameIdeas: [String] {
-        let seasonal: [String] = switch Calendar.current.component(.month, from: .now) {
-        case 8, 9: ["Halloween"]
-        case 10: ["Halloween", "Holiday Movies"]
-        case 11, 12: ["Holiday Movies"]
-        default: []
-        }
-        let ideas = seasonal + [
-            "Date Night", "Family Movie Night", "Comfort Rewatches", "Award Winners",
-            "Watch Together", "Classics", "Documentaries", "Guilty Pleasures",
-        ]
-        return ideas.filter { idea in
+        CollectionIdea.suggestions().map(\.name).filter { idea in
             !viewModel.customLists.contains { $0.name.localizedCaseInsensitiveCompare(idea) == .orderedSame }
         }
     }

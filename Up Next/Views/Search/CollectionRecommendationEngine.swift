@@ -1,14 +1,16 @@
 import Foundation
 
 /// TMDB supplies real candidates; Jev interprets the collection's unmodified name.
-/// No theme aliases, inferred keyword filters, or rating floor determine membership.
+/// No theme aliases, inferred keyword filters, or rating floor determine membership — the one
+/// exception is an empty collection named after a `CollectionIdea`, whose fixed discover query
+/// is its starting pool.
 enum CollectionRecommendationEngine {
     static func load<T: RecommendableResult>(
         name: String, seeds: [Int], excluding existing: Set<String>,
         recommendations: @escaping @Sendable (Int) async throws -> [T],
         member: @escaping @Sendable (Int) async throws -> JevTitle,
         candidate: @escaping @Sendable (T) -> JevTitle,
-        search: @escaping @Sendable (String) async throws -> [T],
+        initialPool: @escaping @Sendable (String) async throws -> [T],
         jev: JevRecommendationService = .shared
     ) async -> [T] {
         let uniqueSeeds = Array(Set(seeds).sorted().prefix(8))
@@ -26,12 +28,12 @@ enum CollectionRecommendationEngine {
             return values.sorted { $0.0 < $1.0 }
         }
         guard !Task.isCancelled else { return [] }
-        // A new collection has no recommendation seeds. A literal TMDB title search gives
-        // it a modest starting pool; arbitrary name-only discovery remains limited.
+        // A new collection has no recommendation seeds. A suggested name's discover query, else
+        // a literal TMDB title search, gives it a starting pool (see `TMDBService.collectionMovies`).
         let initial: [T]
         if uniqueSeeds.isEmpty {
             let query = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            initial = query.isEmpty ? [] : (try? await search(query)) ?? []
+            initial = query.isEmpty ? [] : (try? await initialPool(query)) ?? []
         } else {
             initial = []
         }
