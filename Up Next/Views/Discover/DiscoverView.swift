@@ -591,7 +591,7 @@ struct DiscoverView: View {
     private func removeItem(_ item: DiscoverViewModel.DiscoverItem) {
         addedIDs.remove(MediaIDKey.make(item.mediaType, item.tmdbId))
         guard let title = onRemove(item.mediaType, item.tmdbId) else { return }
-        toast.show("Removed \(title)", icon: "trash.circle.fill", actionLabel: "Undo", feedback: .impact) {
+        toast.show("Removed \(title)", icon: "minus.circle.fill", iconTint: .orange, actionLabel: "Undo", feedback: .impact) {
             onUndoRemove()
         }
     }

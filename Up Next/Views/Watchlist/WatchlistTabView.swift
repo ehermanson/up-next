@@ -222,7 +222,8 @@ struct WatchlistTabView: View {
         guard let title = removedTitle else { return }
         toast.show(
             "Removed \(title)",
-            icon: "trash.circle.fill",
+            icon: "minus.circle.fill",
+            iconTint: .orange,
             actionLabel: "Undo",
             feedback: .impact
         ) {

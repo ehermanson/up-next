@@ -149,7 +149,7 @@ Things you can't derive from reading one file. Each points at the code that expl
 ### Vocabulary (user-facing copy)
 - **watchlist** = everything the user tracks; **Up Next** = the unwatched queue and the act of adding ("Add to Up Next", "On Up Next", "Remove from Up Next"); **collection** = a user-created group (code says `CustomList`); **title** = a movie or show.
 - Never surface `library`, `list` alone, `watch list`, `item(s)`, or **`partner`** — the app doesn't know what the two people are to each other. Use the CloudKit display name when iOS provides it; otherwise rewrite around the gap ("Someone added Elf", "Sharing Stopped").
-- Buttons/menu items/chips/alert titles Title Case; messages sentence case; `…` and curly quotes. Toasts: `Added X` / `Added X to Y` / `Removed X` / `Moved X to Watched`, no quotation marks. Taking a title off is "Remove"; deleting a collection is "Delete".
+- Buttons/menu items/chips/alert titles Title Case; messages sentence case; `…` and curly quotes. Toasts: `Added X` / `Added X to Y` / `Removed X` / `Moved X to Watched`, no quotation marks; removal toasts use `minus.circle.fill` tinted orange (same glyph as the Activity screen), the Undo is a filled accent capsule (`.borderedProminent`), never accent text on glass. Taking a title off is "Remove"; deleting a collection is "Delete".
 
 ## App Store screenshots
 

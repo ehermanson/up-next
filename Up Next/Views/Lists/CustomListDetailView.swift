@@ -383,7 +383,8 @@ extension CustomListViewModel {
         guard let title = removedTitle else { return nil }
         toast.show(
             "Removed \(title) from \(list.name)",
-            icon: "trash.circle.fill",
+            icon: "minus.circle.fill",
+            iconTint: .orange,
             actionLabel: "Undo",
             feedback: .impact
         ) { [weak self] in

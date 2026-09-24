@@ -180,12 +180,16 @@ final class ToastState {
         let id: Int
         let message: String
         let icon: String
+        /// Removals are orange (`minus.circle.fill`, same as the Activity screen); nil keeps the
+        /// default — green for confirmations, secondary for other action toasts.
+        let iconTint: Color?
         let actionLabel: String?
     }
 
     private struct QueuedToast {
         let message: String
         let icon: String
+        let iconTint: Color?
         let actionLabel: String?
         let feedback: SensoryFeedback?
         let action: (() -> Void)?
@@ -197,13 +201,14 @@ final class ToastState {
     func show(
         _ message: String,
         icon: String = "checkmark.circle.fill",
+        iconTint: Color? = nil,
         actionLabel: String? = nil,
         feedback: SensoryFeedback? = .success,
         action: (() -> Void)? = nil
     ) {
         triggerCount += 1
         lastFeedback = feedback
-        queue.append(QueuedToast(message: message, icon: icon, actionLabel: actionLabel, feedback: feedback, action: action))
+        queue.append(QueuedToast(message: message, icon: icon, iconTint: iconTint, actionLabel: actionLabel, feedback: feedback, action: action))
 
         if current == nil {
             advanceQueue()
@@ -226,7 +231,7 @@ final class ToastState {
     private func advanceQueue() {
         guard !queue.isEmpty else { return }
         let next = queue.removeFirst()
-        let item = ToastItem(id: nextID, message: next.message, icon: next.icon, actionLabel: next.actionLabel)
+        let item = ToastItem(id: nextID, message: next.message, icon: next.icon, iconTint: next.iconTint, actionLabel: next.actionLabel)
         nextID += 1
         currentAction = next.action
         withAnimation(.spring(duration: 0.35, bounce: 0.3)) {
@@ -312,20 +317,23 @@ struct ToastOverlayModifier: ViewModifier {
                     // Action toasts (e.g. Undo) use neutral styling; plain confirmations stay green.
                     let isAction = item.actionLabel != nil
                     HStack(spacing: 8) {
-                        ToastIcon(name: item.icon, color: isAction ? .secondary : .green)
+                        ToastIcon(name: item.icon, color: item.iconTint ?? (isAction ? .secondary : .green))
                         Text(item.message)
                             .font(.callout)
                             .fontWeight(.semibold)
                             .fontDesign(.rounded)
                         if let actionLabel = item.actionLabel {
+                            // A filled capsule, not accent text: the toast is glass over whatever
+                            // is scrolling underneath, so plain text has no guaranteed contrast.
                             Button(actionLabel) {
                                 toast.performAction()
                             }
-                            .font(.callout.weight(.bold))
-                            .foregroundStyle(Color.accentColor)
-                            .buttonStyle(.plain)
-                            .frame(minHeight: 44)
-                            .contentShape(.rect)
+                            .font(.subheadline.weight(.bold))
+                            .fontDesign(.rounded)
+                            .buttonStyle(.borderedProminent)
+                            .buttonBorderShape(.capsule)
+                            .controlSize(.small)
+                            .tint(Color.accentColor)
                             .padding(.leading, 4)
                         }
                     }
