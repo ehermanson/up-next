@@ -202,6 +202,7 @@ struct SharingSection: View {
                     .padding(.vertical, 10)
             }
             .buttonStyle(.bordered)
+            .borderedTint()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)

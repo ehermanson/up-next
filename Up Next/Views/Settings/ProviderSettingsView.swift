@@ -182,6 +182,7 @@ struct ProviderSettingsView: View {
                             .padding(.vertical, 10)
                     }
                     .buttonStyle(.bordered)
+                    .borderedTint()
                     .padding(.top, 4)
                 }
             }

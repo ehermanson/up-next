@@ -19,6 +19,7 @@ struct SettingsView: View {
     #endif
 
     @AppStorage(AppAppearance.storageKey) private var appearance: AppAppearance = .dark
+    @AppStorage(StorageKey.showsSyncTools) private var showsSyncTools = false
 
     /// Newest `ActivityEvent`, for the Activity row's value. Refreshed on appear (including the
     /// pop back from the Activity screen) and when the other person's edits import.
@@ -245,6 +246,9 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, alignment: .center)
+                .contentShape(.rect)
+                .onLongPressGesture { showsSyncTools.toggle() }
+                .sensoryFeedback(.success, trigger: showsSyncTools)
         }
         .frame(maxWidth: .infinity)
         .padding(16)
@@ -253,40 +257,52 @@ struct SettingsView: View {
 
     /// What iCloud is doing right now, with the actual error text when it fails — the one place
     /// a TestFlight or App Store build can explain a share sheet that spins or titles that don't
-    /// arrive on the other phone.
+    /// arrive on the other phone. Status only until sync tools are unlocked (long press on the
+    /// version string); then it pushes `SyncActivityView`.
+    @ViewBuilder
     private var syncStatusRow: some View {
+        if showsSyncTools {
+            NavigationLink {
+                SyncActivityView()
+            } label: {
+                syncStatusLabel(showsChevron: true)
+            }
+            .buttonStyle(.plain)
+        } else {
+            syncStatusLabel(showsChevron: false)
+        }
+    }
+
+    private func syncStatusLabel(showsChevron: Bool) -> some View {
         let persistence = PersistenceController.shared
-        return NavigationLink {
-            SyncActivityView()
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 12) {
-                    Image(systemName: persistence.lastSyncError != nil ? "exclamationmark.icloud" : "icloud")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 24)
-                    Text("iCloud Sync")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Text(persistence.syncStatusSummary)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                Image(systemName: persistence.lastSyncError != nil ? "exclamationmark.icloud" : "icloud")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 24)
+                Text("iCloud Sync")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text(persistence.syncStatusSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if showsChevron {
                     Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                if let error = persistence.lastSyncError {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                }
             }
-            .contentShape(.rect)
+            if let error = persistence.lastSyncError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
         }
-        .buttonStyle(.plain)
+        .contentShape(.rect)
     }
 
     private var versionString: String {

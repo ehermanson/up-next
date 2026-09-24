@@ -54,7 +54,7 @@ Up Next/
 │   ├── Search/      WatchlistSearchView (add sheet), RecommendationEngine, CollectionRecommendationEngine, SearchComponents (rows, shimmer, MediaType)
 │   ├── Discover/    DiscoverView
 │   ├── Lists/       MyListsView, CustomListDetailView, CollectionSuggestionsView, CreateListView
-│   └── Settings/    SettingsView (root), ActivityView (shared activity log), ProviderSettingsView (+ RegionPickerView), SharingSettingsView, LegacyImportView, SyncActivityView (About → iCloud Sync: log, Check, Repair, Reset, Copy Core Data Log)
+│   └── Settings/    SettingsView (root), ActivityView (shared activity log), ProviderSettingsView (+ RegionPickerView), SharingSettingsView, LegacyImportView, SyncActivityView (About → iCloud Sync, unlocked by long-pressing the version: log, Check, Repair, Reset, Copy Core Data Log)
 ├── Services/
 │   ├── PersistenceController.swift  Container, role rule, remote-change history, sharing API, store-load failure, history pruning
 │   ├── RemoteActivityNotifier.swift Imported ActivityEvents from the other account → toast / local notification
@@ -104,7 +104,7 @@ Things you can't derive from reading one file. Each points at the code that expl
 - Accepting purges the whole private store (and that purge syncs to the account). Owner stopping deletes only the `CKShare`; participant leaving purges the shared zone and re-bootstraps as owner.
 - Remote changes: persistent history diffing per store, transactions authored `"app"` are skipped, `remoteChangeCount` bumps. Mid-join the flag flips and `group` drops *before* the count bumps so view models see "joining, no group" in one pass; adds made then are queued (`pendingAdds`).
 - **Never call `existingShare()` from a `body`** — read `liveShare` / `isSharingLive` / `isCloudAccountAvailable`; `refreshLiveShare()` only on `scenePhase == .active`. **An accepted invitation never reaches the local mirror on its own** — the share record changes but no managed object does, so no history transaction fires; `refreshLiveShareFromServer()` (one record fetch + `persistUpdatedShare`) runs from the Sharing screen's `refresh()` and the toolbar button's scene-active hook. The Sharing screen lists every participant (name or role fallback, You, Owner / Joined / Invited) and adds a What's Shared card and an Activity link under the live-share cards.
-- **Sync tooling** (Settings → About → iCloud Sync, `SyncActivityView`; all owner-only except the log/check). Read the doc comments on each method for the *why* — several encode a real outage.
+- **Sync tooling** (Settings → About → iCloud Sync, `SyncActivityView`; all owner-only except the log/check). Hidden in every build until unlocked per device by a long press on the version string (`StorageKey.showsSyncTools`); until then the row is status only. Read the doc comments on each method for the *why* — several encode a real outage.
   - Status: `lastSyncEvents` / `isSyncing` / `lastSyncError` / `syncStatusSummary` from `eventChangedNotification`; a persisted log (`syncActivity`, 40 entries) because a transient failure is overwritten by the next success. `describeSyncError` expands partial errors per item.
   - *Check iCloud Now* (`runCloudKitCheck`): build kind, account, zones, root acknowledged?, titles mirrored, structure counts, dangling entries, media-row hygiene, share-type probe, per-share-zone record counts.
   - *Copy Core Data Log* (`recentCoreDataLog`): the process's own `com.apple.coredata` entries — the mirroring delegate runs in-process, so its unsanitized errors are readable without a Mac.

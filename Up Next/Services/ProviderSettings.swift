@@ -9,6 +9,10 @@ enum StorageKey {
     static let movieOnlyMyServices = "movies.onlyMyServices"
     static let tvWatchedExpanded = "tvShows.watchedExpanded"
     static let movieWatchedExpanded = "movies.watchedExpanded"
+    /// Device-local: unlocks `SyncActivityView` (log, Check, Repair, Reset…). Toggled by a long
+    /// press on the version string in Settings → About, so the tools are there on the developer's
+    /// own TestFlight/App Store builds without being in front of everyone else.
+    static let showsSyncTools = "debug.showsSyncTools"
 }
 
 /// Device preferences plus the household's streaming services.

@@ -4,8 +4,11 @@ import SwiftUI
 /// attempts, newest first, with the full error text. This is the support surface for a TestFlight
 /// or App Store build — the one place a spinning share sheet or a partner who never sees a title
 /// can be explained without a Mac attached. "Copy All" puts the whole log on the pasteboard.
+/// Hidden unless `StorageKey.showsSyncTools` is on (long press on the version string).
 struct SyncActivityView: View {
     private let persistence = PersistenceController.shared
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage(StorageKey.showsSyncTools) private var showsSyncTools = false
     @State private var isChecking = false
     @State private var isRepairing = false
     @State private var showingRepairConfirmation = false
@@ -100,6 +103,10 @@ struct SyncActivityView: View {
                     Button("Clear Log", systemImage: "trash", role: .destructive) {
                         persistence.clearSyncActivity()
                     }
+                    Button("Hide Sync Tools", systemImage: "eye.slash") {
+                        showsSyncTools = false
+                        dismiss()
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                 }
@@ -136,6 +143,7 @@ struct SyncActivityView: View {
                     .padding(.vertical, 10)
             }
             .buttonStyle(.bordered)
+            .borderedTint()
             .disabled(isChecking)
 
             if persistence.role == .owner {
@@ -154,7 +162,7 @@ struct SyncActivityView: View {
                         .padding(.vertical, 10)
                 }
                 .buttonStyle(.bordered)
-                .tint(isStuck ? .orange : .accentColor)
+                .borderedTint(isStuck ? .orange : .accentColor)
                 .disabled(isRepairing)
 
                 Button {
@@ -166,6 +174,7 @@ struct SyncActivityView: View {
                         .padding(.vertical, 10)
                 }
                 .buttonStyle(.bordered)
+                .borderedTint()
 
                 Button {
                     showingResetConfirmation = true

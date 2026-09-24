@@ -86,6 +86,21 @@ extension View {
     func chipSurface(tint: Color? = nil) -> some View {
         modifier(SmallSurface(shape: Capsule(), tint: tint))
     }
+
+    /// Tint for a `.bordered` button inside a card. In dark mode the accent purple sits too close
+    /// to the grey fill to read, so the label is lifted toward white; light mode keeps `color`.
+    func borderedTint(_ color: Color = .accentColor) -> some View {
+        modifier(BorderedTint(color: color))
+    }
+}
+
+private struct BorderedTint: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    let color: Color
+
+    func body(content: Content) -> some View {
+        content.tint(colorScheme == .dark ? color.mix(with: .white, by: 0.4) : color)
+    }
 }
 
 /// Card/row surface. Dark: `.fill.tertiary`. Light: translucent white with a hairline accent
