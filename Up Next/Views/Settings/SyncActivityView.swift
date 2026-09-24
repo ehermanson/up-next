@@ -202,7 +202,7 @@ struct SyncActivityView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 Image(systemName: icon(for: entry))
-                    .foregroundStyle(["check", "repair", "reset", "restore", "dedupe"].contains(entry.kind) ? Color.accentColor : entry.errorText == nil ? .green : .orange)
+                    .foregroundStyle(["check", "repair", "reset", "restore", "dedupe", "adopt"].contains(entry.kind) ? Color.accentColor : entry.errorText == nil ? .green : .orange)
                 Text(entry.kind.capitalized)
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -233,6 +233,7 @@ struct SyncActivityView: View {
         if entry.kind == "repair" { return "wrench.and.screwdriver" }
         if entry.kind == "reset" || entry.kind == "restore" { return "arrow.counterclockwise.icloud" }
         if entry.kind == "dedupe" { return "rectangle.on.rectangle.slash" }
+        if entry.kind == "adopt" { return "arrow.right.circle" }
         return entry.errorText == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
     }
 

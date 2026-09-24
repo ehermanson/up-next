@@ -1227,6 +1227,9 @@ final class PersistenceController {
                 if let text = summary.errorText {
                     AppLog.sync.error("CloudKit \(Self.name(of: summary.type), privacy: .public) failed: \(text, privacy: .public)")
                 }
+                if summary.type == .export, summary.endDate != nil, summary.errorText == nil {
+                    await self.adoptStraysIntoShare()
+                }
             }
         }
     }
@@ -1634,6 +1637,51 @@ final class PersistenceController {
             errorText: "Rebuilt \(copiedCount) objects into a fresh root; \(zoneNote)."
         )
         AppLog.sync.notice("repair: rebuilt \(copiedCount) objects; \(zoneNote, privacy: .public)")
+    }
+
+    // MARK: - Stray adoption
+
+    private var isAdoptingStrays = false
+
+    /// Owner only. Moves every exported object that sits *outside* the live share's zone into it.
+    /// Relating an object to the root isn't enough to put it in the share zone: a collection, its
+    /// entries and the movie rows only it referenced were found exported, server-acknowledged, to
+    /// `com.apple.coredata.cloudkit.zone` — a zone the participant never sees — while everything
+    /// under the TV Shows / Movies lists sat correctly in the share zone. Once a record is in a
+    /// zone the mirror never moves it on its own; `share(_:to:)` with the existing share is the
+    /// one API that does. Runs after each successful export (a new object only has a record, and
+    /// so a zone, once it's been exported) and logs an "adopt" entry naming what moved.
+    func adoptStraysIntoShare() async {
+        guard isCloudKitEnabled, role == .owner, !isAdoptingStrays, let share = existingShare() else { return }
+        let shareZone = share.recordID.zoneID
+        var strays: [NSManagedObject] = []
+        for entity in container.managedObjectModel.entities {
+            guard let name = entity.name, name != "WatchListGroup" else { continue }
+            let request = NSFetchRequest<NSManagedObject>(entityName: name)
+            request.affectedStores = [privateStore]
+            let objects = ((try? viewContext.fetch(request)) ?? []).filter {
+                // Detail-sheet wrappers are transient and belong to no share.
+                !($0 is ListItem && ($0 as! ListItem).list == nil)
+            }
+            let records = container.records(for: objects.map(\.objectID))
+            strays += objects.filter { object in
+                records[object.objectID].map { $0.recordID.zoneID != shareZone } ?? false
+            }
+        }
+        guard !strays.isEmpty else { return }
+        isAdoptingStrays = true
+        defer { isAdoptingStrays = false }
+        let started = Date.now
+        let types = Dictionary(grouping: strays, by: { $0.entity.name ?? "?" })
+            .map { "\($0.value.count)× \($0.key)" }.sorted().joined(separator: ", ")
+        do {
+            _ = try await container.share(strays, to: share)
+            appendSyncActivity(kind: "adopt", startDate: started, errorText: "Moved \(strays.count) objects into the share zone (\(types)).")
+            AppLog.sync.notice("adopt: moved \(strays.count) objects into the share zone (\(types, privacy: .public))")
+        } catch {
+            appendSyncActivity(kind: "adopt", startDate: started, errorText: "Moving \(strays.count) objects (\(types)) into the share zone failed: \(Self.describeSyncError(error))")
+            AppLog.sync.error("adopt failed: \(error)")
+        }
     }
 
     // MARK: - Duplicate removal
