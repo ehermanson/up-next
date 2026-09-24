@@ -332,11 +332,16 @@ struct MediaDetailView: View {
             let id = Int(media.id)
         else { return }
 
+        // Discover/search wrap context-less rows that are never inserted; only a row that started
+        // out attached can have been deleted underneath the fetch.
+        let wasAttached = (listItem.tvShow ?? listItem.movie)?.managedObjectContext != nil
         let showLoading = needsFullDetails
         if showLoading {
             isLoadingDetails = true
             detailError = nil
         }
+        // Every early return below must still end the loading state.
+        defer { isLoadingDetails = false }
 
         do {
             if let tvShow = listItem.tvShow {
@@ -353,7 +358,7 @@ struct MediaDetailView: View {
                 guard !Task.isCancelled else { return }
                 // A deferred delete may have committed while the fetch was in flight; writing to a
                 // deleted or detached row would fault.
-                guard isUsable(tvShow) else { return }
+                guard !wasAttached || isUsable(tvShow) else { return }
                 tvShow.update(from: mapped)
 
                 // Always re-derive, not just when the season count grew: an announced season
@@ -380,7 +385,7 @@ struct MediaDetailView: View {
                 let providers = detail.watchProviders?.results?[service.currentRegion]
                 let mapped = await service.mapToMovie(detail, providers: providers)
                 guard !Task.isCancelled else { return }
-                guard isUsable(movie) else { return }
+                guard !wasAttached || isUsable(movie) else { return }
                 movie.update(from: mapped)
 
                 let similar = (detail.similar?.results ?? []).map {
@@ -416,8 +421,6 @@ struct MediaDetailView: View {
                 detailError = error.localizedDescription
             }
         }
-
-        isLoadingDetails = false
     }
 
     /// A media row is safe to write to only while it's still attached and undeleted — the sheet
