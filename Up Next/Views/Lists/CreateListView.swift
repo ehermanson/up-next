@@ -3,6 +3,8 @@ import SwiftUI
 struct CreateListView: View {
     let viewModel: CustomListViewModel
     var existingList: CustomList?
+    /// Called with a newly created collection (not on edit) so the presenter can open it.
+    var onCreated: ((CustomList) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String
@@ -11,9 +13,10 @@ struct CreateListView: View {
     private var isEditing: Bool { existingList != nil }
     private let cardRadius: CGFloat = 24
 
-    init(viewModel: CustomListViewModel, existingList: CustomList? = nil) {
+    init(viewModel: CustomListViewModel, existingList: CustomList? = nil, onCreated: ((CustomList) -> Void)? = nil) {
         self.viewModel = viewModel
         self.existingList = existingList
+        self.onCreated = onCreated
         // Seeded here (not `onAppear`) so the fields never flash empty before filling in on edit.
         _name = State(initialValue: existingList?.name ?? "")
     }
@@ -137,7 +140,9 @@ struct CreateListView: View {
         if let existing = existingList {
             viewModel.renameList(existing, to: trimmedName)
         } else {
-            viewModel.createList(name: trimmedName)
+            if let list = viewModel.createList(name: trimmedName) {
+                onCreated?(list)
+            }
         }
         dismiss()
     }

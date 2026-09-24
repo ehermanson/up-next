@@ -7,6 +7,9 @@ struct MyListsView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var showingCreateList = false
+    /// A collection just made in the create sheet, opened once the sheet has finished dismissing
+    /// (pushing mid-dismiss animates both at once).
+    @State private var createdListID: UUID?
     @State private var editingList: CustomList?
     @State private var navigationPath = NavigationPath()
     @State private var listToDelete: CustomList?
@@ -105,8 +108,8 @@ struct MyListsView: View {
                         .background(AppBackground())
                 }
             }
-            .sheet(isPresented: $showingCreateList) {
-                CreateListView(viewModel: viewModel)
+            .sheet(isPresented: $showingCreateList, onDismiss: openCreatedList) {
+                CreateListView(viewModel: viewModel) { createdListID = $0.id }
             }
             .sheet(item: $editingList) { list in
                 CreateListView(viewModel: viewModel, existingList: list)
@@ -145,6 +148,13 @@ struct MyListsView: View {
         navigationPath.append(list.id)
     }
     #endif
+
+    private func openCreatedList() {
+        guard let id = createdListID else { return }
+        createdListID = nil
+        viewModel.activeListID = id
+        navigationPath.append(id)
+    }
 }
 
 /// One row in the collections overview. `@ObservedObject` so a rename on this `NSManagedObject`

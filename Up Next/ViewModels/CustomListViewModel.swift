@@ -55,11 +55,13 @@ final class CustomListViewModel {
         changeToken += 1
     }
 
-    func createList(name: String) {
+    /// Returns the new collection so the creator can open it; nil while a join is importing.
+    @discardableResult
+    func createList(name: String) -> CustomList? {
         // No root while a join is still importing: a list created now would be an orphan in the
         // active store, unreachable from the share and invisible to the partner. `ContentView`
         // shows the joining placeholder instead of the tabs in that state, so this is only a guard.
-        guard let persistence, persistence.group != nil else { return }
+        guard let persistence, persistence.group != nil else { return nil }
         // `group:` is passed into the init (rather than assigned after a context-less init) so the
         // list joins the group's context/store up front — relating a context-less object to a
         // stored one raises a Core Data exception. `persistence.insert` is a harmless no-op when
@@ -70,6 +72,7 @@ final class CustomListViewModel {
         persistence.save()
         customLists.append(list)
         changeToken += 1
+        return list
     }
 
     func deleteList(_ list: CustomList) {
