@@ -14,6 +14,17 @@ extension CKUserIdentity {
         return name.isEmpty ? nil : name
     }
 
+    /// "Sarah" — the given name (or nickname), for sentences: "Sarah removed Elf" reads better
+    /// than the full name every time, and a couple usually shares a surname anyway. Falls back to
+    /// the full display name when the formatter can't shorten it.
+    var shortDisplayName: String? {
+        guard let components = nameComponents else { return nil }
+        let formatter = PersonNameComponentsFormatter()
+        formatter.style = .short
+        let name = formatter.string(from: components).trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? displayName : name
+    }
+
     /// Up to two initials ("SJ"), for avatar badges. Nil when there's no usable name.
     var initials: String? {
         guard let components = nameComponents else { return nil }
@@ -26,6 +37,7 @@ extension CKUserIdentity {
 
 extension CKShare.Participant {
     var displayName: String? { userIdentity.displayName }
+    var shortDisplayName: String? { userIdentity.shortDisplayName }
     var initials: String? { userIdentity.initials }
 }
 
@@ -44,6 +56,7 @@ extension CKShare {
     }
 
     var otherDisplayName: String? { otherParticipant?.displayName }
+    var otherShortDisplayName: String? { otherParticipant?.shortDisplayName }
 
     var ownerDisplayName: String? { owner.userIdentity.displayName }
 }

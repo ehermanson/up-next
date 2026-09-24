@@ -74,7 +74,7 @@ struct ActivityView: View {
     }
 
     private var otherName: String {
-        persistence.otherPersonName ?? "Them"
+        persistence.otherPersonShortName ?? "Them"
     }
 
     var body: some View {
@@ -129,7 +129,7 @@ struct ActivityView: View {
         else { return "You" }
         // `otherPersonName` covers the share *and* the name remembered from the invitation; the
         // writer's own `actorName` is the last resort.
-        return persistence.otherPersonName ?? event.actorName ?? "Someone"
+        return persistence.otherPersonShortName ?? event.actorName ?? "Someone"
     }
 }
 

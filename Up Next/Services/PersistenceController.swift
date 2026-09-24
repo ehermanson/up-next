@@ -682,7 +682,7 @@ final class PersistenceController {
         guard let group, group.managedObjectContext != nil, !group.isDeleted else { return }
         // Only what's already in memory: nil when unshared (or iOS withholds it), which is fine —
         // the reader prefers its own view of the other person's name anyway.
-        let actorName = liveShare?.currentUserParticipant?.displayName
+        let actorName = liveShare?.currentUserParticipant?.shortDisplayName
         _ = ActivityEvent(
             kind: kind,
             title: title,
@@ -1284,8 +1284,20 @@ final class PersistenceController {
     /// The other person's name as a sentence subject for notifications and toasts ("Sarah added
     /// Elf"). iOS may withhold names from apps without the extended share-access entitlement;
     /// the fallback never guesses at the relationship (`CloudKitNames.swift` owns the formatting).
+    /// For sentences — the given name. Every notification, toast, Activity line and "Shared with"
+    /// caption goes through this; only the Sharing screen's participant rows show full names.
     func otherPersonDisplayName() -> String {
-        otherPersonName ?? "Someone"
+        otherPersonShortName ?? "Someone"
+    }
+
+    /// Short form of `otherPersonName`, same resolution order.
+    var otherPersonShortName: String? {
+        if let name = liveShare?.otherShortDisplayName { return name }
+        if role == .participant {
+            return UserDefaults.standard.string(forKey: Self.rememberedOwnerShortNameKey)
+                ?? UserDefaults.standard.string(forKey: Self.rememberedOwnerNameKey)
+        }
+        return nil
     }
 
     /// The other person's name, or nil when nothing knows it. Order: the share (the owner's
@@ -1300,12 +1312,14 @@ final class PersistenceController {
     }
 
     private static let rememberedOwnerNameKey = "sharing.rememberedOwnerName"
+    private static let rememberedOwnerShortNameKey = "sharing.rememberedOwnerShortName"
 
     private func rememberOwnerName(from metadata: CKShare.Metadata) {
         let identity = metadata.ownerIdentity
         let name = identity.displayName ?? identity.lookupInfo?.emailAddress
         guard let name, !name.isEmpty else { return }
         UserDefaults.standard.set(name, forKey: Self.rememberedOwnerNameKey)
+        UserDefaults.standard.set(identity.shortDisplayName ?? name, forKey: Self.rememberedOwnerShortNameKey)
     }
 
     /// "Added by" attribution for the detail sheet, sourced entirely from the CloudKit record
@@ -1327,7 +1341,7 @@ final class PersistenceController {
 
         let name = share?.participants
             .first { $0.userIdentity.userRecordID?.recordName == creator.recordName }?
-            .displayName
+            .shortDisplayName ?? (role == .participant ? otherPersonShortName : nil)
         return (name ?? "someone else", record.creationDate)
     }
 
@@ -1482,6 +1496,7 @@ final class PersistenceController {
     func leaveShare() async throws {
         guard role == .participant else { throw PersistenceError.notParticipant }
         UserDefaults.standard.removeObject(forKey: Self.rememberedOwnerNameKey)
+        UserDefaults.standard.removeObject(forKey: Self.rememberedOwnerShortNameKey)
         isLeavingShare = true
         defer { isLeavingShare = false }
         if let zoneID = existingShare()?.recordID.zoneID {

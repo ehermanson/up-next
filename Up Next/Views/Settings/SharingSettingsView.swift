@@ -186,7 +186,7 @@ struct SharingSection: View {
                     .foregroundStyle(.primary)
             }
 
-            Text(sharedCaption(name: partner?.displayName, isPending: isPending))
+            Text(sharedCaption(name: partner?.shortDisplayName, isPending: isPending))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -256,7 +256,7 @@ struct SharingSection: View {
                     .foregroundStyle(.primary)
             }
 
-            Text(persistence.otherPersonName.map { "Shared with you by \($0)." } ?? "Shared with you.")
+            Text(persistence.otherPersonShortName.map { "Shared with you by \($0)." } ?? "Shared with you.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

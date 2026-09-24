@@ -111,10 +111,10 @@ struct SettingsView: View {
         }
         // Names can be withheld by iOS — the row reads fine without one.
         if persistence.role == .participant {
-            return persistence.otherPersonName.map { "Shared with you by \($0)" } ?? "Shared with you"
+            return persistence.otherPersonShortName.map { "Shared with you by \($0)" } ?? "Shared with you"
         }
         if persistence.isSharingLive {
-            return persistence.otherPersonName.map { "Shared with \($0)" } ?? "Shared"
+            return persistence.otherPersonShortName.map { "Shared with \($0)" } ?? "Shared"
         }
         return "Not shared yet"
     }

@@ -120,7 +120,7 @@ struct ProviderSettingsView: View {
     /// "Shared with Sarah — changes here show up for both of you." (or just "Shared — …" when
     /// iOS withholds the name).
     private var sharingCaption: String {
-        let lead = PersistenceController.shared.otherPersonName.map { "Shared with \($0)" } ?? "Shared"
+        let lead = PersistenceController.shared.otherPersonShortName.map { "Shared with \($0)" } ?? "Shared"
         return "\(lead) — changes here show up for both of you."
     }
 
