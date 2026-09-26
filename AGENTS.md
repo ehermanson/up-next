@@ -68,7 +68,7 @@ Up Next/
 │   ├── LegacyStoreReader.swift / LegacyImporter.swift   1.x SQLite reader + one-time importer
 │   ├── AppAppearance.swift          Dark (default) / Light / System
 │   └── AppLog.swift
-├── UI/              DesignTokens (radii, spacing, surfaces, Chip), AppBackground (mesh), Motion (springs, checkmarkPop), SectionHeader, MediaCardView, NetworkLogosView, CachedAsyncImage, ImageColor (dominantTint), SharedViews (toast, EmptyStateView, StarRatingLabel, AirDateFormat, FlowLayout, tabRootNavigationBar), PosterMosaicView, SettingsToolbarButton, CloudSharingView, SafariView, TMDBAttributionView
+├── UI/              DesignTokens (radii, spacing, surfaces, Chip), AppBackground (mesh), Motion (springs, checkmarkPop), SectionHeader, MediaCardView, NetworkLogosView, CachedAsyncImage, ImageColor (dominantTint), SharedViews (toast, EmptyStateView, StarRatingLabel, AirDateFormat, FlowLayout, tabRootNavigationBar), PosterMosaicView, PosterAddButton (the one add ↔ added control over poster art), SettingsToolbarButton, CloudSharingView, SafariView, TMDBAttributionView
 ├── Up Next.xcdatamodeld/   Versions: `Up Next 2.1-activity` (current), `2.0-services`, `2.0-release`, `2.0-dev` + older, kept for migration
 ├── AppIcon.icon/           Icon Composer icon (wins on iOS 26); Assets.xcassets has the flat fallback + AccentColor + BackgroundBase
 └── Info.plist.template, Up Next.entitlements, PrivacyInfo.xcprivacy

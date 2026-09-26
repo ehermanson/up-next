@@ -262,18 +262,9 @@ struct DiscoverView: View {
                 .matchedTransitionSource(id: sourceID, in: detailNamespace)
                 .accessibilityLabel(item.title)
 
-                Button(added ? "Remove" : "Add", systemImage: added ? "checkmark.circle.fill" : "plus.circle.fill") {
+                PosterAddButton(isAdded: added, accessibilityLabel: added ? "Remove \(item.title)" : "Add \(item.title)") {
                     if added { removeItem(item) } else { addItem(item) }
                 }
-                .labelStyle(.iconOnly)
-                .font(.title3)
-                .fontWeight(.semibold)
-                .foregroundStyle(added ? .green : Color.accentColor)
-                .frame(width: 44, height: 44)
-                .chipSurface()
-                .padding(4)
-                .buttonStyle(.plain)
-                .checkmarkPop(isOn: added)
             }
             .overlay(alignment: .bottomLeading) {
                 if showsAirDate, let label = airDateLabel(for: item) {

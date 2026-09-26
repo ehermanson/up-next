@@ -109,24 +109,16 @@ struct PosterCard: View {
                 .modifier(TransitionSourceModifier(source: isCurrent ? nil : transitionSource))
 
                 if let onAdd {
-                    Button {
-                        onAdd()
-                    } label: {
-                        // Drawn over artwork, so the white tint and shadow are intentional.
-                        Image(systemName: isAdded ? "checkmark.circle.fill" : "plus.circle.fill")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(isAdded ? .green : .white)
-                            .shadow(color: .black.opacity(0.5), radius: 4)
-                            .padding(6)
-                            .checkmarkPop(isOn: isAdded)
-                    }
-                    .buttonStyle(.plain)
+                    PosterAddButton(
+                        isAdded: isAdded,
+                        accessibilityLabel: isAdded ? "\(title) is already added" : "Add \(title)",
+                        size: 36,
+                        action: onAdd
+                    )
                     // Disabled once added so VoiceOver doesn't offer a no-op action; the check is
                     // status, not an affordance, so it keeps full opacity.
                     .disabled(isAdded)
                     .opacity(1)
-                    .accessibilityLabel(isAdded ? "\(title) is already added" : "Add \(title)")
                 }
             }
 
