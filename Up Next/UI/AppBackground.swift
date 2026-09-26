@@ -70,6 +70,13 @@ struct AppBackground: View {
                 drift = true
             }
         }
+        // `TabView` keeps visited tabs alive, so without this every tab root visited keeps its
+        // forever-animation running off screen. Snapping back un-animated replaces the repeat.
+        .onDisappear {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { drift = false }
+        }
     }
 }
 

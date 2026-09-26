@@ -6,7 +6,7 @@ import Foundation
 /// pages of `/search/{tv,movie}` generically. `nonisolated` (like the other model types below)
 /// so its `Decodable` conformance can be decoded inside `searchPages`'s `async let` pair without
 /// the compiler treating a generic `Page: TMDBSearchPage` as possibly main-actor-isolated.
-nonisolated protocol TMDBSearchPage: Decodable {
+nonisolated protocol TMDBSearchPage: Decodable, Sendable {
     associatedtype Result: Identifiable where Result.ID == Int
     var results: [Result] { get }
     var totalPages: Int? { get }
@@ -24,7 +24,7 @@ nonisolated struct TMDBMovieSearchResponse: Codable, TMDBSearchPage, Sendable {
 
 // MARK: - Genre List Response
 
-struct TMDBGenreListResponse: Codable {
+nonisolated struct TMDBGenreListResponse: Codable, Sendable {
     let genres: [TMDBGenre]
 }
 
@@ -48,7 +48,7 @@ nonisolated struct TMDBTVShowSearchResult: Codable, Identifiable, Sendable {
     let popularity: Double?
 }
 
-struct TMDBTVShowDetail: Codable {
+nonisolated struct TMDBTVShowDetail: Codable, Sendable {
     let id: Int
     let name: String
     let overview: String?
@@ -83,14 +83,14 @@ struct TMDBTVShowDetail: Codable {
     }
 }
 
-struct TMDBEpisode: Codable {
+nonisolated struct TMDBEpisode: Codable, Sendable {
     let airDate: String?
     let episodeNumber: Int?
     let seasonNumber: Int?
     let name: String?
 }
 
-struct TMDBSeason: Codable {
+nonisolated struct TMDBSeason: Codable, Sendable {
     let seasonNumber: Int
     let name: String?
     let episodeCount: Int?
@@ -102,7 +102,7 @@ struct TMDBSeason: Codable {
 
 /// `/tv/{id}/season/{season_number}` — read-only episode list for `SeasonEpisodesView`.
 /// No episode-level watched state exists or is planned; this is display-only.
-struct TMDBSeasonDetail: Codable {
+nonisolated struct TMDBSeasonDetail: Codable, Sendable {
     let id: Int?
     let name: String?
     let overview: String?
@@ -111,7 +111,7 @@ struct TMDBSeasonDetail: Codable {
     let episodes: [TMDBSeasonEpisode]?
 }
 
-struct TMDBSeasonEpisode: Codable, Identifiable {
+nonisolated struct TMDBSeasonEpisode: Codable, Identifiable, Sendable {
     let id: Int
     let episodeNumber: Int
     let seasonNumber: Int?
@@ -142,7 +142,7 @@ nonisolated struct TMDBMovieSearchResult: Codable, Identifiable, Sendable {
     let popularity: Double?
 }
 
-struct TMDBMovieDetail: Codable {
+nonisolated struct TMDBMovieDetail: Codable, Sendable {
     let id: Int
     let title: String
     let overview: String?
@@ -170,14 +170,14 @@ struct TMDBMovieDetail: Codable {
     }
 }
 
-struct TMDBBelongsToCollection: Codable {
+nonisolated struct TMDBBelongsToCollection: Codable, Sendable {
     let id: Int
     let name: String
     let posterPath: String?
     let backdropPath: String?
 }
 
-struct TMDBCollectionDetail: Codable {
+nonisolated struct TMDBCollectionDetail: Codable, Sendable {
     let id: Int
     let name: String
     let overview: String?
@@ -186,7 +186,7 @@ struct TMDBCollectionDetail: Codable {
     let parts: [TMDBCollectionPart]
 }
 
-struct TMDBCollectionPart: Codable, Identifiable {
+nonisolated struct TMDBCollectionPart: Codable, Identifiable, Sendable {
     let id: Int
     let title: String
     let overview: String?
@@ -201,11 +201,11 @@ struct TMDBCollectionPart: Codable, Identifiable {
 }
 
 // Watch Providers (per country)
-struct TMDBWatchProvidersResponse: Codable {
+nonisolated struct TMDBWatchProvidersResponse: Codable, Sendable {
     let results: [String: TMDBWatchProviderCountry]?
 }
 
-struct TMDBWatchProviderCountry: Codable {
+nonisolated struct TMDBWatchProviderCountry: Codable, Sendable {
     let link: String?
     let flatrate: [TMDBWatchProviderEntry]?
     let rent: [TMDBWatchProviderEntry]?
@@ -213,7 +213,7 @@ struct TMDBWatchProviderCountry: Codable {
     let ads: [TMDBWatchProviderEntry]?
 }
 
-struct TMDBWatchProviderEntry: Codable {
+nonisolated struct TMDBWatchProviderEntry: Codable, Sendable {
     let displayPriority: Int?
     let logoPath: String?
     let providerId: Int
@@ -222,23 +222,23 @@ struct TMDBWatchProviderEntry: Codable {
 
 // MARK: - Supporting Models
 
-struct TMDBGenre: Codable {
+nonisolated struct TMDBGenre: Codable, Sendable {
     let id: Int
     let name: String
 }
 
-struct TMDBCredits: Codable {
+nonisolated struct TMDBCredits: Codable, Sendable {
     let cast: [TMDBCastMember]?
 }
 
-struct TMDBCastMember: Codable {
+nonisolated struct TMDBCastMember: Codable, Sendable {
     let name: String
     let character: String?
     let order: Int?
     let profilePath: String?
 }
 
-struct TMDBNetwork: Codable {
+nonisolated struct TMDBNetwork: Codable, Sendable {
     let id: Int
     let name: String
     let logoPath: String?
@@ -247,11 +247,11 @@ struct TMDBNetwork: Codable {
 
 // MARK: - Videos
 
-struct TMDBVideosResponse: Codable {
+nonisolated struct TMDBVideosResponse: Codable, Sendable {
     let results: [TMDBVideo]?
 }
 
-struct TMDBVideo: Codable {
+nonisolated struct TMDBVideo: Codable, Sendable {
     let key: String
     let site: String
     let type: String
@@ -261,25 +261,25 @@ struct TMDBVideo: Codable {
 
 // MARK: - Content Ratings & Release Dates
 
-struct TMDBContentRatingsResponse: Codable {
+nonisolated struct TMDBContentRatingsResponse: Codable, Sendable {
     let results: [TMDBContentRating]?
 }
 
-struct TMDBContentRating: Codable {
+nonisolated struct TMDBContentRating: Codable, Sendable {
     let iso31661: String
     let rating: String
 }
 
-struct TMDBReleaseDatesResponse: Codable {
+nonisolated struct TMDBReleaseDatesResponse: Codable, Sendable {
     let results: [TMDBReleaseDateCountry]?
 }
 
-struct TMDBReleaseDateCountry: Codable {
+nonisolated struct TMDBReleaseDateCountry: Codable, Sendable {
     let iso31661: String
     let releaseDates: [TMDBReleaseDateEntry]?
 }
 
-struct TMDBReleaseDateEntry: Codable {
+nonisolated struct TMDBReleaseDateEntry: Codable, Sendable {
     let certification: String?
     let type: Int?
 }
@@ -324,7 +324,7 @@ nonisolated struct TMDBWatchProviderRegion: Codable, Identifiable, Sendable, Has
 }
 
 /// Display-only IDs appended to detail responses; no Core Data / CloudKit persistence.
-struct TMDBExternalIDs: Codable {
+nonisolated struct TMDBExternalIDs: Codable, Sendable {
     let imdbId: String?
 
     var imdbURL: URL? {

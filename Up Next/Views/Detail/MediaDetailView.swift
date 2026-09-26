@@ -373,12 +373,13 @@ struct MediaDetailView: View {
                 // A deferred delete may have committed while the fetch was in flight; writing to a
                 // deleted or detached row would fault.
                 guard !wasAttached || isUsable(tvShow) else { return }
-                tvShow.update(from: mapped)
-
-                // Always re-derive, not just when the season count grew: an announced season
-                // becoming watchable changes availability without changing the count, and the
-                // handler is a cheap, idempotent re-sync.
-                onSeasonCountChanged?(listItem, previousSeasonCount)
+                // Re-derive whenever anything changed, not just the season count: an announced
+                // season becoming watchable changes availability without changing the count. When
+                // nothing changed, skip it — the handler re-sorts the library and saves, which is
+                // wasted work landing mid-transition on every open.
+                if tvShow.update(from: mapped) {
+                    onSeasonCountChanged?(listItem, previousSeasonCount)
+                }
 
                 let similar = (detail.similar?.results ?? []).map {
                     SimilarMediaItem(tmdbID: $0.id, title: $0.name, posterPath: $0.posterPath, voteAverage: $0.voteAverage, mediaType: .tvShow)

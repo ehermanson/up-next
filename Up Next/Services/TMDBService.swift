@@ -250,7 +250,7 @@ final class TMDBService {
 
     /// A `/discover` request from a `CollectionIdea` query. Items are sorted so the same idea
     /// always hits the same `RequestDeduplicator` cache entry.
-    private func discover<T: Decodable>(_ endpoint: String, _ query: [String: String]) async throws -> T {
+    private nonisolated func discover<T: Decodable & Sendable>(_ endpoint: String, _ query: [String: String]) async throws -> T {
         let items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         return try await performRequest(endpoint: endpoint, queryItems: items)
     }
@@ -884,7 +884,11 @@ final class TMDBService {
 
     private let deduplicator = RequestDeduplicator()
 
-    private nonisolated func performRequest<T: Decodable>(
+    /// `@concurrent` so the fetch *and the JSON decode* run off the main actor — a plain
+    /// `nonisolated async` func runs on its caller's actor, which put every detail decode on the
+    /// main thread mid-transition (and a whole library's worth during the 6-hour refresh).
+    @concurrent
+    private nonisolated func performRequest<T: Decodable & Sendable>(
         endpoint: String,
         queryItems: [URLQueryItem]
     ) async throws -> T {

@@ -162,7 +162,9 @@ final class ListItem: NSManagedObject, Identifiable {
                 isWatched = true
                 watchedAt = Date.now
             }
-        } else {
+        } else if isWatched || watchedAt != nil {
+            // Guarded like the branch above: an unconditional write dirties the row (and re-renders
+            // its observers) on every detail open and refresh even when nothing changed.
             isWatched = false
             watchedAt = nil
         }

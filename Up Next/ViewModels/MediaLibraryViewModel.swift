@@ -366,30 +366,38 @@ final class MediaLibraryViewModel {
         persistence.save()
     }
 
+    /// Every derived array is compared before assigning: an `@Observable` property notifies on
+    /// every write, equal or not, and this runs on each sheet dismiss and save — an unconditional
+    /// reassign re-rendered both watchlist tabs every time.
     func syncUnwatched(for mediaType: MediaType) {
         switch mediaType {
         case .tvShow:
-            unwatchedTVShows = syncUnwatchedItems(
-                allItems: tvShows,
-                currentUnwatched: unwatchedTVShows
-            )
-            watchingTVShows = tvShows.filter { $0.isWatching }
+            let unwatched = syncUnwatchedItems(allItems: tvShows, currentUnwatched: unwatchedTVShows)
+            let watching = tvShows.filter { $0.isWatching }
                 .sorted { ($0.watchingStartedAt ?? .distantPast) < ($1.watchingStartedAt ?? .distantPast) }
-            watchedTVShows = tvShows.filter { $0.isWatched && !$0.isWatching }
+            let watched = tvShows.filter { $0.isWatched && !$0.isWatching }
                 .sorted(by: Self.mostRecentlyWatchedFirst)
-            availableTVGenres = Array(Set(unwatchedTVShows.flatMap { $0.media?.genres ?? [] })).sorted()
-            availableTVProviderCategories = providerCategoryLabels(from: unwatchedTVShows)
-            existingTVShowIDs = Set(tvShows.compactMap { $0.media?.id })
+            let genres = Array(Set(unwatched.flatMap { $0.media?.genres ?? [] })).sorted()
+            let categories = providerCategoryLabels(from: unwatched)
+            let ids = Set(tvShows.compactMap { $0.media?.id })
+            if unwatched != unwatchedTVShows { unwatchedTVShows = unwatched }
+            if watching != watchingTVShows { watchingTVShows = watching }
+            if watched != watchedTVShows { watchedTVShows = watched }
+            if genres != availableTVGenres { availableTVGenres = genres }
+            if categories != availableTVProviderCategories { availableTVProviderCategories = categories }
+            if ids != existingTVShowIDs { existingTVShowIDs = ids }
         case .movie:
-            unwatchedMovies = syncUnwatchedItems(
-                allItems: movies,
-                currentUnwatched: unwatchedMovies
-            )
-            watchedMovies = movies.filter { $0.isWatched }
+            let unwatched = syncUnwatchedItems(allItems: movies, currentUnwatched: unwatchedMovies)
+            let watched = movies.filter { $0.isWatched }
                 .sorted(by: Self.mostRecentlyWatchedFirst)
-            availableMovieGenres = Array(Set(unwatchedMovies.flatMap { $0.media?.genres ?? [] })).sorted()
-            availableMovieProviderCategories = providerCategoryLabels(from: unwatchedMovies)
-            existingMovieIDs = Set(movies.compactMap { $0.media?.id })
+            let genres = Array(Set(unwatched.flatMap { $0.media?.genres ?? [] })).sorted()
+            let categories = providerCategoryLabels(from: unwatched)
+            let ids = Set(movies.compactMap { $0.media?.id })
+            if unwatched != unwatchedMovies { unwatchedMovies = unwatched }
+            if watched != watchedMovies { watchedMovies = watched }
+            if genres != availableMovieGenres { availableMovieGenres = genres }
+            if categories != availableMovieProviderCategories { availableMovieProviderCategories = categories }
+            if ids != existingMovieIDs { existingMovieIDs = ids }
         }
     }
 

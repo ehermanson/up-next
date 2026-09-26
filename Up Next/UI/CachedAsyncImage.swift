@@ -23,21 +23,29 @@ final class ImageCache {
     }
 }
 
+/// Downloads *and decodes* off the main actor. `UIImage(data:)` alone is lazy — the JPEG is
+/// decompressed on the main thread the first time it's drawn, which stacked a frame's worth of
+/// poster decodes onto every tab switch and detail open. `byPreparingForDisplay()` does that
+/// decompression here instead, so the image handed to SwiftUI draws without further work.
 private actor ImageDownloader {
     static let shared = ImageDownloader()
-    private var inFlight: [URL: Task<Data, any Error>] = [:]
+    private var inFlight: [URL: Task<UIImage, any Error>] = [:]
 
-    func download(from url: URL) async throws -> Data {
+    func image(from url: URL) async throws -> UIImage {
         if let existing = inFlight[url] {
             return try await existing.value
         }
-        let task = Task {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            return data
-        }
+        let task = Task { try await Self.fetchAndDecode(url) }
         inFlight[url] = task
         defer { inFlight.removeValue(forKey: url) }
         return try await task.value
+    }
+
+    @concurrent
+    private nonisolated static func fetchAndDecode(_ url: URL) async throws -> UIImage {
+        let (data, _) = try await URLSession.shared.data(from: url)
+        guard let image = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
+        return await image.byPreparingForDisplay() ?? image
     }
 }
 
@@ -76,11 +84,7 @@ struct CachedAsyncImage<Content: View>: View {
         phase = .empty
 
         do {
-            let data = try await ImageDownloader.shared.download(from: url)
-            guard let uiImage = UIImage(data: data) else {
-                phase = .failure(URLError(.cannotDecodeContentData))
-                return
-            }
+            let uiImage = try await ImageDownloader.shared.image(from: url)
             ImageCache.shared.store(uiImage, for: url)
             // Fresh download: animate the swap so callers whose `.success` view carries
             // `Motion.posterAppear` get a soft settle in. Callers without a transition are

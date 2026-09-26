@@ -632,21 +632,39 @@ func deleteMediaIfUnreferenced(
     }
 }
 
+/// Writes `value` only when it differs from what's stored. Assigning an equal value still dirties a
+/// managed object: KVO fires (re-rendering every row and sheet observing it) and the next save
+/// writes the row and queues a CloudKit export — on every detail open and every 6-hour refresh.
+@MainActor
+private func assign<Root: NSManagedObject, Value: Equatable>(
+    _ root: Root,
+    _ keyPath: ReferenceWritableKeyPath<Root, Value>,
+    _ value: Value,
+    changed: inout Bool
+) {
+    guard root[keyPath: keyPath] != value else { return }
+    root[keyPath: keyPath] = value
+    changed = true
+}
+
 extension Movie {
     /// Applies all TMDB-sourced fields from a freshly-fetched instance.
-    /// Add new TMDB fields here — this is the single place to keep in sync.
+    /// Add new TMDB fields here — this is the single place to keep in sync. Returns whether
+    /// anything actually changed.
     @MainActor
-    func update(from source: Movie) {
-        title = source.title
-        descriptionText = source.descriptionText
+    @discardableResult
+    func update(from source: Movie) -> Bool {
+        var changed = false
+        assign(self, \.title, source.title, changed: &changed)
+        assign(self, \.descriptionText, source.descriptionText, changed: &changed)
         // The 6-hour metadata refresh uses the lean endpoints (no `credits`), so an empty cast
         // means "not fetched", not "nobody" — keep what the last full fetch stored.
         if !source.cast.isEmpty {
-            cast = source.cast
-            castImagePaths = source.castImagePaths
-            castCharacters = source.castCharacters
+            assign(self, \.cast, source.cast, changed: &changed)
+            assign(self, \.castImagePaths, source.castImagePaths, changed: &changed)
+            assign(self, \.castCharacters, source.castCharacters, changed: &changed)
         }
-        genres = source.genres
+        assign(self, \.genres, source.genres, changed: &changed)
         if let replacement = reconciledNetworks(
             current: networks,
             incoming: source.networks,
@@ -657,18 +675,20 @@ extension Movie {
             // providers changed would leave orphan Network rows (and CloudKit records) behind.
             insertUnattachedNetworks(replacement, into: managedObjectContext)
             networks = replacement
+            changed = true
         }
-        providerCategories = source.providerCategories
-        contentRating = source.contentRating
-        releaseDate = source.releaseDate
-        runtime = source.runtime
-        voteAverage = source.voteAverage
+        assign(self, \.providerCategories, source.providerCategories, changed: &changed)
+        assign(self, \.contentRating, source.contentRating, changed: &changed)
+        assign(self, \.releaseDate, source.releaseDate, changed: &changed)
+        assign(self, \.runtime, source.runtime, changed: &changed)
+        assign(self, \.voteAverage, source.voteAverage, changed: &changed)
         if source.thumbnailURL != nil {
-            thumbnailURL = source.thumbnailURL
+            assign(self, \.thumbnailURL, source.thumbnailURL, changed: &changed)
         }
         if source.backdropPath != nil {
-            backdropPath = source.backdropPath
+            assign(self, \.backdropPath, source.backdropPath, changed: &changed)
         }
+        return changed
     }
 
     /// User-facing release year derived from the stored date
@@ -680,19 +700,22 @@ extension Movie {
 
 extension TVShow {
     /// Applies all TMDB-sourced fields from a freshly-fetched instance.
-    /// Add new TMDB fields here — this is the single place to keep in sync.
+    /// Add new TMDB fields here — this is the single place to keep in sync. Returns whether
+    /// anything actually changed.
     @MainActor
-    func update(from source: TVShow) {
-        title = source.title
-        descriptionText = source.descriptionText
+    @discardableResult
+    func update(from source: TVShow) -> Bool {
+        var changed = false
+        assign(self, \.title, source.title, changed: &changed)
+        assign(self, \.descriptionText, source.descriptionText, changed: &changed)
         // The 6-hour metadata refresh uses the lean endpoints (no `credits`), so an empty cast
         // means "not fetched", not "nobody" — keep what the last full fetch stored.
         if !source.cast.isEmpty {
-            cast = source.cast
-            castImagePaths = source.castImagePaths
-            castCharacters = source.castCharacters
+            assign(self, \.cast, source.cast, changed: &changed)
+            assign(self, \.castImagePaths, source.castImagePaths, changed: &changed)
+            assign(self, \.castCharacters, source.castCharacters, changed: &changed)
         }
-        genres = source.genres
+        assign(self, \.genres, source.genres, changed: &changed)
         if let replacement = reconciledNetworks(
             current: networks,
             incoming: source.networks,
@@ -702,26 +725,28 @@ extension TVShow {
             // See `Movie.update(from:)` — insert only once we know the providers changed.
             insertUnattachedNetworks(replacement, into: managedObjectContext)
             networks = replacement
+            changed = true
         }
-        providerCategories = source.providerCategories
-        numberOfSeasons = source.numberOfSeasons
-        numberOfEpisodes = source.numberOfEpisodes
-        seasonEpisodeCounts = source.seasonEpisodeCounts
-        seasonDescriptions = source.seasonDescriptions
-        contentRating = source.contentRating
-        episodeRunTime = source.episodeRunTime
-        nextEpisodeAirDate = source.nextEpisodeAirDate
-        nextEpisodeSeason = source.nextEpisodeSeason
-        nextEpisodeNumber = source.nextEpisodeNumber
-        nextEpisodeName = source.nextEpisodeName
-        status = source.status
-        voteAverage = source.voteAverage
+        assign(self, \.providerCategories, source.providerCategories, changed: &changed)
+        assign(self, \.numberOfSeasons, source.numberOfSeasons, changed: &changed)
+        assign(self, \.numberOfEpisodes, source.numberOfEpisodes, changed: &changed)
+        assign(self, \.seasonEpisodeCounts, source.seasonEpisodeCounts, changed: &changed)
+        assign(self, \.seasonDescriptions, source.seasonDescriptions, changed: &changed)
+        assign(self, \.contentRating, source.contentRating, changed: &changed)
+        assign(self, \.episodeRunTime, source.episodeRunTime, changed: &changed)
+        assign(self, \.nextEpisodeAirDate, source.nextEpisodeAirDate, changed: &changed)
+        assign(self, \.nextEpisodeSeason, source.nextEpisodeSeason, changed: &changed)
+        assign(self, \.nextEpisodeNumber, source.nextEpisodeNumber, changed: &changed)
+        assign(self, \.nextEpisodeName, source.nextEpisodeName, changed: &changed)
+        assign(self, \.status, source.status, changed: &changed)
+        assign(self, \.voteAverage, source.voteAverage, changed: &changed)
         if source.thumbnailURL != nil {
-            thumbnailURL = source.thumbnailURL
+            assign(self, \.thumbnailURL, source.thumbnailURL, changed: &changed)
         }
         if source.backdropPath != nil {
-            backdropPath = source.backdropPath
+            assign(self, \.backdropPath, source.backdropPath, changed: &changed)
         }
+        return changed
     }
 
     /// Seasons that can actually be watched right now. TMDB lists a season the moment it's announced —
