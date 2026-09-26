@@ -207,9 +207,11 @@ private struct SeasonProgressBar: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Above this many seasons, individual 12pt segments would overflow a card's width — a single
-    /// capsule with a fill fraction reads the same information without spilling.
-    private static let maxSegments = 12
+    /// Up to this many seasons, segments keep a fixed 12pt width. Beyond it they'd overflow the
+    /// card, so they flex to share the row instead — still one segment per season, never a single
+    /// fill-fraction bar, because seasons are often watched out of order and a bar would imply a
+    /// prefix.
+    private static let maxFixedSegments = 12
 
     /// `.fill.secondary` is black-alpha in light mode and all but disappears on a white card.
     private var trackStyle: AnyShapeStyle {
@@ -217,34 +219,17 @@ private struct SeasonProgressBar: View {
     }
 
     var body: some View {
-        Group {
-            if total <= Self.maxSegments {
-                HStack(spacing: 4) {
-                    ForEach(1...total, id: \.self) { season in
-                        let isWatched = watchedSeasons.contains(season)
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(isWatched ? AnyShapeStyle(Color.accentColor) : trackStyle)
-                            .frame(width: 12, height: 4)
-                    }
-                }
-            } else {
-                Capsule()
-                    .fill(trackStyle)
-                    .frame(height: 4)
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.accentColor)
-                            .scaleEffect(x: fillFraction, y: 1, anchor: .leading)
-                    }
+        let isFixed = total <= Self.maxFixedSegments
+        HStack(spacing: isFixed ? 4 : (total > 30 ? 1.5 : 2)) {
+            ForEach(1...total, id: \.self) { season in
+                RoundedRectangle(cornerRadius: isFixed ? 2 : 1)
+                    .fill(watchedSeasons.contains(season) ? AnyShapeStyle(Color.accentColor) : trackStyle)
+                    .frame(width: isFixed ? 12 : nil, height: 4)
+                    .frame(maxWidth: isFixed ? nil : .infinity)
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(watchedSeasons.count) of \(total) seasons watched")
-    }
-
-    private var fillFraction: CGFloat {
-        guard total > 0 else { return 0 }
-        return CGFloat(watchedSeasons.count) / CGFloat(total)
     }
 }
 
