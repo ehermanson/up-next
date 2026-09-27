@@ -99,6 +99,20 @@ struct MediaCardView: View {
         }
     }
 
+    private func metadataLine(_ text: String?) -> some View {
+        HStack(spacing: 6) {
+            if let text {
+                Text(text)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if let vote = voteAverage, vote > 0 {
+                StarRatingLabel(vote: vote)
+            }
+        }
+    }
+
     var body: some View {
         HStack(spacing: isCompact ? 10 : 12) {
             poster
@@ -114,15 +128,12 @@ struct MediaCardView: View {
                     }
                 }
                 if !isCompact {
-                    HStack(spacing: 6) {
-                        if let subtitleLine {
-                            Text(subtitleLine)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        if let vote = voteAverage, vote > 0 {
-                            StarRatingLabel(vote: vote)
+                    // Drop the genre before truncating: "5 Seasons · 46 Episodes · D…" reads worse
+                    // than no genre at all (three-column iPad grids hit this constantly).
+                    ViewThatFits(in: .horizontal) {
+                        metadataLine(subtitleLine)
+                        if let subtitle, !subtitle.isEmpty, subtitle != subtitleLine {
+                            metadataLine(subtitle)
                         }
                     }
                 } else if let subtitle = subtitle {

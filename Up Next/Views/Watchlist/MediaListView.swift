@@ -394,11 +394,7 @@ struct MediaListView: View {
         .animation(filterAnimation, value: onlyMyServices)
     }
 
-    /// Cells are wide rather than poster-shaped, so the grid adapts by column count instead of
-    /// stretching a fixed number of them.
-    private static let gridColumns = [
-        GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 12)
-    ]
+    private static let gridColumns = DesignTokens.Layout.rowGridColumns
 
     private func section<Header: View>(
         header: Header,

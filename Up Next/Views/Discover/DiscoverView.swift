@@ -35,11 +35,19 @@ struct DiscoverView: View {
             // (see `WatchlistSearchView`'s equivalent note for its `List`).
             ScrollView {
                 VStack(spacing: 20) {
-                    mediaTypePicker
+                    if horizontalSizeClass == .regular {
+                        regularControlRow
+                    } else {
+                        mediaTypePicker
+                            .padding(.horizontal, DesignTokens.Spacing.screenInset)
+                    }
                     if viewModel.isSearchActive {
                         searchResultsSection
                     } else {
-                        providerFilterRow
+                        if horizontalSizeClass != .regular {
+                            providerFilterRow
+                                .padding(.horizontal, DesignTokens.Spacing.screenInset)
+                        }
                         carouselSections
                         browseAllSection
                     }
@@ -114,8 +122,22 @@ struct DiscoverView: View {
             }
         }
         .pickerStyle(.segmented)
+    }
+
+    /// Regular width: picker and services chip share one leading-aligned row, on the same inset
+    /// as the section headers below. Centered in a capped column they floated in the middle of a
+    /// wide window, out of line with everything else on the page. The chip is hidden while
+    /// searching, as it is on the phone.
+    private var regularControlRow: some View {
+        HStack(spacing: 12) {
+            mediaTypePicker
+                .frame(width: 300)
+            if !viewModel.isSearchActive {
+                providerFilterRow
+            }
+            Spacer(minLength: 0)
+        }
         .padding(.horizontal, DesignTokens.Spacing.screenInset)
-        .frame(maxWidth: horizontalSizeClass == .regular ? 480 : .infinity)
     }
 
     // MARK: - Provider Filter Row
@@ -148,10 +170,10 @@ struct DiscoverView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Spacer()
+            if horizontalSizeClass != .regular {
+                Spacer()
+            }
         }
-        .padding(.horizontal, DesignTokens.Spacing.screenInset)
-        .frame(maxWidth: horizontalSizeClass == .regular ? 480 : .infinity)
     }
 
     /// True when Discover results are currently narrowed to the user's selected services.
@@ -227,7 +249,7 @@ struct DiscoverView: View {
 
     /// Carousel poster size — larger on regular width (iPad) to use the extra space, same 2:3 ratio.
     private var posterCardSize: CGSize {
-        horizontalSizeClass == .regular ? CGSize(width: 170, height: 255) : CGSize(width: 140, height: 210)
+        horizontalSizeClass == .regular ? DesignTokens.Layout.regularCarouselPoster : CGSize(width: 140, height: 210)
     }
 
     private func carouselCard(
@@ -268,7 +290,11 @@ struct DiscoverView: View {
             }
             .overlay(alignment: .bottomLeading) {
                 if showsAirDate, let label = airDateLabel(for: item) {
+                    // A plain chip is a translucent gray that vanishes on bright poster art;
+                    // a dark scrim keeps it legible in either appearance.
                     Chip(icon: "calendar", text: label)
+                        .environment(\.colorScheme, .dark)
+                        .background(.black.opacity(0.5), in: .capsule)
                         .padding(6)
                 }
             }
@@ -420,10 +446,7 @@ struct DiscoverView: View {
                 VStack(spacing: 8) {
                     if horizontalSizeClass == .regular {
                         // Regular width: let rows form 2-3 columns instead of one long list.
-                        LazyVGrid(
-                            columns: [GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 12)],
-                            spacing: 12
-                        ) {
+                        LazyVGrid(columns: DesignTokens.Layout.rowGridColumns, spacing: 12) {
                             ForEach(viewModel.browseItems) { item in
                                 browseRow(item)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -494,9 +517,21 @@ struct DiscoverView: View {
             EmptyStateView(icon: "exclamationmark.triangle", title: "Couldn’t Load", subtitle: error)
                 .padding(.vertical, 40)
         } else if viewModel.hasSearchResults {
-            LazyVStack(spacing: 8) {
-                ForEach(viewModel.searchResultItems) { item in
-                    browseRow(item)
+            Group {
+                if horizontalSizeClass == .regular {
+                    // Same grid as Browse All — one full-width column of rows reads as banners.
+                    LazyVGrid(columns: DesignTokens.Layout.rowGridColumns, spacing: 12) {
+                        ForEach(viewModel.searchResultItems) { item in
+                            browseRow(item)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                } else {
+                    LazyVStack(spacing: 8) {
+                        ForEach(viewModel.searchResultItems) { item in
+                            browseRow(item)
+                        }
+                    }
                 }
             }
             .padding(.horizontal, DesignTokens.Spacing.screenInset)

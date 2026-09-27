@@ -48,7 +48,8 @@ struct CollectionSuggestionsView: View {
                                     isAdded: isAdded(.movie, movie.id),
                                     onTap: { detailItem = ListItem(movie: service.mapToMovie(movie)) },
                                     onAdd: { addMovie(movie) },
-                                    transitionSource: (id: "suggested:" + MediaIDKey.make(.movie, movie.id), namespace: detailNamespace)
+                                    transitionSource: (id: "suggested:" + MediaIDKey.make(.movie, movie.id), namespace: detailNamespace),
+                                    posterSize: posterSize
                                 )
                             }
                             ForEach(shows) { show in
@@ -57,7 +58,8 @@ struct CollectionSuggestionsView: View {
                                     isAdded: isAdded(.tvShow, show.id),
                                     onTap: { detailItem = ListItem(tvShow: service.mapToTVShow(show)) },
                                     onAdd: { addTVShow(show) },
-                                    transitionSource: (id: "suggested:" + MediaIDKey.make(.tvShow, show.id), namespace: detailNamespace)
+                                    transitionSource: (id: "suggested:" + MediaIDKey.make(.tvShow, show.id), namespace: detailNamespace),
+                                    posterSize: posterSize
                                 )
                             }
                         }
@@ -102,6 +104,12 @@ struct CollectionSuggestionsView: View {
                 sheet
             }
         }
+    }
+
+    private var posterSize: CGSize {
+        horizontalSizeClass == .regular
+            ? DesignTokens.Layout.regularCarouselPoster
+            : CGSize(width: 120, height: 170)
     }
 
     private func isAdded(_ type: MediaType, _ id: Int) -> Bool {

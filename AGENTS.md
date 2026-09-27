@@ -143,7 +143,7 @@ Things you can't derive from reading one file. Each points at the code that expl
 - Every presenter of `MediaDetailView` owns a `@Namespace` and uses the zoom transition; source ids are `MediaIDKey` strings, prefixed per surface where a title can appear twice on one screen.
 - The watchlist toolbar's "+ / Edit" is one `ToolbarItem` with a `.plain` `HStack`, not two items (two items put an icon and a text label at opposite ends of one pill).
 - `MediaListView` uses `DesignTokens.Spacing.screenInset` for list insets; don't add outer horizontal padding to its `List`.
-- **iPad**: compact width must stay identical to the phone. Regular width = sidebar-adaptable tabs, `LazyVGrid` of the same row cards, detail as a `.page` sheet, editing as the centered phone list. A `NavigationSplitView` master-detail was tried and rejected (crams the list into a sidebar and reports `.compact` to its contents) — don't reintroduce it.
+- **iPad**: compact width must stay identical to the phone. Regular width = sidebar-adaptable tabs, `LazyVGrid` of the same row cards on every tab (one column spec, `DesignTokens.Layout.rowGridColumns`, leading-aligned under the title — never a capped, centered column), detail as a `.page` sheet, editing as the centered phone list. A `NavigationSplitView` master-detail was tried and rejected (crams the list into a sidebar and reports `.compact` to its contents) — don't reintroduce it.
 - Provider onboarding (`ProviderSettingsView(isRoot: true)`) is presented once by `ContentView`; the same view is pushed (`isRoot: false`) from Settings. `RegionPickerView` is a searchable list, never a menu `Picker`.
 
 ### Vocabulary (user-facing copy)

@@ -207,28 +207,33 @@ struct CustomListDetailView: View {
     private func gridLayout(watchedItems: [CustomListItem]) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
-                header
-
-                LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
-                    ForEach(unwatchedItems, id: \.objectID) { item in
-                        row(for: item)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-
-                if !watchedItems.isEmpty {
-                    watchedHeader
+                VStack(alignment: .leading, spacing: 24) {
+                    header
 
                     LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
-                        ForEach(watchedItems, id: \.objectID) { item in
+                        ForEach(unwatchedItems, id: \.objectID) { item in
                             row(for: item)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+
+                    if !watchedItems.isEmpty {
+                        watchedHeader
+
+                        LazyVGrid(columns: gridColumns, alignment: .leading, spacing: 12) {
+                            ForEach(watchedItems, id: \.objectID) { item in
+                                row(for: item)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
                 }
+                .padding(.horizontal, DesignTokens.Spacing.screenInset)
+
+                // Outside the inset: the suggestions carousel insets its own heading and scrolls
+                // edge to edge, like Discover's carousels.
                 suggestions
             }
-            .padding(.horizontal, DesignTokens.Spacing.screenInset)
         }
         .background(AppBackground())
     }
@@ -237,9 +242,7 @@ struct CustomListDetailView: View {
         CollectionSuggestionsView(list: list, viewModel: viewModel)
     }
 
-    private var gridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 12)]
-    }
+    private var gridColumns: [GridItem] { DesignTokens.Layout.rowGridColumns }
 
     // MARK: - Rows
 

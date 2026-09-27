@@ -36,44 +36,10 @@ struct MyListsView: View {
                         .buttonStyle(.glassProminent)
                     }
                     .background(AppBackground(drifts: true))
+                } else if horizontalSizeClass == .regular {
+                    gridLayout
                 } else {
-                    List {
-                        ForEach(viewModel.customLists, id: \.id) { list in
-                            MyListsRow(viewModel: viewModel, list: list) {
-                                viewModel.activeListID = list.id
-                                navigationPath.append(list.id)
-                            }
-                            .listRowInsets(EdgeInsets(
-                                top: 6,
-                                leading: DesignTokens.Spacing.screenInset,
-                                bottom: 6,
-                                trailing: DesignTokens.Spacing.screenInset
-                            ))
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .cardSurface()
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    listToDelete = list
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                Button {
-                                    editingList = list
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                }
-                                .tint(.accentColor)
-                            }
-                        }
-                    }
-                    .scrollContentBackground(.hidden)
-                    .listStyle(.plain)
-                    // One row card stretched across an iPad reads as a banner; cap the column and
-                    // center it, letting the background still fill the window.
-                    .frame(maxWidth: horizontalSizeClass == .regular ? 720 : .infinity)
-                    .frame(maxWidth: .infinity)
-                    .background(AppBackground(drifts: true))
+                    listLayout
                 }
             }
             .navigationTitle("Collections")
@@ -135,6 +101,77 @@ struct MyListsView: View {
         }
     }
 
+    // MARK: - Layouts
+
+    private func openList(_ list: CustomList) {
+        viewModel.activeListID = list.id
+        navigationPath.append(list.id)
+    }
+
+    /// Phone: one column of row cards in a `List`, which provides the swipe actions.
+    private var listLayout: some View {
+        List {
+            ForEach(viewModel.customLists, id: \.id) { list in
+                MyListsRow(viewModel: viewModel, list: list) { openList(list) }
+                    .listRowInsets(EdgeInsets(
+                        top: 6,
+                        leading: DesignTokens.Spacing.screenInset,
+                        bottom: 6,
+                        trailing: DesignTokens.Spacing.screenInset
+                    ))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .cardSurface()
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            listToDelete = list
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        Button {
+                            editingList = list
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        .tint(.accentColor)
+                    }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .listStyle(.plain)
+        .background(AppBackground(drifts: true))
+    }
+
+    /// Regular width: the same row cards in the watchlist's full-width adaptive grid, so the
+    /// cards line up under the title the way the TV Shows / Movies tabs do. (A single capped,
+    /// centered column floated away from the leading-aligned title, worst in landscape.) There
+    /// are no swipe actions outside a `List`; the context menu carries Edit / Delete.
+    private var gridLayout: some View {
+        ScrollView {
+            LazyVGrid(columns: DesignTokens.Layout.rowGridColumns, alignment: .leading, spacing: 12) {
+                ForEach(viewModel.customLists, id: \.id) { list in
+                    MyListsRow(viewModel: viewModel, list: list, mosaicSize: 80) { openList(list) }
+                        .cardSurface()
+                        .contextMenu { rowActions(for: list) }
+                }
+            }
+            .padding(.horizontal, DesignTokens.Spacing.screenInset)
+            .padding(.top, 4)
+        }
+        .contentMargins(.bottom, 20, for: .scrollContent)
+        .background(AppBackground(drifts: true))
+    }
+
+    @ViewBuilder
+    private func rowActions(for list: CustomList) -> some View {
+        Button("Edit", systemImage: "pencil") {
+            editingList = list
+        }
+        Button("Delete", systemImage: "trash", role: .destructive) {
+            listToDelete = list
+        }
+    }
+
     #if DEBUG
     /// Screenshot mode only: drill into the collection named by `--collection` so the store
     /// screenshot shows a populated collection rather than the overview.
@@ -144,8 +181,7 @@ struct MyListsView: View {
               let list = viewModel.customLists.first(where: { $0.name == name })
         else { return }
         didOpenRequestedCollection = true
-        viewModel.activeListID = list.id
-        navigationPath.append(list.id)
+        openList(list)
     }
     #endif
 
@@ -164,6 +200,8 @@ struct MyListsView: View {
 private struct MyListsRow: View {
     let viewModel: CustomListViewModel
     @ObservedObject var list: CustomList
+    /// Larger on the iPad grid, where the card is as tall as a watchlist row card.
+    var mosaicSize: CGFloat = 64
     let action: () -> Void
 
     /// First four items, ordered like the detail view's unwatched section (oldest add first).
@@ -180,7 +218,7 @@ private struct MyListsRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                PosterMosaicView(posterURLs: mosaicItems.map { $0.media?.thumbnailURL }, size: 64)
+                PosterMosaicView(posterURLs: mosaicItems.map { $0.media?.thumbnailURL }, size: mosaicSize)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(list.name)

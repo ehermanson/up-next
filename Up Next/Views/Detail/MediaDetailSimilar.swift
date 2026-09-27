@@ -83,8 +83,12 @@ struct PosterCard: View {
     /// Zoom-transition source for the nested detail sheet `onTap` opens.
     var transitionSource: (id: String, namespace: Namespace.ID)?
 
-    private let cardWidth: CGFloat = 120
-    private let posterHeight: CGFloat = 170
+    /// Detail-sheet carousels keep the default; a collection's suggestions pass Discover's larger
+    /// regular-width size so the two carousels match on iPad.
+    var posterSize = CGSize(width: 120, height: 170)
+
+    private var cardWidth: CGFloat { posterSize.width }
+    private var posterHeight: CGFloat { posterSize.height }
 
     var body: some View {
         VStack(spacing: 6) {

@@ -65,6 +65,17 @@ enum DesignTokens {
         /// Gap between major sections in a scroll view.
         static let section: CGFloat = 20
     }
+
+    enum Layout {
+        /// Regular-width grid of wide row cards (watchlist, collections, a collection's titles,
+        /// Discover's Browse All). Every iPad surface shares it so cards line up tab to tab. The
+        /// cells are wide rather than poster-shaped, so the grid adapts by column count instead of
+        /// stretching a fixed number of them.
+        static let rowGridColumns = [GridItem(.adaptive(minimum: 340, maximum: 520), spacing: 12)]
+        /// Poster size in regular-width horizontal carousels (Discover, a collection's
+        /// suggestions), 2:3 like every poster.
+        static let regularCarouselPoster = CGSize(width: 170, height: 255)
+    }
 }
 
 // MARK: - Surfaces
