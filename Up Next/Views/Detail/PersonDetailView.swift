@@ -115,7 +115,9 @@ struct PersonDetailView: View {
                     .fontWeight(.bold)
                     .fixedSize(horizontal: false, vertical: true)
 
-                if let department = detail?.knownForDepartment, !department.isEmpty {
+                // Only when it says something: everyone reached from a cast row acted, so "Acting"
+                // is noise, but "Directing" or "Writing" tells you who this mostly is.
+                if let department = detail?.knownForDepartment, !department.isEmpty, department != "Acting" {
                     Chip(text: department)
                 }
 
