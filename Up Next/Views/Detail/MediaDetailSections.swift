@@ -132,6 +132,9 @@ struct CastSection: View {
     let cast: [String]
     let castImagePaths: [String]
     let castCharacters: [String]
+    /// Name → TMDB person id from this sheet's detail fetch. A member missing here (the fetch
+    /// hasn't landed, or failed) renders without a link.
+    var personIDs: [String: Int] = [:]
 
     private let imageSize: CGFloat = 64
     private let itemWidth: CGFloat = 80
@@ -146,7 +149,18 @@ struct CastSection: View {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(Array(cast.prefix(10).enumerated()), id: \.offset) { index, member in
-                            castItem(index: index, name: member)
+                            // Plain text until the id lands: a nil-value `NavigationLink` is a
+                            // *disabled* control — dimmed, and "dimmed" to VoiceOver — which is
+                            // what every cast member would be offline.
+                            if let id = personIDs[member] {
+                                NavigationLink(value: CastPersonRoute(id: id, name: member)) {
+                                    castItem(index: index, name: member)
+                                        .contentShape(.rect)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                castItem(index: index, name: member)
+                            }
                         }
                     }
                     .padding(.horizontal, 1)

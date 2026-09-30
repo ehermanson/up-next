@@ -232,6 +232,8 @@ nonisolated struct TMDBCredits: Codable, Sendable {
 }
 
 nonisolated struct TMDBCastMember: Codable, Sendable {
+    /// TMDB person id — opens `PersonDetailView`. Display-only; the persisted cast is names only.
+    let id: Int?
     let name: String
     let character: String?
     let order: Int?
@@ -321,6 +323,57 @@ nonisolated struct TMDBWatchProviderRegion: Codable, Identifiable, Sendable, Has
     let nativeName: String
 
     var id: String { iso31661 }
+}
+
+/// `/person/{id}` with `combined_credits` appended. Read-only; nothing here is persisted.
+nonisolated struct TMDBPersonDetail: Codable, Sendable {
+    let id: Int
+    let name: String
+    let biography: String?
+    let birthday: String?
+    let deathday: String?
+    let placeOfBirth: String?
+    let profilePath: String?
+    let knownForDepartment: String?
+    let combinedCredits: TMDBPersonCredits?
+}
+
+nonisolated struct TMDBPersonCredits: Codable, Sendable {
+    let cast: [TMDBPersonCredit]?
+}
+
+/// One acting credit. Movies carry `title`/`releaseDate`/`order`, shows `name`/`episodeCount` and
+/// `firstCreditAirDate` — when *this person* first appeared, not the show's premiere.
+nonisolated struct TMDBPersonCredit: Codable, Sendable {
+    let id: Int
+    let mediaType: String?
+    let title: String?
+    let name: String?
+    var character: String?
+    let posterPath: String?
+    let voteAverage: Double?
+    let voteCount: Int?
+    let releaseDate: String?
+    let firstAirDate: String?
+    var firstCreditAirDate: String?
+    let genreIds: [Int]?
+    var episodeCount: Int?
+    /// Billing position on a movie (0 = top). TMDB omits it for TV.
+    let order: Int?
+    let adult: Bool?
+
+    var displayTitle: String { title ?? name ?? "" }
+
+    /// The date the credit sorts and labels by: a movie's release, or the person's first episode.
+    var creditDate: String? {
+        let date = mediaType == "tv" ? (firstCreditAirDate ?? firstAirDate) : releaseDate
+        return date?.isEmpty == false ? date : nil
+    }
+
+    var year: String? {
+        guard let date = creditDate, date.count >= 4 else { return nil }
+        return String(date.prefix(4))
+    }
 }
 
 /// Display-only IDs appended to detail responses; no Core Data / CloudKit persistence.

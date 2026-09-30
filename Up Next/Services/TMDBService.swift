@@ -150,6 +150,14 @@ final class TMDBService {
         )
     }
 
+    /// A cast member's bio and acting credits, for `PersonDetailView`.
+    func getPersonDetails(id: Int) async throws -> TMDBPersonDetail {
+        try await performRequest(
+            endpoint: "/person/\(id)",
+            queryItems: [URLQueryItem(name: "append_to_response", value: "combined_credits")]
+        )
+    }
+
     /// Get the episode list for a single season (read-only; no episode-level watched state).
     func getSeasonDetails(tvID: Int, season: Int) async throws -> TMDBSeasonDetail {
         let endpoint = "/tv/\(tvID)/season/\(season)"

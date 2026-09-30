@@ -50,7 +50,7 @@ Up Next/
 │   └── CustomListViewModel.swift    Collection CRUD, per-collection watched, undo-able removal, changeToken
 ├── Views/
 │   ├── Watchlist/   MediaListView (list/grid, filters, toolbar), WatchlistTabView (shell), TVShowsTabView, MoviesTabView, MediaListHelpers (ordering, filterItems, upcomingEntries), SharePitchCard
-│   ├── Detail/      MediaDetailView (shell), PrimaryAddPill (status pill + ellipsis menu), HeaderImageView, MediaDetailSections, MediaDetailCards (SeasonChecklistCard, UserRatingCard, …), MediaDetailMetadata (DetailProviderRow, AddedByCaption), MediaDetailSimilar (More Like This, MediaIDKey), SeasonRatingsSnapshot, SeasonEpisodesView, MediaDetailView+Previews
+│   ├── Detail/      MediaDetailView (shell), PrimaryAddPill (status pill + ellipsis menu), HeaderImageView, MediaDetailSections, MediaDetailCards (SeasonChecklistCard, UserRatingCard, …), MediaDetailMetadata (DetailProviderRow, AddedByCaption), MediaDetailSimilar (More Like This, MediaIDKey), PersonDetailView (cast member page: bio + acting credits, pushed from the cast row), SeasonRatingsSnapshot, SeasonEpisodesView, MediaDetailView+Previews
 │   ├── Search/      WatchlistSearchView (add sheet), RecommendationEngine, CollectionRecommendationEngine, SearchComponents (rows, shimmer, MediaType)
 │   ├── Discover/    DiscoverView
 │   ├── Lists/       MyListsView, CustomListDetailView, CollectionSuggestionsView, CreateListView (name + ideas; no icon — collections are identified by their poster mosaic)
@@ -123,7 +123,7 @@ Things you can't derive from reading one file. Each points at the code that expl
 - Watching (`watchingStartedAt`) and Dropped (`droppedAt`) are independent of watched. State transitions live in `ListItem` and are surfaced *only* via the detail pill's ellipsis menu (`PrimaryAddPill.libraryStateActions`) and row swipe/context menus — never as on-page cards (those were tried and read as contradictions; see `PrimaryAddPill.swift`).
 - `ListItem.WatchState` powers the Watched-move Undo; it restores viewing fields only.
 - Collections have their **own** watched state (`CustomListItem.watchedAt`) and never touch a library `ListItem`. `CustomListViewModel.changeToken` must be read by anything deriving membership/sections from collection items.
-- Episode data is read-only and never persisted.
+- Episode and person data are read-only and never persisted. Cast person ids are display-only `@State` from the detail fetch (the persisted cast is names only), like the IMDb URL.
 - Detail footers link to TMDB and, when available, IMDb. `external_ids` is appended to full detail requests; the IMDb URL is display-only state, not a Core Data attribute. IMDb tries a universal link to the native app first, falling back to the in-app browser; TMDB opens in the in-app browser.
 
 ### Networking / TMDB (see `TMDBService.swift`)
@@ -141,7 +141,8 @@ Things you can't derive from reading one file. Each points at the code that expl
 - **Every mover is Reduce-Motion gated.** Shared vocabulary in `UI/Motion.swift`; every add/done glyph uses `.checkmarkPop(isOn:)` with a ternary `systemName` (one `Image`, not two).
 - A `ForEach` removal inside a horizontal `ScrollView` does not animate — animate the card's own geometry instead (see `MediaDetailView.collapsingSimilarID`).
 - Every presenter of `MediaDetailView` owns a `@Namespace` and uses the zoom transition; source ids are `MediaIDKey` strings, prefixed per surface where a title can appear twice on one screen.
-- The watchlist toolbar's "+ / Edit" is one `ToolbarItem` with a `.plain` `HStack`, not two items (two items put an icon and a text label at opposite ends of one pill).
+- Inside a detail sheet every drill-down (cast → `PersonDetailView`, credit / More Like This / TMDB collection → title) is a push on the sheet's one `NavigationStack` (`MediaDetailView(isPushed: true)`), never a nested sheet — nested sheets flipped the way back between Back (left) and Done (right). Done on any page closes the whole sheet; `CastPersonRoute`'s destination is registered only at the root.
+- The watchlist toolbar's Search (magnifying glass, opens the add sheet) and Edit are separate `ToolbarItem`s split by a `ToolbarSpacer(.fixed)` — their own pills. Two buttons inside one item share a single press highlight.
 - `MediaListView` uses `DesignTokens.Spacing.screenInset` for list insets; don't add outer horizontal padding to its `List`.
 - **iPad**: compact width must stay identical to the phone. Regular width = sidebar-adaptable tabs, `LazyVGrid` of the same row cards on every tab (one column spec, `DesignTokens.Layout.rowGridColumns`, leading-aligned under the title — never a capped, centered column), detail as a `.page` sheet, editing as the centered phone list. A `NavigationSplitView` master-detail was tried and rejected (crams the list into a sidebar and reports `.compact` to its contents) — don't reintroduce it.
 - Provider onboarding (`ProviderSettingsView(isRoot: true)`) is presented once by `ContentView`; the same view is pushed (`isRoot: false`) from Settings. `RegionPickerView` is a searchable list, never a menu `Picker`.

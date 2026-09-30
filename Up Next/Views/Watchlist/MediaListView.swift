@@ -181,41 +181,28 @@ struct MediaListView: View {
                         }
                     }
                 } else {
-                    // One item, not two: iOS 26 gives every toolbar item its own 44pt slot and
-                    // adds the group gap on top, so an icon "+" next to a text "Edit" sat at
-                    // opposite ends of one glass pill with dead space between. A single item
-                    // keeps both in one capsule; `.plain` drops the toolbar button style's own
-                    // ~12pt side padding (which turned a 4pt gap into ~28pt) so the spacing
-                    // below is the spacing you get.
-                    if onSearchTapped != nil || canReorder {
+                    // Separate items, each set off by a fixed spacer so each is its own glass
+                    // pill: two buttons inside one `ToolbarItem` share a single press highlight,
+                    // so tapping Search lit up Edit too (and vice versa).
+                    if let onSearchTapped {
                         ToolbarItem(placement: .topBarTrailing) {
-                            HStack(spacing: 12) {
-                                if let onSearchTapped {
-                                    // 28pt keeps a usable target around the ~17pt glyph; the
-                                    // ~5pt it adds on the outside is mirrored on "Edit" below so
-                                    // the pill's two insets match.
-                                    Button("Add", systemImage: "plus", action: onSearchTapped)
-                                        .labelStyle(.iconOnly)
-                                        .frame(minWidth: 28, minHeight: 44)
-                                        .contentShape(.rect)
-                                }
-                                if canReorder {
-                                    Button("Edit") {
-                                        withAnimation {
-                                            isEditingOrder = true
-                                        }
-                                    }
-                                    .frame(minHeight: 44)
-                                    .padding(.trailing, 5)
-                                    .contentShape(.rect)
+                            Button("Search", systemImage: "magnifyingglass", action: onSearchTapped)
+                        }
+                    }
+                    if canReorder {
+                        if onSearchTapped != nil {
+                            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Edit") {
+                                withAnimation {
+                                    isEditingOrder = true
                                 }
                             }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 2)
                         }
                     }
                     // Outermost (rightmost) of the trailing group, set off with a spacer so it
-                    // reads as its own glass pill — Add/Edit are list actions, Settings isn't.
+                    // reads as its own glass pill — Search/Edit are list actions, Settings isn't.
                     if let onSettingsTapped {
                         ToolbarSpacer(.fixed, placement: .topBarTrailing)
                         ToolbarItem(placement: .topBarTrailing) {
