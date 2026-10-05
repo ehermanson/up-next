@@ -464,11 +464,12 @@ final class DiscoverViewModel {
             region: currentRegion
         )
         if let previous = latestBrowseRequest,
-           previous.mediaType != request.mediaType || previous.genreID != request.genreID
-            || previous.sort != request.sort || previous.providerFilter != request.providerFilter
+           previous.mediaType != request.mediaType || previous.providerFilter != request.providerFilter
             || previous.region != request.region {
             browseItems = []
         }
+        // Genre/sort changes retain the rows until their replacement arrives. Clearing them
+        // collapses the content below the filters and makes UIScrollView clamp its offset.
         latestBrowseRequest = request
         isBrowseLoading = true
         browseError = nil

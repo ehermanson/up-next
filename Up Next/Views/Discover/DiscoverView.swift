@@ -23,6 +23,7 @@ struct DiscoverView: View {
     /// source id is prefixed by its section (see `openDetail(for:sourceID:)`).
     @State private var detailSourceID: String = ""
     @State private var showingProviderSettings = false
+    @State private var scrollViewportHeight: CGFloat = 0
     @Namespace private var detailNamespace
 
     private let service = TMDBService.shared
@@ -53,6 +54,11 @@ struct DiscoverView: View {
                     }
                 }
                 .padding(.bottom, 20)
+            }
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.height
+            } action: { height in
+                scrollViewportHeight = height
             }
             .refreshable {
                 await viewModel.refresh()
@@ -379,6 +385,10 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: 12) {
             browseHeader
             browseList
+                // Even an empty/short result needs enough content below the filters to keep
+                // their current screen position. Otherwise the scroll offset is clamped when
+                // the replacement page is shorter than the viewport.
+                .frame(minHeight: scrollViewportHeight, alignment: .top)
         }
     }
 

@@ -110,9 +110,17 @@ actor Counter {
         let stale = Task { await model.reloadBrowse() }
         try await Task.sleep(for: .milliseconds(5))
         model.selectedGenre = .init(id: 7, name: "Genre")
+        try await Task.sleep(for: .milliseconds(10))
+        precondition(model.isBrowseLoading && model.browseItems.map(\.tmdbId) == [1, 2],
+                     "genre changes must retain rows during loading to preserve scroll extent")
         await stale.value
         try await Task.sleep(for: .milliseconds(100))
         precondition(model.browseItems.map(\.tmdbId) == [7] && !model.isBrowseLoading)
+        model.selectedSort = .topRated
+        try await Task.sleep(for: .milliseconds(10))
+        precondition(model.isBrowseLoading && model.browseItems.map(\.tmdbId) == [7],
+                     "sort changes must retain rows during loading to preserve scroll extent")
+        try await Task.sleep(for: .milliseconds(100))
         service.failMovies = true
         model.searchQuery = "query"
         try await Task.sleep(for: .milliseconds(420))
