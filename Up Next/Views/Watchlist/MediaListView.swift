@@ -49,6 +49,8 @@ struct MediaListView: View {
     @Environment(ToastState.self) private var toast
     @AppStorage(StorageKey.tvWatchedExpanded) private var tvWatchedExpanded = false
     @AppStorage(StorageKey.movieWatchedExpanded) private var movieWatchedExpanded = false
+    @AppStorage(StorageKey.tvUpcomingCollapsedIDs) private var tvUpcomingCollapsedIDs = ""
+    @AppStorage(StorageKey.movieUpcomingCollapsedIDs) private var movieUpcomingCollapsedIDs = ""
 
     private var isWatchedExpanded: Bool {
         mediaType == .tvShow ? tvWatchedExpanded : movieWatchedExpanded
@@ -421,6 +423,36 @@ struct MediaListView: View {
         .animation(disclosureAnimation, value: isWatchedExpanded)
     }
 
+    /// Keys the strip's current entries by title *and* date, so a title returning for another
+    /// season counts as new.
+    private var upcomingKeys: Set<String> {
+        Set(upcomingItems.map { "\($0.id)@\(Int($0.date.timeIntervalSince1970))" })
+    }
+
+    /// Collapsing snoozes the strip rather than hiding it for good: it stays collapsed only while
+    /// every entry is one the user already collapsed over, and opens again on its own as soon as a
+    /// new premiere or release joins — otherwise a single far-off date parks it for up to two weeks,
+    /// and a collapsed-forever strip would hide exactly the news it exists to surface.
+    private var isUpcomingCollapsed: Bool {
+        let stored = mediaType == .tvShow ? tvUpcomingCollapsedIDs : movieUpcomingCollapsedIDs
+        guard !stored.isEmpty else { return false }
+        return upcomingKeys.isSubset(of: stored.split(separator: "\n").map(String.init))
+    }
+
+    private var upcomingExpandedBinding: Binding<Bool> {
+        Binding(
+            get: { !isUpcomingCollapsed },
+            set: { isExpanded in
+                let stored = isExpanded ? "" : upcomingKeys.sorted().joined(separator: "\n")
+                if mediaType == .tvShow {
+                    tvUpcomingCollapsedIDs = stored
+                } else {
+                    movieUpcomingCollapsedIDs = stored
+                }
+            }
+        )
+    }
+
     private var watchedExpandedBinding: Binding<Bool> {
         Binding(
             get: { isWatchedExpanded },
@@ -471,33 +503,48 @@ struct MediaListView: View {
 
     private var upcomingStrip: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: upcomingTitle, icon: "calendar.badge.clock", showsFilter: false)
-                .padding(.horizontal, DesignTokens.Spacing.screenInset)
+            SectionHeader(
+                title: upcomingTitle,
+                count: upcomingItems.count,
+                icon: "calendar.badge.clock",
+                showsFilter: false,
+                isExpanded: upcomingExpandedBinding
+            )
+            .padding(.horizontal, DesignTokens.Spacing.screenInset)
 
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(upcomingItems) { entry in
-                        Button {
-                            onItemExpanded(entry.item.media?.id)
-                        } label: {
-                            UpcomingCard(item: entry.item, dateLabel: entry.dateLabel, detail: entry.detail)
-                        }
-                        .buttonStyle(.plain)
-                        // The strip and the main list can show the same title at once, so this
-                        // needs its own id (already namespaced "upcoming:" — see `entry.id`) —
-                        // the sheet always zooms from the list row's source, not this one.
-                        .matchedTransitionSource(id: entry.id, in: detailNamespace)
-                    }
-                }
-                .padding(.horizontal, DesignTokens.Spacing.screenInset)
-                .padding(.vertical, 2)
+            if !isUpcomingCollapsed {
+                upcomingCards
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .scrollIndicators(.hidden)
         }
         .padding(.vertical, 8)
+        .clipped()
+        .animation(disclosureAnimation, value: isUpcomingCollapsed)
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
+    }
+
+    private var upcomingCards: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                ForEach(upcomingItems) { entry in
+                    Button {
+                        onItemExpanded(entry.item.media?.id)
+                    } label: {
+                        UpcomingCard(item: entry.item, dateLabel: entry.dateLabel, detail: entry.detail)
+                    }
+                    .buttonStyle(.plain)
+                    // The strip and the main list can show the same title at once, so this
+                    // needs its own id (already namespaced "upcoming:" — see `entry.id`) —
+                    // the sheet always zooms from the list row's source, not this one.
+                    .matchedTransitionSource(id: entry.id, in: detailNamespace)
+                }
+            }
+            .padding(.horizontal, DesignTokens.Spacing.screenInset)
+            .padding(.vertical, 2)
+        }
+        .scrollIndicators(.hidden)
     }
 
     private var caughtUpRow: some View {

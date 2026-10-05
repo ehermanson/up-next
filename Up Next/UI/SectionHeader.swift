@@ -5,7 +5,7 @@ import SwiftUI
 /// "Up Next" / "Watched" / the upcoming strip / a collection's "Watched" all read the same.
 struct SectionHeader: View {
     let title: String
-    /// `nil` omits the count chip entirely (the upcoming strip has no count to show).
+    /// `nil` omits the count chip entirely.
     var count: Int? = nil
     /// Leading symbol, e.g. the upcoming strip's calendar glyph.
     var icon: String? = nil
@@ -18,7 +18,7 @@ struct SectionHeader: View {
     var showsMyServicesFilter: Bool = false
     /// Non-nil turns the whole header into a disclosure control — a full-width button that toggles
     /// this binding, with a trailing chevron that rotates to reflect state (the watchlist's
-    /// "Watched" header). `nil` (the default) renders a plain, non-interactive header.
+    /// "Watched" and upcoming-strip headers). `nil` (the default) renders a plain, non-interactive header.
     var isExpanded: Binding<Bool>? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

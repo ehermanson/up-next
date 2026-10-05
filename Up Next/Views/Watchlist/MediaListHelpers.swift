@@ -124,7 +124,7 @@ func upcomingEntries(
     from items: [ListItem],
     mediaType: MediaType,
     now: Date = .now,
-    windowDays: Int = 30,
+    windowDays: Int = 14,
     limit: Int = 12
 ) -> [UpcomingEntry] {
     let today = AirDateFormat.startOfUTCDay(for: now)
