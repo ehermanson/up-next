@@ -108,6 +108,11 @@ struct ContentView: View {
                 // and Core Data has no autosave, so flush whatever is dirty before the app can be
                 // terminated in the background.
                 persistence.save()
+            } else if newPhase == .active {
+                // The mirror can't know about an accepted invitation (see
+                // `refreshLiveShareFromServer`) — ask the server so the share pitch and the other
+                // person's name catch up once they join.
+                Task { await persistence.refreshLiveShareFromServer() }
             }
         }
         .onChange(of: persistence.remoteChangeCount) {
