@@ -125,6 +125,8 @@ final class DiscoverViewModel {
     /// `didSet` skips the reload while a search is active (see above), so this can lag behind it
     /// until `scheduleSearch`'s empty-query branch catches the mismatch up.
     private var loadedMediaType: DiscoverMediaType?
+    private var loadedProviderFilter: String?
+    private var loadedRegion: String?
     /// True once a Discover load has completed successfully at least once — the SwiftUI `.task`
     /// that calls `initialLoad()` re-runs on every tab appearance, and without this it would
     /// flash the shimmer and reset Browse All to page 1 each time. A previous failure or
@@ -142,7 +144,7 @@ final class DiscoverViewModel {
             // empty-query branch catches up (via `loadedMediaType`) once search ends.
             guard !isSearchActive else { return }
             reloadTask?.cancel()
-            reloadTask = Task { await reload() }
+            reloadTask = Task { await performReload() }
         }
     }
 
@@ -176,14 +178,14 @@ final class DiscoverViewModel {
         didSet {
             guard oldValue?.id != selectedGenre?.id else { return }
             browseReloadTask?.cancel()
-            browseReloadTask = Task { await reloadBrowse() }
+            browseReloadTask = Task { await resetBrowse() }
         }
     }
     var selectedSort: SortOption = .popular {
         didSet {
             guard oldValue != selectedSort else { return }
             browseReloadTask?.cancel()
-            browseReloadTask = Task { await reloadBrowse() }
+            browseReloadTask = Task { await resetBrowse() }
         }
     }
 
@@ -209,7 +211,7 @@ final class DiscoverViewModel {
     func providerFilterChanged() {
         reloadTask?.cancel()
         browseReloadTask?.cancel()
-        reloadTask = Task { await reload() }
+        reloadTask = Task { await performReload() }
     }
 
     // MARK: - Loading
@@ -247,25 +249,40 @@ final class DiscoverViewModel {
     @discardableResult
     private func runOwnedReload() async -> Bool {
         reloadTask?.cancel()
-        let task = Task { await reload() }
+        let task = Task { await performReload() }
         reloadTask = task
         await task.value
         return !task.isCancelled
     }
 
-    /// Reloads everything. Also drives pull-to-refresh; `reloadBrowse()` already resets the
-    /// page counter, so browse isn't loaded twice.
+    /// Retry entry point, with the same task ownership as initial load and pull-to-refresh.
     func reload() async {
+        await runOwnedReload()
+    }
+
+    private func performReload() async {
+        browseReloadTask?.cancel()
         async let carousels: Void = loadCarousels()
-        async let browse: Void = reloadBrowse()
+        async let browse: Void = resetBrowse()
         async let genreLoad: Void = loadGenres()
         _ = await (carousels, browse, genreLoad)
+        if !Task.isCancelled, carouselError == nil, browseError == nil { hasLoaded = true }
     }
 
     private func loadCarousels() async {
         let requestedMediaType = selectedMediaType
         let requestedProviderFilter = providerFilter
         let requestedRegion = currentRegion
+        // Keep usable content mounted during refresh, but never show the previous type or
+        // provider/region's titles beneath newly selected filters.
+        if loadedMediaType != requestedMediaType || loadedProviderFilter != requestedProviderFilter
+            || loadedRegion != requestedRegion {
+            trendingItems = []
+            topRatedItems = []
+            newReleasesItems = []
+            airingThisWeekItems = []
+            inTheatersItems = []
+        }
         isCarouselLoading = true
         carouselError = nil
 
@@ -298,17 +315,20 @@ final class DiscoverViewModel {
               requestedRegion == currentRegion
         else { return }
 
-        trendingItems = results.0.items
-        topRatedItems = results.1.items
-        newReleasesItems = results.2.items
-        airingThisWeekItems = results.3.items
-        inTheatersItems = results.4.items
+        // A transient failure during refresh keeps that section's last successful content.
+        if results.0.errorDescription == nil { trendingItems = results.0.items }
+        if results.1.errorDescription == nil { topRatedItems = results.1.items }
+        if results.2.errorDescription == nil { newReleasesItems = results.2.items }
+        if results.3.errorDescription == nil { airingThisWeekItems = results.3.items }
+        if results.4.errorDescription == nil { inTheatersItems = results.4.items }
         carouselError = [
             results.0.errorDescription, results.1.errorDescription, results.2.errorDescription,
             results.3.errorDescription, results.4.errorDescription,
         ].compactMap { $0 }.first
         isCarouselLoading = false
         loadedMediaType = requestedMediaType
+        loadedProviderFilter = requestedProviderFilter
+        loadedRegion = requestedRegion
     }
 
     /// Real trending when unfiltered. `/trending` can't take `with_watch_providers`, so when the
@@ -401,6 +421,24 @@ final class DiscoverViewModel {
     }
 
     func reloadBrowse() async {
+        browseReloadTask?.cancel()
+        let task = Task { await resetBrowse() }
+        browseReloadTask = task
+        await task.value
+    }
+
+    /// A page-one refresh can fail while old rows remain visible; retry it as page one rather
+    /// than asking for a next page against the reset total-page counter.
+    func retryBrowse() async {
+        guard !isBrowseLoading else { return }
+        if latestBrowseRequest?.page == 1 {
+            await reloadBrowse()
+        } else {
+            await loadNextBrowsePage()
+        }
+    }
+
+    private func resetBrowse() async {
         browsePage = 1
         browseTotalPages = 1
         await loadBrowsePage()
@@ -409,7 +447,11 @@ final class DiscoverViewModel {
     func loadNextBrowsePage() async {
         guard !isBrowseLoading, browsePage < browseTotalPages else { return }
         browsePage += 1
-        await loadBrowsePage()
+        isBrowseLoading = true
+        // The sentinel's SwiftUI task can disappear as soon as the spinner replaces it.
+        let task = Task { await loadBrowsePage() }
+        browseReloadTask = task
+        await task.value
     }
 
     private func loadBrowsePage() async {
@@ -421,6 +463,12 @@ final class DiscoverViewModel {
             providerFilter: providerFilter,
             region: currentRegion
         )
+        if let previous = latestBrowseRequest,
+           previous.mediaType != request.mediaType || previous.genreID != request.genreID
+            || previous.sort != request.sort || previous.providerFilter != request.providerFilter
+            || previous.region != request.region {
+            browseItems = []
+        }
         latestBrowseRequest = request
         isBrowseLoading = true
         browseError = nil
@@ -455,12 +503,16 @@ final class DiscoverViewModel {
             // The shared request task isn't cancelled by us, so check explicitly: filters may
             // have changed (or the page counter reset) while this page was in flight.
             guard !Task.isCancelled, latestBrowseRequest == request else { return }
+            // Duplicate IDs can occur within a page as well as across shifting rankings.
+            var seen = request.page == 1 ? Set<String>() : Set(browseItems.map(\.id))
+            let uniqueItems = newItems.filter { seen.insert($0.id).inserted }
             if request.page == 1 {
-                browseItems = newItems
+                browseItems = uniqueItems
             } else {
-                browseItems.append(contentsOf: newItems)
+                browseItems.append(contentsOf: uniqueItems)
             }
-            browseTotalPages = totalPages
+            // TMDB only exposes the first 500 pages, even when total_pages is larger.
+            browseTotalPages = min(totalPages, 500)
         } catch {
             // Items stay as-is; the view decides whether the failure is worth showing.
             guard !Task.isCancelled, latestBrowseRequest == request else { return }
@@ -547,7 +599,11 @@ final class DiscoverViewModel {
     var isSearching = false
     /// Set when the type currently on screen failed to load. A failed type keeps its previous
     /// results rather than blanking, mirroring `WatchlistSearchView`.
-    var searchError: String?
+    private var tvSearchError: String?
+    private var movieSearchError: String?
+    var searchError: String? {
+        selectedMediaType == .tvShows ? tvSearchError : movieSearchError
+    }
 
     /// True once the user has typed something — the view swaps carousels/Browse All for results.
     var isSearchActive: Bool {
@@ -591,7 +647,8 @@ final class DiscoverViewModel {
         guard !trimmed.isEmpty else {
             searchTask = nil
             isSearching = false
-            searchError = nil
+            tvSearchError = nil
+            movieSearchError = nil
             searchTVResults = []
             searchMovieResults = []
             // The segment may have flipped mid-search (`selectedMediaType`'s didSet skips the
@@ -604,7 +661,8 @@ final class DiscoverViewModel {
         }
 
         isSearching = true
-        searchError = nil
+        tvSearchError = nil
+        movieSearchError = nil
 
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(300))
@@ -627,7 +685,8 @@ final class DiscoverViewModel {
         if tv.error == nil { searchTVResults = tv.results }
         if movie.error == nil { searchMovieResults = movie.results }
         // Only the type on screen gets to raise the error banner.
-        searchError = selectedMediaType == .tvShows ? tv.error : movie.error
+        tvSearchError = tv.error
+        movieSearchError = movie.error
         isSearching = false
     }
 
@@ -661,8 +720,8 @@ final class DiscoverViewModel {
 
     /// Fetches `next_episode_to_air` for one show and stores its air date (and episode code, if
     /// available) for the "Airing This Week" chip. Called from each card's `.task(id:)` — the
-    /// `LazyHStack` only mounts visible cards, and `getTVShowDetails` is the same call the detail
-    /// sheet makes, deduped/cached by `RequestDeduplicator`, so this isn't wasted work.
+    /// `LazyHStack` only mounts nearby cards. The lean metadata request is shared with the
+    /// background watchlist refresh and cached independently of the full detail sheet payload.
     func loadAiringDate(for tmdbId: Int) async {
         guard !airingDateRequestedIDs.contains(tmdbId) else { return }
         airingDateRequestedIDs.insert(tmdbId)

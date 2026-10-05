@@ -186,7 +186,7 @@ struct DiscoverView: View {
     @ViewBuilder
     private var carouselSections: some View {
         VStack(alignment: .leading, spacing: 24) {
-            if viewModel.isCarouselLoading {
+            if viewModel.isCarouselLoading && !viewModel.hasCarouselItems {
                 carouselShimmer
             } else if let error = viewModel.carouselError, !viewModel.hasCarouselItems {
                 EmptyStateView(
@@ -201,6 +201,12 @@ struct DiscoverView: View {
                 }
                 .padding(.vertical, 40)
             } else {
+                if let error = viewModel.carouselError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, DesignTokens.Spacing.screenInset)
+                }
                 carouselRow("Trending", items: viewModel.trendingItems)
                 carouselRow("Airing This Week", items: viewModel.airingThisWeekItems, showsAirDate: true)
                 carouselRow("In Theaters", items: viewModel.inTheatersItems)
@@ -443,7 +449,7 @@ struct DiscoverView: View {
                 )
                 .padding(.vertical, 40)
             } else {
-                VStack(spacing: 8) {
+                LazyVStack(spacing: 8) {
                     if horizontalSizeClass == .regular {
                         // Regular width: let rows form 2-3 columns instead of one long list.
                         LazyVGrid(columns: DesignTokens.Layout.rowGridColumns, spacing: 12) {
@@ -453,10 +459,8 @@ struct DiscoverView: View {
                             }
                         }
                     } else {
-                        LazyVStack(spacing: 8) {
-                            ForEach(viewModel.browseItems) { item in
-                                browseRow(item)
-                            }
+                        ForEach(viewModel.browseItems) { item in
+                            browseRow(item)
                         }
                     }
 
@@ -464,6 +468,17 @@ struct DiscoverView: View {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 20)
+                    } else if let error = viewModel.browseError {
+                        VStack(spacing: 8) {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Try Again") {
+                                Task { await viewModel.retryBrowse() }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(.vertical, 20)
                     } else if viewModel.browsePage < viewModel.browseTotalPages {
                         Color.clear
                             .frame(height: 1)
@@ -513,10 +528,16 @@ struct DiscoverView: View {
                 ShimmerRows()
             }
             .padding(.horizontal, DesignTokens.Spacing.screenInset)
-        } else if let error = viewModel.searchError {
+        } else if let error = viewModel.searchError, !viewModel.hasSearchResults {
             EmptyStateView(icon: "exclamationmark.triangle", title: "Couldn’t Load", subtitle: error)
                 .padding(.vertical, 40)
         } else if viewModel.hasSearchResults {
+            if let error = viewModel.searchError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, DesignTokens.Spacing.screenInset)
+            }
             Group {
                 if horizontalSizeClass == .regular {
                     // Same grid as Browse All — one full-width column of rows reads as banners.

@@ -10,7 +10,7 @@ Rules and map for working in this repo. Rationale for *why* code is shaped the w
 - **Concurrency**: `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` + `SWIFT_APPROACHABLE_CONCURRENCY = YES` — everything unannotated is `@MainActor`. That's why `TMDBService`'s caches need no locking and why `nonisolated` markers in models/services are deliberate. `nonisolated async` still runs on the caller's actor; use `@concurrent` for real background work.
 - **Logging**: `AppLog.<category>` (`Services/AppLog.swift`). No `print`.
 - **Persistence**: Core Data via `NSPersistentCloudKitContainer`, two stores (private + shared scope), container `iCloud.com.erichermanson.upnext.shared`.
-- **Tests**: no test target.
+- **Tests**: no test target. `./ci_scripts/check_performance.sh` runs standalone loading/cache regression checks with Xcode's Swift compiler.
 
 ## Setup
 
@@ -74,6 +74,8 @@ Up Next/
 └── Info.plist.template, Up Next.entitlements, PrivacyInfo.xcprivacy
 
 ci_scripts/ci_post_clone.sh        Xcode Cloud: writes Info.plist from env, sets build number
+ci_scripts/check_performance.sh / performance_checks.swift   Standalone async loading/cache regression checks
+AppStore/<version>-performance-audit.md   Release performance findings and validation
 AppStore/screenshots/              App Store screenshots
 ```
 
@@ -129,7 +131,7 @@ Things you can't derive from reading one file. Each points at the code that expl
 ### Networking / TMDB (see `TMDBService.swift`)
 - Provider variants fold onto a canonical name **and id** (`alias(for:)`, `canonicalIDsByName`); aggregators are dropped everywhere; storefronts only from the grid. Originating channels that aren't providers are stored with category `"network"` and ignored by every "on my services" check.
 - Region = `ProviderSettings.effectiveRegion` (override → device → US), `nonisolated` so the service can read it off-main.
-- `RequestDeduplicator` caches responses; invalidate by path prefix, never wholesale.
+- `RequestDeduplicator` caches responses; invalidate by path prefix, never wholesale. Explicit watchlist refresh uses metadata-only `bypassCache`, retaining detail/season/recommendation caches and joining existing in-flight requests.
 - Discover/search loads must run on a view-model-owned task (`runOwnedReload`), never directly on a SwiftUI `.task`/`.refreshable` — SwiftUI cancels those with no replacement and the shimmer never ends.
 - Search: `/search/tv` and `/search/movie` run concurrently; ranking is `SearchRanking` (title-match tier + capped popularity + votes). Recommendation scoring is in `RecommendationEngine`; collection suggestions in `CollectionRecommendationEngine` + `JevRecommendationService` (prompt changes must bump `promptVersion`). An empty collection's starting pool is its `CollectionIdea` discover query when the name matches one, else a title search for the name.
 

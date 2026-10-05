@@ -33,7 +33,7 @@ final class CustomListViewModel {
     func configure(persistence: PersistenceController? = nil) {
         guard self.persistence == nil else { return }
         self.persistence = persistence ?? .shared
-        loadLists()
+        loadLists(prefetchRelationships: true)
     }
 
     /// Re-fetches `customLists` from the store — called by `ContentView` when
@@ -273,7 +273,7 @@ final class CustomListViewModel {
 
     // MARK: - Private
 
-    private func loadLists() {
+    private func loadLists(prefetchRelationships: Bool = false) {
         guard let persistence else { return }
         // Joining state: the shared library hasn't arrived yet, so there's nothing to show.
         guard persistence.group != nil else {
@@ -282,6 +282,11 @@ final class CustomListViewModel {
         }
         let request = NSFetchRequest<CustomList>(entityName: "CustomList")
         request.sortDescriptors = [NSSortDescriptor(key: "createdAtRaw", ascending: true)]
+        // Cold-start counts/mosaics benefit from prefetching; remote-change reloads should
+        // not repeatedly materialize the full graph during a large CloudKit import.
+        if prefetchRelationships {
+            request.relationshipKeyPathsForPrefetching = ["itemSet", "itemSet.movie", "itemSet.tvShow"]
+        }
         customLists = persistence.fetch(request)
     }
 }

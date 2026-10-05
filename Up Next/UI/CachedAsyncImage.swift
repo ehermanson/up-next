@@ -43,7 +43,10 @@ private actor ImageDownloader {
 
     @concurrent
     private nonisolated static func fetchAndDecode(_ url: URL) async throws -> UIImage {
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
         guard let image = UIImage(data: data) else { throw URLError(.cannotDecodeContentData) }
         return await image.byPreparingForDisplay() ?? image
     }
@@ -86,6 +89,9 @@ struct CachedAsyncImage<Content: View>: View {
         do {
             let uiImage = try await ImageDownloader.shared.image(from: url)
             ImageCache.shared.store(uiImage, for: url)
+            // Shared downloads outlive individual views. Cache the result, but never let a
+            // canceled URL task replace the artwork (or tint) of its newer request.
+            guard !Task.isCancelled else { return }
             // Fresh download: animate the swap so callers whose `.success` view carries
             // `Motion.posterAppear` get a soft settle in. Callers without a transition are
             // unaffected — the animated assignment is a no-op for them.
@@ -98,6 +104,7 @@ struct CachedAsyncImage<Content: View>: View {
             }
             onLoad?(uiImage)
         } catch {
+            guard !Task.isCancelled else { return }
             phase = .failure(error)
         }
     }

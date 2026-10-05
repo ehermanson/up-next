@@ -476,7 +476,9 @@ struct WatchlistSearchView: View {
         isLoadingRecommendations = true
 
         recommendationTask = Task {
-            defer { isLoadingRecommendations = false }
+            // A canceled request may finish after its replacement starts. Only the current
+            // request can end the shared loading state.
+            defer { if !Task.isCancelled { isLoadingRecommendations = false } }
 
             if mediaType == .tvShow {
                 let results: [TMDBTVShowSearchResult] = await RecommendationEngine.fetchLibraryRecommendations(

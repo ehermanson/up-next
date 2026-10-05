@@ -12,6 +12,7 @@ struct SeasonEpisodesView: View {
 
     @State private var seasonDetail: TMDBSeasonDetail?
     @State private var isLoading = false
+    @State private var loadGeneration = UUID()
     @State private var loadError: String?
 
     private let service = TMDBService.shared
@@ -177,13 +178,18 @@ struct SeasonEpisodesView: View {
     }
 
     private func loadSeason() async {
+        let generation = UUID()
+        loadGeneration = generation
         isLoading = true
+        defer { if loadGeneration == generation { isLoading = false } }
         loadError = nil
         do {
-            seasonDetail = try await service.getSeasonDetails(tvID: tvID, season: season)
+            let fetched = try await service.getSeasonDetails(tvID: tvID, season: season)
+            guard !Task.isCancelled else { return }
+            seasonDetail = fetched
         } catch {
+            guard !Task.isCancelled else { return }
             loadError = "Check your connection and try again."
         }
-        isLoading = false
     }
 }

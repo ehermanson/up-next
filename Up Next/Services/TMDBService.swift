@@ -168,21 +168,23 @@ final class TMDBService {
     /// what a background library refresh or the Discover airing-date chip reads (watch providers
     /// and the region content rating) instead of credits/videos/similar/recommendations. The URL
     /// differs from the full-detail call, so it's cached under its own key.
-    func getTVShowMetadata(id: Int) async throws -> TMDBTVShowDetail {
+    func getTVShowMetadata(id: Int, bypassCache: Bool = false) async throws -> TMDBTVShowDetail {
         let endpoint = "/tv/\(id)"
         return try await performRequest(
             endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "append_to_response", value: "watch/providers,content_ratings")]
+            queryItems: [URLQueryItem(name: "append_to_response", value: "watch/providers,content_ratings")],
+            bypassCache: bypassCache
         )
     }
 
     /// Lean movie metadata — see `getTVShowMetadata`. `mapToMovie(detail:)` reads `releaseDates`
     /// for the certification, so that's appended alongside watch providers.
-    func getMovieMetadata(id: Int) async throws -> TMDBMovieDetail {
+    func getMovieMetadata(id: Int, bypassCache: Bool = false) async throws -> TMDBMovieDetail {
         let endpoint = "/movie/\(id)"
         return try await performRequest(
             endpoint: endpoint,
-            queryItems: [URLQueryItem(name: "append_to_response", value: "watch/providers,release_dates")]
+            queryItems: [URLQueryItem(name: "append_to_response", value: "watch/providers,release_dates")],
+            bypassCache: bypassCache
         )
     }
 
@@ -898,7 +900,8 @@ final class TMDBService {
     @concurrent
     private nonisolated func performRequest<T: Decodable & Sendable>(
         endpoint: String,
-        queryItems: [URLQueryItem]
+        queryItems: [URLQueryItem],
+        bypassCache: Bool = false
     ) async throws -> T {
         var components = URLComponents(string: "\(baseURL)\(endpoint)")
         var items = queryItems
@@ -917,8 +920,8 @@ final class TMDBService {
 
         let data: Data
         do {
-            data = try await deduplicator.deduplicated(for: url) {
-                try await Self.fetchWithRetry(url: url)
+            data = try await deduplicator.deduplicated(for: url, bypassCache: bypassCache) {
+                try await Self.fetchWithRetry(url: url, bypassCache: bypassCache)
             }
         } catch {
             throw Self.mapTransportError(error)
@@ -934,9 +937,9 @@ final class TMDBService {
     /// Fetches once, retrying a single time for transient server trouble (rate limiting or a
     /// momentary outage) before giving up. Honors `Retry-After` when TMDB sends one, capped at 3s
     /// so a misbehaving header can't stall the UI; otherwise a flat 0.8s backoff.
-    private nonisolated static func fetchWithRetry(url: URL) async throws -> Data {
+    private nonisolated static func fetchWithRetry(url: URL, bypassCache: Bool) async throws -> Data {
         do {
-            return try await fetchOnce(url: url)
+            return try await fetchOnce(url: url, bypassCache: bypassCache)
         } catch let error as TMDBError {
             guard case .httpError(let statusCode, let retryAfter) = error, isRetryableStatus(statusCode) else {
                 throw error
@@ -944,7 +947,7 @@ final class TMDBService {
             try Task.checkCancellation()
             let delaySeconds = min(retryAfter ?? 0.8, 3.0)
             try await Task.sleep(for: .milliseconds(Int(delaySeconds * 1000)))
-            return try await fetchOnce(url: url)
+            return try await fetchOnce(url: url, bypassCache: bypassCache)
         }
     }
 
@@ -952,8 +955,9 @@ final class TMDBService {
         statusCode == 429 || (502...504).contains(statusCode)
     }
 
-    private nonisolated static func fetchOnce(url: URL) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(from: url)
+    private nonisolated static func fetchOnce(url: URL, bypassCache: Bool) async throws -> Data {
+        let request = URLRequest(url: url, cachePolicy: bypassCache ? .reloadIgnoringLocalCacheData : .useProtocolCachePolicy)
+        let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw TMDBError.invalidResponse
@@ -997,13 +1001,15 @@ private actor RequestDeduplicator {
     /// TTL is only ever checked on read, never proactively swept.
     private let maxEntries = 300
 
-    func deduplicated(for url: URL, perform: @Sendable @escaping () async throws -> Data) async throws -> Data {
-        // Return cached response if within TTL
-        if let cached = cache[url], Date.now.timeIntervalSince(cached.insertedAt) < ttl {
+    func deduplicated(for url: URL, bypassCache: Bool = false, perform: @Sendable @escaping () async throws -> Data) async throws -> Data {
+        // Explicit metadata refresh bypasses only this complete URL. Other payloads for the
+        // same title (details, seasons, recommendations) retain their cached responses.
+        if !bypassCache, let cached = cache[url], Date.now.timeIntervalSince(cached.insertedAt) < ttl {
             return cached.data
         }
 
-        // Coalesce concurrent requests for the same URL
+        // Even a forced refresh joins a request already fetching this URL. Cancellation of
+        // its caller does not discard that network work; the result still enters the cache.
         if let existing = inFlight[url] {
             return try await existing.value
         }

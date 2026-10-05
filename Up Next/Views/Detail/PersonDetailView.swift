@@ -23,6 +23,7 @@ struct PersonDetailView: View {
     @State private var detail: TMDBPersonDetail?
     @State private var credits: [TMDBPersonCredit] = []
     @State private var isLoading = false
+    @State private var loadGeneration = UUID()
     @State private var loadError: String?
     @State private var selectedItem: ListItem?
     @State private var selectedSourceID = ""
@@ -335,7 +336,10 @@ struct PersonDetailView: View {
     // MARK: - Loading
 
     private func load() async {
+        let generation = UUID()
+        loadGeneration = generation
         isLoading = true
+        defer { if loadGeneration == generation { isLoading = false } }
         loadError = nil
         do {
             let fetched = try await service.getPersonDetails(id: person.id)
@@ -346,7 +350,6 @@ struct PersonDetailView: View {
             guard !Task.isCancelled else { return }
             loadError = "Check your connection and try again."
         }
-        isLoading = false
     }
 
     /// TMDB's talk (10767) and news (10763) genres — guest spots on those, and any role credited as

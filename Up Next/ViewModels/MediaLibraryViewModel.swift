@@ -104,18 +104,21 @@ final class MediaLibraryViewModel {
         }
     }
 
-    /// Pull-to-refresh: refreshes every item now, ignoring the 6-hour launch interval. Runs inline
-    /// (not detached) so the refresh control can await it, and supersedes any launch refresh still
-    /// in flight. Only stamps the run when something actually came back — same rule as `configure`.
+    /// Pull-to-refresh owns its task so SwiftUI canceling the gesture or tab cannot strand a
+    /// partial refresh. Bypass only metadata responses so a second pull actually checks TMDB.
     func refreshNow() async {
         guard !isRefreshing, persistence != nil else { return }
         refreshTask?.cancel()
-        refreshTask = nil
         isRefreshing = true
-        defer { isRefreshing = false }
-        if await refreshAllItems() {
-            markRefreshComplete()
+        let task = Task {
+            defer { isRefreshing = false }
+            guard !Task.isCancelled else { return }
+            if await refreshAllItems(bypassCache: true) {
+                markRefreshComplete()
+            }
         }
+        refreshTask = task
+        await task.value
     }
 
     /// Re-fetches both lists from the active store and re-syncs derived state. Called by
@@ -465,7 +468,7 @@ final class MediaLibraryViewModel {
     /// Raw fetch of every library `ListItem` (`list != nil` excludes any stray wrapper `ListItem` a
     /// collection's detail sheet left behind — see `CustomListDetailView.discardTransientItem`).
     /// Shared by `loadItems()` and `reloadFromStore()`.
-    private func fetchListItems() -> (tv: [ListItem], movie: [ListItem]) {
+    private func fetchListItems(prefetchRelationships: Bool = false) -> (tv: [ListItem], movie: [ListItem]) {
         guard let persistence else { return ([], []) }
 
         let sortDescriptors = [
@@ -476,10 +479,18 @@ final class MediaLibraryViewModel {
         let tvRequest = NSFetchRequest<ListItem>(entityName: "ListItem")
         tvRequest.predicate = NSPredicate(format: "tvShow != nil AND list != nil")
         tvRequest.sortDescriptors = sortDescriptors
+        // Prefetch for the initial cold read. Remote-change reloads reuse the context's rows
+        // without repeatedly prefetching the graph during a streaming CloudKit import.
+        if prefetchRelationships {
+            tvRequest.relationshipKeyPathsForPrefetching = ["tvShow", "tvShow.networkSet"]
+        }
 
         let movieRequest = NSFetchRequest<ListItem>(entityName: "ListItem")
         movieRequest.predicate = NSPredicate(format: "movie != nil AND list != nil")
         movieRequest.sortDescriptors = sortDescriptors
+        if prefetchRelationships {
+            movieRequest.relationshipKeyPathsForPrefetching = ["movie", "movie.networkSet"]
+        }
 
         return (persistence.fetch(tvRequest), persistence.fetch(movieRequest))
     }
@@ -487,7 +498,7 @@ final class MediaLibraryViewModel {
     /// Refreshes cached TMDB metadata for every item. Returns whether the refresh can be considered
     /// complete — true when at least one detail fetch succeeded (or there was nothing to fetch),
     /// false when every fetch failed, so the caller can retry rather than stamping the run.
-    private func refreshAllItems() async -> Bool {
+    private func refreshAllItems(bypassCache: Bool = false) async -> Bool {
         guard let persistence else { return false }
         let context = persistence.viewContext
         let service = TMDBService.shared
@@ -518,6 +529,7 @@ final class MediaLibraryViewModel {
         var seenTVIDs = Set(tvInputs.map(\.id))
         var seenMovieIDs = Set(movieInputs.map(\.id))
         let customItemsRequest = NSFetchRequest<CustomListItem>(entityName: "CustomListItem")
+        customItemsRequest.relationshipKeyPathsForPrefetching = ["tvShow", "movie"]
         for item in persistence.fetch(customItemsRequest) {
             if let tvShow = item.tvShow, let id = Int(tvShow.id), seenTVIDs.insert(id).inserted {
                 tvInputs.append((id, false))
@@ -536,7 +548,7 @@ final class MediaLibraryViewModel {
             let results = await withTaskGroup(of: (Int, Bool, TMDBTVShowDetail?).self) { group in
                 for input in slice {
                     group.addTask {
-                        let detail = try? await service.getTVShowMetadata(id: input.id)
+                        let detail = try? await service.getTVShowMetadata(id: input.id, bypassCache: bypassCache)
                         return (input.id, input.inLibrary, detail)
                     }
                 }
@@ -545,13 +557,20 @@ final class MediaLibraryViewModel {
                 return out
             }
 
+            // Shared requests cache successful results even when this run was superseded.
+            // Keep the cancellation gate: a join/leave or newer region's refresh can change
+            // which graph/results it is safe to update while the network batch is in flight.
+            guard !Task.isCancelled else { return false }
+
             // Apply updates on main actor (no isolation crossing). Match by TMDB id rather than
             // index — a delete, undo or add during the refresh shifts indices.
             for (id, inLibrary, detail) in results {
+                guard !Task.isCancelled else { return false }
                 guard let detail else { continue }
                 successfulFetches += 1
                 let providers = detail.watchProviders?.results?[service.currentRegion]
                 let mapped = await service.mapToTVShow(detail, providers: providers)
+                guard !Task.isCancelled else { return false }
                 // The map above suspends; a join/leave purge or a committed delete can land in
                 // that gap, so re-check the row is still live before writing to it.
                 if inLibrary {
@@ -578,7 +597,7 @@ final class MediaLibraryViewModel {
             let results = await withTaskGroup(of: (Int, Bool, TMDBMovieDetail?).self) { group in
                 for input in slice {
                     group.addTask {
-                        let detail = try? await service.getMovieMetadata(id: input.id)
+                        let detail = try? await service.getMovieMetadata(id: input.id, bypassCache: bypassCache)
                         return (input.id, input.inLibrary, detail)
                     }
                 }
@@ -588,6 +607,7 @@ final class MediaLibraryViewModel {
             }
 
             for (id, inLibrary, detail) in results {
+                guard !Task.isCancelled else { return false }
                 guard let detail else { continue }
                 successfulFetches += 1
                 let row = inLibrary
@@ -596,6 +616,7 @@ final class MediaLibraryViewModel {
                 guard let movie = row else { continue }
                 let providers = detail.watchProviders?.results?[service.currentRegion]
                 let mapped = await service.mapToMovie(detail, providers: providers)
+                guard !Task.isCancelled else { return false }
                 guard Self.isLive(movie) else { continue }
                 movie.update(from: mapped)
             }
@@ -616,7 +637,7 @@ final class MediaLibraryViewModel {
         guard persistence != nil else { return false }
         var didSeed = false
 
-        let (fetchedTV, fetchedMovies) = fetchListItems()
+        let (fetchedTV, fetchedMovies) = fetchListItems(prefetchRelationships: true)
         tvShows = fetchedTV
         movies = fetchedMovies
 

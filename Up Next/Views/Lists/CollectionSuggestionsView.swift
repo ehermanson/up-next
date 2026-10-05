@@ -11,6 +11,7 @@ struct CollectionSuggestionsView: View {
     @State private var movies: [TMDBMovieSearchResult] = []
     @State private var shows: [TMDBTVShowSearchResult] = []
     @State private var isLoading = false
+    @State private var loadGeneration = UUID()
     @State private var detailItem: ListItem?
     @State private var adding: Set<String> = []
     /// Detail sheet zooms in/out of the tapped card — see `PosterCard`'s `transitionSource` and
@@ -131,8 +132,11 @@ struct CollectionSuggestionsView: View {
         let tvSeeds = RecommendationEngine.selectListSeeds(from: snapshot, mediaType: .tvShow)
         let movieIDs = RecommendationEngine.existingIDs(in: snapshot, mediaType: .movie)
         let tvIDs = RecommendationEngine.existingIDs(in: snapshot, mediaType: .tvShow)
+        let generation = UUID()
+        loadGeneration = generation
         isLoading = true
-        defer { isLoading = false }
+        // A rename starts a replacement while the canceled shared requests are still finishing.
+        defer { if loadGeneration == generation { isLoading = false } }
         // Empty collections start with movies, unless their `CollectionIdea` says which types it
         // covers. Otherwise respect the types already collected.
         let idea = snapshot.isEmpty ? CollectionIdea.named(name) : nil
