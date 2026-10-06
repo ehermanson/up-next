@@ -406,6 +406,8 @@ struct ContentView: View {
                 onTVShowAdded: { viewModel.addTVShow($0) },
                 onMovieAdded: { viewModel.addMovie($0) }
             )
+            // Matches `WatchlistTabView.detailView` on iPad; a no-op at compact width.
+            .presentationSizing(.page)
         }
         #endif
     }

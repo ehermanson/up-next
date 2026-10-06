@@ -20,7 +20,7 @@ enum ScreenshotMode {
     /// TMDB id following `--open`, as a string to match `MediaItemProtocol.id`.
     static let requestedDetailID: String? = value(after: "--open")
 
-    /// Collection name following `--collection`. Currently unused — see `seed`'s doc comment.
+    /// Collection name following `--collection`; `MyListsView` pushes it once seeding finishes.
     static let requestedCollectionName: String? = value(after: "--collection")
 
     /// Set once `seed(library:lists:)` finishes so a second call (there shouldn't be one) is a no-op.
@@ -54,6 +54,8 @@ enum ScreenshotMode {
         /// Marks every season watched — used by the "Watched" seeds below.
         let fullyWatched: Bool
         let rating: Int?
+        /// Puts the show in the Watching section.
+        var watching = false
     }
 
     private static let upNextTVSeeds: [TVSeed] = [
@@ -63,7 +65,7 @@ enum ScreenshotMode {
         TVSeed(id: 126308, watchedThroughSeason: nil, fullyWatched: false, rating: nil),  // Shōgun
         TVSeed(id: 111803, watchedThroughSeason: nil, fullyWatched: false, rating: nil),  // The White Lotus
         TVSeed(id: 97546, watchedThroughSeason: 2, fullyWatched: false, rating: nil),     // Ted Lasso (S1–2)
-        TVSeed(id: 1396, watchedThroughSeason: 3, fullyWatched: false, rating: nil),      // Breaking Bad (S1–3)
+        TVSeed(id: 1396, watchedThroughSeason: 3, fullyWatched: false, rating: nil, watching: true), // Breaking Bad (S1–3)
     ]
 
     private static let watchedTVSeeds: [TVSeed] = [
@@ -98,7 +100,9 @@ enum ScreenshotMode {
 
     private static let collectionSeeds: [CollectionSeed] = [
         CollectionSeed(name: "Christmas", movieIDs: [10719, 771, 508, 1581, 508965]),
-        CollectionSeed(name: "Halloween", movieIDs: [9479, 4011, 14836]),
+        CollectionSeed(name: "Halloween", movieIDs: [9479, 4011, 14836, 10439]),
+        CollectionSeed(name: "Date Night", movieIDs: [639, 122906, 313369, 50646]),
+        CollectionSeed(name: "Studio Ghibli", movieIDs: [129, 8392, 4935, 16859]),
     ]
 
     /// Fetches the curated titles above from TMDB and adds them through `library`/`lists`' normal
@@ -213,6 +217,9 @@ enum ScreenshotMode {
             if !item.isWatched {
                 item.toggleWatched()
             }
+        }
+        if seed.watching, !item.isWatching {
+            item.toggleWatching()
         }
         item.userRating = seed.rating
         library.persistChanges(for: .tvShow)

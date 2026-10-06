@@ -20,3 +20,6 @@ Up Next/Info.plist
 # macOS
 .DS_Store
 ._*
+
+# App Store screenshots — regenerated from the DEBUG --screenshots seed (see AGENTS.md), not versioned
+AppStore/screenshots/

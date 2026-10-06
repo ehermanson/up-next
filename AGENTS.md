@@ -73,10 +73,9 @@ Up Next/
 ├── AppIcon.icon/           Icon Composer icon (wins on iOS 26); Assets.xcassets has the flat fallback + AccentColor + BackgroundBase
 └── Info.plist.template, Up Next.entitlements, PrivacyInfo.xcprivacy
 
+AppStore/                          <version>-metadata.md (paste-ready ASC copy), <version>-performance-audit.md; screenshots/ is gitignored (regenerated, lives in ASC)
 ci_scripts/ci_post_clone.sh        Xcode Cloud: writes Info.plist from env, sets build number
 ci_scripts/check_performance.sh / performance_checks.swift   Standalone async loading/cache regression checks
-AppStore/<version>-performance-audit.md   Release performance findings and validation
-AppStore/screenshots/              App Store screenshots
 ```
 
 ## Rules and traps
@@ -156,7 +155,7 @@ Things you can't derive from reading one file. Each points at the code that expl
 
 ## App Store screenshots
 
-DEBUG builds accept `--screenshots` (`ScreenshotMode.swift`): in-memory non-CloudKit store, throwaway `UserDefaults` suite, six providers preselected, onboarding skipped, curated TMDB seed (~100 s). `--tab tvShows|movies|collections|discover`, `--open <tmdbID>`, `--collection <name>`. Capture: build for Simulator, `simctl install`, `simctl status_bar … override --time 9:41`, `simctl launch <udid> com.erichermanson.upnext --screenshots --tab …`, wait for seeding, `simctl io <udid> screenshot`. Sizes: iPhone 17 Pro Max (1320×2868), iPad Pro 13" (2064×2752). The demo seed never runs merely because a library is empty.
+DEBUG builds accept `--screenshots` (`ScreenshotMode.swift`): in-memory non-CloudKit store, throwaway `UserDefaults` suite, six providers preselected, onboarding skipped, curated TMDB seed (~100 s). `--tab tvShows|movies|collections|discover`, `--open <tmdbID>`, `--collection <name>`. Capture: build for Simulator, `simctl install`, `simctl status_bar … override --time 9:41`, `simctl launch <udid> com.erichermanson.upnext --screenshots --tab …`, wait for `SCREENSHOT_SEED_DONE` on the console, then a few seconds for images, `simctl io <udid> screenshot`. Sizes: iPhone 17 Pro Max (1320×2868), iPad Pro 13" (2064×2752); no 6.5" set (App Store Connect scales 6.9"). iPad list shots add `-tvShows.watchedExpanded YES` / `-movies.watchedExpanded YES` so the page isn't half empty. Paste-ready copy lives in `AppStore/<version>-metadata.md`. The demo seed never runs merely because a library is empty.
 
 ## CI (Xcode Cloud)
 
