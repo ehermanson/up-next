@@ -45,20 +45,12 @@ struct MediaDetailView: View {
     @State private var moreLikeThisItems: [SimilarMediaItem] = []
     @State private var trailerKey: String?
     @State private var selectedSimilarItem: ListItem?
-    /// The tapped poster card's zoom-transition source id, captured alongside `selectedSimilarItem`
-    /// — `moreLikeThisItems`/`collectionParts` can carry the same title in both rows, so the id also
-    /// carries which row it came from (see `CollectionSection`/`SimilarSection`).
-    @State private var selectedSimilarSourceID: String = ""
     @State private var addedSimilarIDs: Set<String> = []
     /// The "More Like This" card mid-collapse. It stays in `visibleMoreLikeThis` (so it keeps its
     /// slot) while its own frame/opacity animate to zero, then moves into `addedSimilarIDs` on
     /// completion — animating a stable view's own geometry works where a `ForEach` removal transition
     /// inside a horizontal `ScrollView` does not.
     @State private var collapsingSimilarID: String?
-    /// Namespace for the pushed "similar title" detail page's zoom transition — separate from any
-    /// namespace the presenter handed this sheet, since this one is scoped to this view's own
-    /// poster carousels.
-    @Namespace private var similarNamespace
     /// TMDB's movie collection (e.g. "The Dark Knight Collection") — unrelated to the user's
     /// Collections tab; named apart from the `collectionName` input above.
     @State private var tmdbCollectionName: String?
@@ -244,9 +236,7 @@ struct MediaDetailView: View {
                         currentMovieID: listItem.movie.map { Int($0.id) ?? 0 },
                         existingIDs: knownIDs,
                         onAdd: canAddToLibrary ? { addCollectionItem($0) } : nil,
-                        onTap: { openCollectionDetail($0) },
-                        transitionNamespace: similarNamespace,
-                        transitionIDPrefix: "collection"
+                        onTap: { openCollectionDetail($0) }
                     )
 
                     SimilarSection(
@@ -255,9 +245,7 @@ struct MediaDetailView: View {
                         collapsingKey: collapsingSimilarID,
                         existingIDs: knownIDs,
                         onAdd: canAddToLibrary ? { addSimilarItem($0) } : nil,
-                        onTap: { openSimilarDetail($0) },
-                        transitionNamespace: similarNamespace,
-                        transitionIDPrefix: "similar"
+                        onTap: { openSimilarDetail($0) }
                     )
 
                     ViewThatFits(in: .horizontal) {
@@ -335,7 +323,6 @@ struct MediaDetailView: View {
                 addTargetName: addTargetName,
                 isPushed: true
             )
-            .navigationTransition(.zoom(sourceID: selectedSimilarSourceID, in: similarNamespace))
         }
     }
 
@@ -558,7 +545,6 @@ struct MediaDetailView: View {
     }
 
     private func openSimilarDetail(_ item: SimilarMediaItem) {
-        selectedSimilarSourceID = "similar:" + item.transitionKey
         let posterURL = service.imageURL(path: item.posterPath)
         if item.mediaType == .tvShow {
             let tvShow = TVShow(id: String(item.tmdbID), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
@@ -591,7 +577,6 @@ struct MediaDetailView: View {
     }
 
     private func openCollectionDetail(_ part: TMDBCollectionPart) {
-        selectedSimilarSourceID = "collection:" + MediaIDKey.make(.movie, part.id)
         let posterURL = service.imageURL(path: part.posterPath)
         let movie = Movie(id: String(part.id), title: part.title, thumbnailURL: posterURL, voteAverage: part.voteAverage)
         selectedSimilarItem = ListItem(movie: movie)
@@ -601,10 +586,10 @@ struct MediaDetailView: View {
         guard let media = item.media else { return }
         let key = MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
         guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
-        // Added from the nested detail sheet (which covers the row), so no in-place collapse to run —
-        // the card is simply gone when the sheet dismisses.
+        // Added from the pushed detail page (which covers the row), so no in-place collapse to run —
+        // the card is simply gone when the page pops.
         addedSimilarIDs.insert(key)
-        // No toast here — the child sheet's primary Add pill (`performPrimaryAdd`) already fires
+        // No toast here — the pushed page's primary Add pill (`performPrimaryAdd`) already fires
         // one, and this method is only reached from that pill's `onAdd`.
         if let tvShow = item.tvShow {
             onTVShowAdded?(tvShow)

@@ -26,9 +26,7 @@ struct PersonDetailView: View {
     @State private var loadGeneration = UUID()
     @State private var loadError: String?
     @State private var selectedItem: ListItem?
-    @State private var selectedSourceID = ""
     @State private var addedIDs: Set<String> = []
-    @Namespace private var namespace
 
     private let service = TMDBService.shared
 
@@ -97,7 +95,6 @@ struct PersonDetailView: View {
                 addTargetName: addTargetName,
                 isPushed: true
             )
-            .navigationTransition(.zoom(sourceID: selectedSourceID, in: namespace))
         }
     }
 
@@ -219,8 +216,7 @@ struct PersonDetailView: View {
                                 title: credit.displayTitle,
                                 subtitle: credit.year,
                                 isAdded: knownIDs.contains(credit.key),
-                                onTap: { open(credit, sourcePrefix: "knownFor") },
-                                transitionSource: (id: "knownFor:" + credit.key, namespace: namespace)
+                                onTap: { open(credit) }
                             )
                         }
                     }
@@ -256,7 +252,7 @@ struct PersonDetailView: View {
 
     private func creditRow(_ credit: TMDBPersonCredit) -> some View {
         Button {
-            open(credit, sourcePrefix: "credit")
+            open(credit)
         } label: {
             HStack(spacing: 12) {
                 creditPoster(credit)
@@ -294,7 +290,6 @@ struct PersonDetailView: View {
         }
         .buttonStyle(.plain)
         .cardSurface(cornerRadius: DesignTokens.Radius.cardCompact)
-        .matchedTransitionSource(id: "credit:" + credit.key, in: namespace)
     }
 
     private func creditPoster(_ credit: TMDBPersonCredit) -> some View {
@@ -407,8 +402,7 @@ struct PersonDetailView: View {
         onTVShowAdded != nil || onMovieAdded != nil
     }
 
-    private func open(_ credit: TMDBPersonCredit, sourcePrefix: String) {
-        selectedSourceID = "\(sourcePrefix):" + credit.key
+    private func open(_ credit: TMDBPersonCredit) {
         let posterURL = service.imageURL(path: credit.posterPath)
         if credit.isTV {
             let tvShow = TVShow(id: String(credit.id), title: credit.displayTitle, thumbnailURL: posterURL, voteAverage: credit.voteAverage)

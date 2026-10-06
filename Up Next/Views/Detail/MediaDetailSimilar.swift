@@ -80,7 +80,9 @@ struct PosterCard: View {
     var isAdded: Bool = false
     var onTap: (() -> Void)?
     var onAdd: (() -> Void)?
-    /// Zoom-transition source for the nested detail sheet `onTap` opens.
+    /// Zoom-transition source for the detail sheet `onTap` presents. Only surfaces that *present*
+    /// the sheet (collection suggestions) pass one; inside the sheet `onTap` is a push, and a zoom
+    /// transition on a push blanks the whole sheet mid-animation.
     var transitionSource: (id: String, namespace: Namespace.ID)?
 
     /// Detail-sheet carousels keep the default; a collection's suggestions pass Discover's larger
@@ -188,10 +190,6 @@ struct CollectionSection: View {
     var existingIDs: Set<String> = []
     var onAdd: ((TMDBCollectionPart) -> Void)?
     var onTap: ((TMDBCollectionPart) -> Void)?
-    /// Zoom-transition namespace/id-prefix for the nested detail sheet `onTap` opens — see
-    /// `MediaDetailView`'s `selectedSimilarSourceID`.
-    var transitionNamespace: Namespace.ID?
-    var transitionIDPrefix: String = ""
 
     var body: some View {
         if let name = collectionName, !parts.isEmpty {
@@ -211,10 +209,7 @@ struct CollectionSection: View {
                                 isCurrent: isCurrent(part),
                                 isAdded: isAdded(part),
                                 onTap: onTap.map { tap in { tap(part) } },
-                                onAdd: isCurrent(part) ? nil : onAdd.map { add in { add(part) } },
-                                transitionSource: transitionNamespace.map {
-                                    (id: "\(transitionIDPrefix):" + MediaIDKey.make(.movie, part.id), namespace: $0)
-                                }
+                                onAdd: isCurrent(part) ? nil : onAdd.map { add in { add(part) } }
                             )
                         }
                     }
@@ -244,10 +239,6 @@ struct SimilarSection: View {
     var existingIDs: Set<String> = []
     var onAdd: ((SimilarMediaItem) -> Void)?
     var onTap: ((SimilarMediaItem) -> Void)?
-    /// Zoom-transition namespace/id-prefix for the nested detail sheet `onTap` opens — see
-    /// `MediaDetailView`'s `selectedSimilarSourceID`.
-    var transitionNamespace: Namespace.ID?
-    var transitionIDPrefix: String = ""
 
     var body: some View {
         if !items.isEmpty {
@@ -266,10 +257,7 @@ struct SimilarSection: View {
                                 title: item.title,
                                 isAdded: isAdded(item),
                                 onTap: onTap.map { tap in { tap(item) } },
-                                onAdd: onAdd.map { add in { add(item) } },
-                                transitionSource: transitionNamespace.map {
-                                    (id: "\(transitionIDPrefix):" + item.transitionKey, namespace: $0)
-                                }
+                                onAdd: onAdd.map { add in { add(item) } }
                             )
                             // Added card shrinks/fades in place, then the parent drops it and the
                             // reserve slides up. Animating the card's own geometry is reliable where a
