@@ -9,14 +9,12 @@ struct CastPersonRoute: Hashable {
 
 /// Read-only page for one cast member, pushed inside the detail sheet: photo, a few facts, the
 /// biography, and the titles they've acted in. Fetched from `/person/{id}` on demand; nothing is
-/// persisted. Tapping a title pushes its detail page onto the same stack, like "More Like This".
+/// persisted. Tapping a title pushes its detail page onto the same stack, like "More Like This" —
+/// through the root's `DetailNavigator`, never a destination of its own (see that type).
 struct PersonDetailView: View {
     let person: CastPersonRoute
     /// Type-namespaced IDs already on the watchlist (see `MediaIDKey`), handed down from the sheet.
     var existingIDs: Set<String> = []
-    var onTVShowAdded: ((TVShow) -> Void)?
-    var onMovieAdded: ((Movie) -> Void)?
-    var addTargetName: String?
     /// Closes the whole detail sheet, not just this page.
     var dismiss: (() -> Void)?
 
@@ -25,14 +23,11 @@ struct PersonDetailView: View {
     @State private var isLoading = false
     @State private var loadGeneration = UUID()
     @State private var loadError: String?
-    @State private var selectedItem: ListItem?
-    @State private var addedIDs: Set<String> = []
+    @Environment(DetailNavigator.self) private var navigator
 
     private let service = TMDBService.shared
 
     var body: some View {
-        let knownIDs = existingIDs.union(addedIDs)
-
         ScrollView {
             LazyVStack(alignment: .leading, spacing: DesignTokens.Spacing.section) {
                 header
@@ -58,7 +53,7 @@ struct PersonDetailView: View {
                         ClampedDescriptionText(text: biography, lineLimit: 6)
                     }
 
-                    knownForSection(knownIDs: knownIDs)
+                    knownForSection(knownIDs: existingIDs)
                     creditsSection
                 }
             }
@@ -82,19 +77,6 @@ struct PersonDetailView: View {
         }
         .task(id: person.id) {
             await load()
-        }
-        .navigationDestination(item: $selectedItem) { item in
-            MediaDetailView(
-                listItem: item,
-                dismiss: dismiss ?? {},
-                onRemove: { selectedItem = nil },
-                onAdd: canAddToLibrary ? { addFromDetail(item) } : nil,
-                existingIDs: knownIDs,
-                onTVShowAdded: onTVShowAdded,
-                onMovieAdded: onMovieAdded,
-                addTargetName: addTargetName,
-                isPushed: true
-            )
         }
     }
 
@@ -398,31 +380,14 @@ struct PersonDetailView: View {
 
     // MARK: - Actions
 
-    private var canAddToLibrary: Bool {
-        onTVShowAdded != nil || onMovieAdded != nil
-    }
-
     private func open(_ credit: TMDBPersonCredit) {
         let posterURL = service.imageURL(path: credit.posterPath)
         if credit.isTV {
             let tvShow = TVShow(id: String(credit.id), title: credit.displayTitle, thumbnailURL: posterURL, voteAverage: credit.voteAverage)
-            selectedItem = ListItem(tvShow: tvShow)
+            navigator.push(ListItem(tvShow: tvShow))
         } else {
             let movie = Movie(id: String(credit.id), title: credit.displayTitle, thumbnailURL: posterURL, voteAverage: credit.voteAverage)
-            selectedItem = ListItem(movie: movie)
-        }
-    }
-
-    /// Mirrors `MediaDetailView.addSimilarFromDetail`: the pushed page's Add pill already toasts.
-    private func addFromDetail(_ item: ListItem) {
-        guard let media = item.media else { return }
-        let key = MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
-        guard !existingIDs.contains(key), !addedIDs.contains(key) else { return }
-        addedIDs.insert(key)
-        if let tvShow = item.tvShow {
-            onTVShowAdded?(tvShow)
-        } else if let movie = item.movie {
-            onMovieAdded?(movie)
+            navigator.push(ListItem(movie: movie))
         }
     }
 }

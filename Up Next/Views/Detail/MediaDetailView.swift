@@ -1,6 +1,39 @@
 import CoreData
 import SwiftUI
 
+/// Navigation value for a title pushed inside the detail sheet — a "More Like This" card, a TMDB
+/// collection part, or a credit on a cast member's page. Wraps the context-less `ListItem` the page
+/// shows; identity-hashed so the same wrapper keeps the same stack entry across re-renders.
+struct PushedTitleRoute: Hashable {
+    let listItem: ListItem
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.listItem === rhs.listItem }
+    func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(listItem)) }
+}
+
+/// The detail sheet's one navigation path, owned by the sheet's root and handed down the stack
+/// through the environment. Every drill-down appends here and both route types are registered at
+/// the root with `navigationDestination(for:)`.
+///
+/// Pages used to push titles with their own `navigationDestination(item:)`. That binding stays
+/// non-nil while the title is on the stack, and when a value-based `NavigationLink` (a cast member)
+/// pushed above it, SwiftUI re-evaluated the item destination and pushed the title *again* on top of
+/// the person page — every cast tap on a pushed title opened that title a second time, and the two
+/// copies fought over the scroll offset. One path, appended programmatically, has no such binding.
+@Observable
+final class DetailNavigator {
+    var path = NavigationPath()
+
+    func push(_ listItem: ListItem) {
+        path.append(PushedTitleRoute(listItem: listItem))
+    }
+
+    func pop() {
+        guard !path.isEmpty else { return }
+        path.removeLast()
+    }
+}
+
 struct MediaDetailView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -32,6 +65,10 @@ struct MediaDetailView: View {
     /// nested sheet at each level swapped between the two.
     var isPushed = false
     @Environment(ToastState.self) private var toast
+    /// The stack's path, from the root's environment. Nil only at the root itself, which owns
+    /// `rootNavigator` and puts it in the environment for every page it pushes.
+    @Environment(DetailNavigator.self) private var inheritedNavigator: DetailNavigator?
+    @State private var rootNavigator = DetailNavigator()
 
     @State private var isLoadingDetails = false
     @State private var detailError: String?
@@ -44,7 +81,6 @@ struct MediaDetailView: View {
     /// see `mergedMoreLikeThis`.
     @State private var moreLikeThisItems: [SimilarMediaItem] = []
     @State private var trailerKey: String?
-    @State private var selectedSimilarItem: ListItem?
     @State private var addedSimilarIDs: Set<String> = []
     /// The "More Like This" card mid-collapse. It stays in `visibleMoreLikeThis` (so it keeps its
     /// slot) while its own frame/opacity animate to zero, then moves into `addedSimilarIDs` on
@@ -124,25 +160,39 @@ struct MediaDetailView: View {
         existingIDs.union(addedSimilarIDs)
     }
 
+    private var navigator: DetailNavigator {
+        isPushed ? (inheritedNavigator ?? rootNavigator) : rootNavigator
+    }
+
     var body: some View {
         if isPushed {
             page
         } else {
-            NavigationStack {
+            @Bindable var rootNavigator = rootNavigator
+            NavigationStack(path: $rootNavigator.path) {
                 page
-                    // Registered once, at the root: a pushed detail page re-declaring it would be
-                    // ignored (and logged) by SwiftUI.
+                    // Both destinations registered once, at the root: a pushed page re-declaring
+                    // them would be ignored (and logged) by SwiftUI. Pushed pages get the root's
+                    // `knownIDs` and add through the root, so every page on the stack agrees on
+                    // what's already added.
                     .navigationDestination(for: CastPersonRoute.self) { person in
-                        PersonDetailView(
-                            person: person,
+                        PersonDetailView(person: person, existingIDs: knownIDs, dismiss: dismiss)
+                    }
+                    .navigationDestination(for: PushedTitleRoute.self) { route in
+                        MediaDetailView(
+                            listItem: route.listItem,
+                            dismiss: dismiss,
+                            onRemove: { rootNavigator.pop() },
+                            onAdd: canAddToLibrary ? { addSimilarFromDetail(route.listItem) } : nil,
                             existingIDs: knownIDs,
                             onTVShowAdded: onTVShowAdded,
                             onMovieAdded: onMovieAdded,
                             addTargetName: addTargetName,
-                            dismiss: dismiss
+                            isPushed: true
                         )
                     }
             }
+            .environment(rootNavigator)
             // On the stack, not the root page, so a toast fired from a pushed page shows too.
             .toastOverlay()
         }
@@ -310,19 +360,6 @@ struct MediaDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(removalAlertMessage)
-        }
-        .navigationDestination(item: $selectedSimilarItem) { item in
-            MediaDetailView(
-                listItem: item,
-                dismiss: dismiss,
-                onRemove: { selectedSimilarItem = nil },
-                onAdd: canAddToLibrary ? { addSimilarFromDetail(item) } : nil,
-                existingIDs: knownIDs,
-                onTVShowAdded: onTVShowAdded,
-                onMovieAdded: onMovieAdded,
-                addTargetName: addTargetName,
-                isPushed: true
-            )
         }
     }
 
@@ -548,10 +585,10 @@ struct MediaDetailView: View {
         let posterURL = service.imageURL(path: item.posterPath)
         if item.mediaType == .tvShow {
             let tvShow = TVShow(id: String(item.tmdbID), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
-            selectedSimilarItem = ListItem(tvShow: tvShow)
+            navigator.push(ListItem(tvShow: tvShow))
         } else {
             let movie = Movie(id: String(item.tmdbID), title: item.title, thumbnailURL: posterURL, voteAverage: item.voteAverage)
-            selectedSimilarItem = ListItem(movie: movie)
+            navigator.push(ListItem(movie: movie))
         }
     }
 
@@ -579,15 +616,16 @@ struct MediaDetailView: View {
     private func openCollectionDetail(_ part: TMDBCollectionPart) {
         let posterURL = service.imageURL(path: part.posterPath)
         let movie = Movie(id: String(part.id), title: part.title, thumbnailURL: posterURL, voteAverage: part.voteAverage)
-        selectedSimilarItem = ListItem(movie: movie)
+        navigator.push(ListItem(movie: movie))
     }
 
     private func addSimilarFromDetail(_ item: ListItem) {
         guard let media = item.media else { return }
         let key = MediaIDKey.make(item.tvShow != nil ? .tvShow : .movie, media.id)
         guard !existingIDs.contains(key), !addedSimilarIDs.contains(key) else { return }
-        // Added from the pushed detail page (which covers the row), so no in-place collapse to run —
-        // the card is simply gone when the page pops.
+        // Added from a pushed detail page (which covers the row), so no in-place collapse to run —
+        // the card is simply gone when the page pops. Only the root reaches this: it builds every
+        // pushed page, so its `addedSimilarIDs` flow down as `existingIDs` to the whole stack.
         addedSimilarIDs.insert(key)
         // No toast here — the pushed page's primary Add pill (`performPrimaryAdd`) already fires
         // one, and this method is only reached from that pill's `onAdd`.
