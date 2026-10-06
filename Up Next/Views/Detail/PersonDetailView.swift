@@ -141,8 +141,8 @@ struct PersonDetailView: View {
     /// "Born March 3, 1970 (age 56)", "Died …", "Place of birth" — whatever TMDB has.
     private var facts: [String] {
         guard let detail else { return [] }
-        let born = detail.birthday.flatMap(AirDateFormat.date(from:))
-        let died = detail.deathday.flatMap(AirDateFormat.date(from:))
+        let born = detail.birthday.flatMap { AirDateFormat.date(from: $0) }
+        let died = detail.deathday.flatMap { AirDateFormat.date(from: $0) }
         var lines: [String] = []
         if let born {
             let age = Self.years(from: born, to: died ?? .now)

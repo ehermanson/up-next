@@ -851,7 +851,7 @@ final class PersistenceController {
             _ = try await database.modifyRecords(saving: [root, share], deleting: [], savePolicy: .allKeys)
             AppLog.sync.notice("cloudkit.share record type ensured in Development")
         } catch {
-            try? await database.deleteRecordZone(withID: zone.zoneID)
+            _ = try? await database.deleteRecordZone(withID: zone.zoneID)
             throw error
         }
         try await database.deleteRecordZone(withID: zone.zoneID)
@@ -969,7 +969,7 @@ final class PersistenceController {
         }
     }
 
-    private static let shareTimeout: TimeInterval = 60
+    nonisolated private static let shareTimeout: TimeInterval = 60
 
     /// Everything the Console would tell us, from the phone: which build/environment this is,
     /// account state, the zones in both databases, whether the root record has actually been
@@ -1131,8 +1131,8 @@ final class PersistenceController {
         let errorText: String?
     }
 
-    private static let syncActivityKey = "sync.activityLog"
-    private static let syncActivityLimit = 40
+    nonisolated private static let syncActivityKey = "sync.activityLog"
+    nonisolated private static let syncActivityLimit = 40
 
     private(set) var syncActivity: [SyncActivityEntry] = PersistenceController.loadSyncActivity()
 

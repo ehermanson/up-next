@@ -37,7 +37,7 @@ final class ProviderSettings {
     /// throwaway suite is used and wiped on launch, so the demo preselect — six services,
     /// onboarding done — never lands in the real defaults, where it would later seed a real root
     /// as the "cache" on the next normal launch onto an empty store.
-    nonisolated static let defaults: UserDefaults = {
+    nonisolated(unsafe) static let defaults: UserDefaults = {
         let suiteName = "com.erichermanson.upnext.screenshots"
         guard ProcessInfo.processInfo.arguments.contains("--screenshots"),
               let suite = UserDefaults(suiteName: suiteName)
