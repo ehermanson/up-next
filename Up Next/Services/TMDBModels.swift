@@ -22,6 +22,19 @@ nonisolated struct TMDBMovieSearchResponse: Codable, TMDBSearchPage, Sendable {
     let totalPages: Int?
 }
 
+// MARK: - Keyword Search Response
+
+/// A TMDB keyword — the subject tags (`ice hockey`, `slasher`, `time travel`) that
+/// `DescriptiveSearch` filters `/discover` by.
+nonisolated struct TMDBKeyword: Codable, Sendable {
+    let id: Int
+    let name: String
+}
+
+nonisolated struct TMDBKeywordSearchResponse: Codable, Sendable {
+    let results: [TMDBKeyword]
+}
+
 // MARK: - Genre List Response
 
 nonisolated struct TMDBGenreListResponse: Codable, Sendable {

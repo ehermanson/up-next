@@ -87,6 +87,27 @@ final class TMDBService {
         return (firstPage.results + secondPage.results).filter { seen.insert($0.id).inserted }
     }
 
+    /// TMDB keywords whose name matches `query` (first page — TMDB's order puts the exact name
+    /// near the top).
+    func searchKeywords(query: String) async throws -> [TMDBKeyword] {
+        let response: TMDBKeywordSearchResponse = try await performRequest(
+            endpoint: "/search/keyword", queryItems: [URLQueryItem(name: "query", value: query)]
+        )
+        return response.results
+    }
+
+    /// `/discover/tv` with raw TMDB filter parameters (see `DescriptiveSearch`).
+    func discoverTVShows(filters: [String: String]) async throws -> [TMDBTVShowSearchResult] {
+        let response: TMDBTVShowSearchResponse = try await discover("/discover/tv", filters)
+        return response.results
+    }
+
+    /// `/discover/movie` with raw TMDB filter parameters (see `DescriptiveSearch`).
+    func discoverMovies(filters: [String: String]) async throws -> [TMDBMovieSearchResult] {
+        let response: TMDBMovieSearchResponse = try await discover("/discover/movie", filters)
+        return response.results
+    }
+
     // MARK: - Trending & Theatrical
 
     /// Genuinely trending TV shows for a time window ("day" or "week").
@@ -258,8 +279,9 @@ final class TMDBService {
         )
     }
 
-    /// A `/discover` request from a `CollectionIdea` query. Items are sorted so the same idea
-    /// always hits the same `RequestDeduplicator` cache entry.
+    /// A `/discover` request from a raw parameter dictionary (a `CollectionIdea` query or a
+    /// `DescriptiveSearch` interpretation). Items are sorted so the same query always hits the
+    /// same `RequestDeduplicator` cache entry.
     private nonisolated func discover<T: Decodable & Sendable>(_ endpoint: String, _ query: [String: String]) async throws -> T {
         let items = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
         return try await performRequest(endpoint: endpoint, queryItems: items)
