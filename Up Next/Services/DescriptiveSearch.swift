@@ -10,9 +10,9 @@ import Foundation
 /// The on-device model reads the query (`SearchModel.read`) and `ground` checks each thing it
 /// read against what TMDB can filter on — a facet it can't name is dropped, never guessed at.
 /// Where the model isn't available, `parse` does the reading with rules instead: words matched,
-/// longest phrase first, against the same lexicons. New query shapes belong in the model's
-/// prompt, not in `parse`. The title search still runs alongside; this adds a second section,
-/// never replaces it.
+/// longest phrase first, against the same lexicons, and "like X" as the words after the cue. New
+/// query shapes belong in the model's prompt, not in `parse`. The title search still runs alongside;
+/// this adds a second section, never replaces it.
 enum DescriptiveSearch {
     /// One subject term and the keyword ids that mean it. `ids[0]` is the keyword named exactly
     /// the term (there always is one, see `matchingKeyword`) — the one used when several terms
@@ -173,9 +173,13 @@ enum DescriptiveSearch {
         // The model misreads a plain name now and then ("you", "industry", "scandal"), so its
         // "description" never overrides an exact title people know — nor one with "like" in it
         // ("something like summer" isn't "like Summer").
+        // …and a multi-word exact title ("apple cider vinegar", 3 words, few votes) is a name even
+        // when the model says otherwise, unless the rules found a real facet in it; the override
+        // is for the one-word case ("zombies", "kids"), where TMDB has a title for every noun.
         let modelSaysDescription = reading?.isTitleName == false
             && !(titleMatch == .exact && (titleVotes ?? 0) >= SearchRanking.wellKnownTitleVoteCount)
             && !(titleMatch == .exact && hasReference)
+            && !(titleMatch == .exact && query.split(separator: " ").count > 1 && words.descriptiveFacetCount == 0)
         // "the bear hulu", "the office sitcom": a name with a service, type or genre word beside it
         // is the title search's job (`remainderTitleSearch`), not a section of the service's or
         // genre's whole catalogue under a heading that claims to have understood.
@@ -183,8 +187,7 @@ enum DescriptiveSearch {
         // "like X" is answered by `similarPool`; a person's titles by their credits.
         let guessesApply = modelSaysDescription && !hasHardFacets(words) && !hasReference && parsed.personName == nil
         async let ruled = interpret(
-            parsed, query: query, titleMatch: modelSaysDescription ? .none : titleMatch, mediaType: mediaType,
-            providers: providers, service: service
+            parsed, query: query, titleMatch: modelSaysDescription ? .none : titleMatch, mediaType: mediaType, service: service
         )
         async let verified = verifiedTitles(guessesApply ? reading?.titles ?? [] : [], service: service)
         let (rules, guesses) = await (ruled, verified)
@@ -262,32 +265,30 @@ enum DescriptiveSearch {
             parse.title = evidenced(title)
         }
         parse.personName = evidenced(reading.person)
-        // "like X" needs a cue in the query ("the bear comedy" isn't "like The Bear"), and X
-        // can't be the whole query or a genre word — that's the model echoing the query
-        // ("like=heist movies"). The model also copies too much ("like=shows like ted lasso" for
-        // "anything in the vein of ted lasso"), so leading words are shed until the rest is in
-        // the query, two words at least. Otherwise the rules' grammar below gets its turn.
+        // "like X" needs a cue in the query ("the bear comedy" isn't "like The Bear"). The model
+        // echoes the query's own framing into X ("like=shows like ted lasso", "like=heist
+        // movies"), so leading cue, type and placeholder words are shed and then leading words
+        // dropped until what's left — two words at least — is in the query, isn't all of it, and
+        // names something a genre word doesn't.
         if let similarTo = reading.similarTo.map(SearchRanking.normalized), !similarTo.isEmpty,
-           similarTo != remaining.trimmingCharacters(in: .whitespaces), namesSomething(similarTo),
            remaining.split(separator: " ").contains(where: { referenceCues.contains(String($0)) }) {
             var candidate = similarTo.split(separator: " ").map(String.init)
-            let wholeCount = candidate.count
-            while candidate.count >= 2 || candidate.count == wholeCount {
-                // "like ted lasso" is in "something like ted lasso", but the title is "ted lasso".
-                while let first = candidate.first, referenceCues.contains(first) || first == "to" { candidate.removeFirst() }
-                guard !candidate.isEmpty else { break }
-                if let found = evidenced(candidate.joined(separator: " ")) {
+            let whole = remaining.trimmingCharacters(in: .whitespaces)
+            while !candidate.isEmpty {
+                while let first = candidate.first, isReferenceFraming(first) { candidate.removeFirst() }
+                guard candidate.count >= 2 || candidate.count == similarTo.split(separator: " ").count,
+                      !candidate.isEmpty else { break }
+                let text = candidate.joined(separator: " ")
+                if text != whole, namesSomething(text), let found = evidenced(text) {
                     parse.referenceQuery = found
-                    parse.referenceCandidates = [(title: found, facets: [])]
                     break
                 }
                 candidate.removeFirst()
             }
         }
-        var words = remaining.split(separator: " ").map(String.init)
-        // No reference from the model: the rules' "like" grammar still catches one.
-        if parse.referenceQuery == nil { words = splitReferenceTail(&parse, from: words, providers: providers) }
-        scan(words, into: &parse, providers: providers)
+        // The model read no reference but the query asks for one: the words after the cue.
+        if parse.referenceQuery == nil { parse.referenceQuery = referenceAfterCue(in: &remaining, providers: providers) }
+        scan(remaining.split(separator: " ").map(String.init), into: &parse, providers: providers)
 
         if parse.referenceQuery != nil {
             // With a reference the words around it ("in the vein of", "same vibe as") would only
@@ -311,8 +312,54 @@ enum DescriptiveSearch {
         return parse
     }
 
-    /// Words that ask for something like a title. "like" and "similar" are the rules' markers;
-    /// the rest are how else people say it.
+    /// "shows like ted lasso on netflix" without the model: everything after the last "like" /
+    /// "similar to", minus leading placeholders and trailing stopwords, services and years ("on
+    /// netflix" stays in `remaining` to be scanned), when it names something. Cut out of
+    /// `remaining`. The plainest reading, no grammar — "i like comedies" leaves a genre, which
+    /// isn't a title, and "severance that are funny" stays whole (the model reads that one).
+    private static func referenceAfterCue(in remaining: inout String, providers: [String: Provider]) -> String? {
+        let words = remaining.split(separator: " ").map(String.init)
+        // The last cue: "i would like something like ted lasso".
+        guard let cue = words.lastIndex(where: { $0 == "like" || $0 == "similar" }) else { return nil }
+        var title = Array(words[(cue + 1)...])
+        while let first = title.first, isReferenceFraming(first) { title.removeFirst() }
+        while !title.isEmpty {
+            let facet = tailFacetLength(title, providers: providers)
+            if facet > 0 { title.removeLast(facet) } else if stopwords.contains(title[title.count - 1]) { title.removeLast() } else { break }
+        }
+        guard !title.isEmpty else { return nil }
+        var scanned = Parse()
+        scan(title, into: &scanned, providers: providers)
+        guard !scanned.subjectRuns.isEmpty else { return nil }
+        let text = title.joined(separator: " ")
+        guard let range = remaining.range(of: " " + text + " ") else { return nil }
+        remaining.replaceSubrange(range, with: " ")
+        return text
+    }
+
+    /// How many of `words`' last words name a service or a year ("…ted lasso netflix" → 1,
+    /// "…inception 2010" → 1); 0 when none do. Only those: titles end in genre and type words
+    /// all the time ("modern family", "the morning show"), never in "netflix" or "2010".
+    private static func tailFacetLength(_ words: [String], providers: [String: Provider]) -> Int {
+        for length in stride(from: min(3, words.count), through: 1, by: -1) {
+            if let (found, facet) = longestFacet(in: Array(words.suffix(length)), at: 0, providers: providers), found == length {
+                switch facet {
+                case .provider, .years: return length
+                default: return 0
+                }
+            }
+        }
+        return 0
+    }
+
+    /// A word the model copies into "like X" from around the title, not from it: "shows like
+    /// ted lasso" → "ted lasso".
+    private static func isReferenceFraming(_ word: String) -> Bool {
+        referenceCues.contains(word) || word == "to" || referencePlaceholders.contains(word)
+            || singularForms(word).contains { mediaWords[$0] != nil }
+    }
+
+    /// Words that ask for something like a title — how people say it.
     private static let referenceCues: Set<String> = [
         "like", "similar", "vein", "vibe", "vibes", "style", "reminiscent", "akin", "comparable", "reminds",
     ]
@@ -416,8 +463,7 @@ enum DescriptiveSearch {
     /// Resolves what the reading left to TMDB — keywords, the person, the "like X" title — and
     /// fetches the section.
     private static func interpret(
-        _ parsed: Parse, query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType?,
-        providers: [String: Provider], service: TMDBService
+        _ parsed: Parse, query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType?, service: TMDBService
     ) async -> Results? {
         var interpretation = parsed.interpretation
         let hasReference = parsed.referenceQuery != nil
@@ -445,7 +491,7 @@ enum DescriptiveSearch {
             await resolveKeyword($0, service: service)
         }
         let preferredType = mediaType ?? interpretation.mediaType
-        async let reference = resolveReference(parsed.referenceCandidates, preferring: preferredType, service: service)
+        async let reference = resolveReference(parsed.referenceQuery, preferring: preferredType, service: service)
         // The model's named person — kept only if TMDB knows them, never retried as keywords.
         async let named: Person? = {
             guard let name = parsed.personName else { return nil }
@@ -455,13 +501,9 @@ enum DescriptiveSearch {
         guard !Task.isCancelled else { return nil }
         interpretation.keywords = resolved.keywords
         interpretation.person = explicitPerson ?? resolved.person
-        interpretation.reference = referenced?.reference
+        interpretation.reference = referenced
         for (index, keyword) in zip(fallbackIndices, genreKeywords) {
             interpretation.genres[index].keyword = keyword
-        }
-        // The facets that reading split off ("…on netflix", "…but funny") filter the results.
-        if let facets = referenced?.facets, !facets.isEmpty {
-            merge(parse(facets.joined(separator: " "), providers: providers).interpretation, into: &interpretation)
         }
 
         if hasReference, referenced == nil { return nil }
@@ -772,36 +814,12 @@ enum DescriptiveSearch {
             .sorted { ($0.voteCount ?? 0) > ($1.voteCount ?? 0) }
     }
 
-    /// The first reading (`Parse.referenceCandidates`) that names a title exactly, else the first
-    /// that names one at all — "ted lasso netflix" prefix-matches *Ted Lasso*, but "ted lasso"
-    /// matches it exactly and leaves "netflix" to filter.
+    /// The reference as TMDB knows it, if it does.
     private static func resolveReference(
-        _ candidates: [(title: String, facets: [String])], preferring mediaType: MediaType?, service: TMDBService
-    ) async -> (reference: Reference, facets: [String])? {
-        var fallback: (reference: Reference, facets: [String])?
-        for candidate in candidates {
-            guard let (reference, match) = await bestReference(for: candidate.title, preferring: mediaType, service: service)
-            else { continue }
-            if match == .exact { return (reference, candidate.facets) }
-            fallback = fallback ?? (reference, candidate.facets)
-        }
-        return fallback
-    }
-
-    private static func merge(_ facets: Interpretation, into interpretation: inout Interpretation) {
-        interpretation.mediaType = interpretation.mediaType ?? facets.mediaType
-        for provider in facets.providers where !interpretation.providers.contains(where: { $0.id == provider.id }) {
-            interpretation.providers.append(provider)
-        }
-        for genre in facets.genres where !interpretation.genres.contains(where: { $0.label == genre.label }) {
-            interpretation.genres.append(genre)
-        }
-        if let years = facets.years {
-            interpretation.years = years
-            interpretation.yearsLabel = facets.yearsLabel
-            interpretation.yearsAreVague = facets.yearsAreVague
-        }
-        interpretation.origin = interpretation.origin ?? facets.origin
+        _ title: String?, preferring mediaType: MediaType?, service: TMDBService
+    ) async -> Reference? {
+        guard let title else { return nil }
+        return await bestReference(for: title, preferring: mediaType, service: service)?.0
     }
 
     /// The title in "shows like ted lasso": the closest confident title match, then the better
@@ -1053,12 +1071,8 @@ enum DescriptiveSearch {
         var subjectRuns: [[String]] = []
         /// For each subject run, the genre words right after it, if any — "true" before "crime".
         var genreAfterRun: [String?] = []
-        /// Everything after "like" / "similar to": a title to find ("shows like ted lasso").
+        /// The title in "shows like ted lasso" — the model's, present in the query (`ground`).
         var referenceQuery: String?
-        /// Readings of that text, tried in order (`resolveReference`): all of it, then split at a
-        /// connector ("…on netflix"), then with trailing facets stripped ("…netflix") — each with
-        /// the facet words it split off, which then filter the results.
-        var referenceCandidates: [(title: String, facets: [String])] = []
         /// The words no facet claimed, stopwords included — the name in "the studio apple tv".
         var nameWords: [String] = []
         /// The model's, each present in the query: the title a name query names, and a person.
@@ -1074,42 +1088,18 @@ enum DescriptiveSearch {
         case origin(Origin, genres: [Genre])
     }
 
-    /// The rules' reading of `query` — the fallback where the on-device model isn't available.
+    /// The rules' reading of `query` — the fallback where the on-device model isn't available:
+    /// facets, subjects, and the plainest "like X" (`referenceAfterCue`).
     static func parse(_ query: String, providers: [String: Provider]) -> Parse {
         var parse = Parse()
-        let words = splitReferenceTail(&parse, from: normalizedWords(query), providers: providers)
-        scan(words, into: &parse, providers: providers)
+        var remaining = " " + normalizedWords(query).joined(separator: " ") + " "
+        parse.referenceQuery = referenceAfterCue(in: &remaining, providers: providers)
+        scan(remaining.split(separator: " ").map(String.init), into: &parse, providers: providers)
         return parse
     }
 
     private static func normalizedWords(_ query: String) -> [String] {
         SearchRanking.normalized(query).split(separator: " ").map(String.init)
-    }
-
-    /// The rules' "like X": the first "like" (or "similar to") that starts a reference — "i
-    /// would like something like ted lasso" is the second — takes everything after it as the
-    /// title to find (`Parse.referenceCandidates`); the words before it are returned.
-    private static func splitReferenceTail(
-        _ parse: inout Parse, from words: [String], providers: [String: Provider]
-    ) -> [String] {
-        let marker = words.indices.first { index in
-            let isMarker = words[index] == "like"
-                || (words[index] == "similar" && words.indices.contains(index + 1) && words[index + 1] == "to")
-            return isMarker && isReferenceMarker(after: Array(words[..<index]), providers: providers)
-        }
-        guard let marker else { return words }
-        let tail = Array(words[(marker + (words[marker] == "like" ? 1 : 2))...])
-        if !tail.isEmpty {
-            parse.referenceQuery = tail.joined(separator: " ")
-            var candidates = [(title: tail, facets: [String]())]
-            if let split = splitReference(tail, providers: providers) { candidates.append(split) }
-            if let stripped = stripTrailingFacets(tail, providers: providers) { candidates.append(stripped) }
-            var seen = Set<[String]>()
-            parse.referenceCandidates = candidates
-                .filter { seen.insert($0.title).inserted }
-                .map { (title: $0.title.joined(separator: " "), facets: $0.facets) }
-        }
-        return Array(words[..<marker])
     }
 
     /// Facets matched longest phrase first; the words nothing claims become subject runs, split
@@ -1151,68 +1141,12 @@ enum DescriptiveSearch {
         flushRun()
     }
 
-    /// "ted lasso on netflix", "friends from the 90s", "severance that are funny": a connector
-    /// followed by nothing but facets and connectors ends the title; those facets filter the
-    /// results instead (they go back to the main loop). Without a connector nothing is split off —
-    /// "modern family" and "the morning show" end in genre and type words but are titles.
-    private static func splitReference(_ tail: [String], providers: [String: Provider]) -> (title: [String], facets: [String])? {
-        for start in tail.indices.dropFirst() where tailFillers.contains(tail[start]) {
-            var facets: [String] = []
-            var index = start
-            while index < tail.count {
-                if tailFillers.contains(tail[index]) {
-                    index += 1
-                } else if let (length, _) = longestFacet(in: tail, at: index, providers: providers) {
-                    facets += tail[index..<index + length]
-                    index += length
-                } else {
-                    break
-                }
-            }
-            if index == tail.count, !facets.isEmpty { return (Array(tail[..<start]), facets) }
-        }
-        return nil
-    }
-
-    /// "the bear hulu", "inception 2010": trailing facets with no connector — tried only after
-    /// the whole text failed as a title ("partners in crime", "modern family" don't).
-    private static func stripTrailingFacets(_ tail: [String], providers: [String: Provider]) -> (title: [String], facets: [String])? {
-        var title = tail
-        var facets: [String] = []
-        while title.count > 1 {
-            if let length = (1...min(3, title.count - 1)).reversed().first(where: { length in
-                longestFacet(in: Array(title.suffix(length)), at: 0, providers: providers)?.0 == length
-            }) {
-                facets = title.suffix(length) + facets
-                title.removeLast(length)
-            } else if !facets.isEmpty, let last = title.last, tailFillers.contains(last) {
-                title.removeLast()
-            } else {
-                break
-            }
-        }
-        return facets.isEmpty ? nil : (title, facets)
-    }
-
     /// Stopwords kept inside a subject run so a phrase holds together ("coming of age").
     private static let runJoiners: Set<String> = ["of", "and", "the"]
 
-    /// "like" starts a reference only after nothing, a type word or a placeholder ("like ted
-    /// lasso", "shows like…", "something like…") — not "i like comedies".
-    private static func isReferenceMarker(after head: [String], providers: [String: Provider]) -> Bool {
-        head.isEmpty || head.contains { word in
-            referencePlaceholders.contains(word) || singularForms(word).contains { mediaWords[$0] != nil }
-        } || head.indices.contains { longestFacet(in: head, at: $0, providers: providers) != nil }
-    }
-
+    /// "something like…", "anything like…": stand-ins for a title, not part of one.
     private static let referencePlaceholders: Set<String> = [
         "something", "anything", "stuff", "more", "titles", "things", "others", "ones",
-    ]
-
-    /// Words between a reference's title and the facets after it ("…on netflix", "…but funny").
-    private static let tailFillers: Set<String> = [
-        "on", "but", "in", "from", "with", "and", "that", "is", "are", "were", "which", "who", "the", "a",
-        "only", "streaming", "set", "made",
     ]
 
     private static func longestFacet(

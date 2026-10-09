@@ -14,6 +14,7 @@ trap 'rm -rf "$checks_dir"' EXIT
 xcrun swiftc -parse-as-library -swift-version 5 -default-isolation MainActor \
     -enable-upcoming-feature NonisolatedNonsendingByDefault \
     "$repo_root/ci_scripts/search_checks.swift" \
+    "$repo_root/Up Next/Services/SearchSession.swift" \
     "$repo_root/Up Next/Services/DescriptiveSearch.swift" \
     "$repo_root/Up Next/Services/SearchRanking.swift" \
     "$repo_root/Up Next/Services/SearchModel.swift" \

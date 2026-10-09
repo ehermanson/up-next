@@ -652,89 +652,37 @@ struct WatchlistSearchView: View {
 
     /// One type's search outcome. Failures are kept per-type so a movie outage can't blank the
     /// TV results the user is actually looking at.
-    private struct SearchOutcome<Element> {
-        var results: [Element] = []
-        var error: String?
-    }
-
-    private func fetchTVShowResults(query: String) async -> SearchOutcome<TMDBTVShowSearchResult> {
-        do {
-            return SearchOutcome(results: try await service.searchTVShows(query: query))
-        } catch {
-            return SearchOutcome(error: Self.searchErrorText(error))
-        }
-    }
-
-    private func fetchMovieResults(query: String) async -> SearchOutcome<TMDBMovieSearchResult> {
-        do {
-            return SearchOutcome(results: try await service.searchMovies(query: query))
-        } catch {
-            return SearchOutcome(error: Self.searchErrorText(error))
-        }
-    }
-
-    /// `nil` for cancellations — a superseded keystroke isn't a failure worth showing.
-    private static func searchErrorText(_ error: any Error) -> String? {
-        if error is CancellationError { return nil }
-        if let urlError = error as? URLError, urlError.code == .cancelled { return nil }
-        return error.localizedDescription
-    }
 
     private func performSearch(query: String) async {
-        // Both types are searched every time so the cross-type hint ("Show 12 movies instead")
-        // is accurate and flipping the segment is instant — the second request is served from
-        // the response cache.
-        async let tvFetch = fetchTVShowResults(query: query)
-        async let movieFetch = fetchMovieResults(query: query)
-        // The on-device model reads the query alongside the title search (see `SearchModel`).
-        async let modelReading = SearchModel.read(query)
-        let (tv, movies) = await (tvFetch, movieFetch)
-
-        // The shared request task isn't cancelled by us, so check explicitly after the awaits —
-        // a superseded keystroke's response must not overwrite the current one.
-        guard !Task.isCancelled else { return }
-
-        // A failed type keeps its previous results rather than blanking.
-        if tv.error == nil { tvShowResults = tv.results }
-        if movies.error == nil { movieResults = movies.results }
-        titleQuery = query
-        // Kept per type so flipping the segment re-reads the right banner without a refetch.
-        tvSearchError = tv.error
-        movieSearchError = movies.error
-
-        // Interpreted after the title results land (they're shown meanwhile), since a strong title
-        // match decides whether a keyword-only query is worth interpreting at all. `isLoading`
-        // stays on until then so an empty title search doesn't flash "No Results Found".
-        let best = SearchRanking.bestTitleMatch(
-            tvShow: tv.results.first.map { ($0.name, $0.voteCount, $0.firstAirDate, $0.popularity) },
-            movie: movies.results.first.map { ($0.title, $0.voteCount, $0.releaseDate, $0.popularity) }, query: query
-        )
-        let titleMatch = best.match
         let scopedType: MediaType? = switch context {
         case .tvShows: .tvShow
         case .movies: .movie
         case .all, .specificList: nil
         }
-        let reading = await modelReading
-        let interpreted = await DescriptiveSearch.run(
-            query: query, titleMatch: titleMatch, titleVotes: best.votes, mediaType: scopedType, reading: reading
-        )
-        guard !Task.isCancelled else { return }
+        // Both types are searched every time so the cross-type hint ("Show 12 movies instead")
+        // is accurate and flipping the segment is instant. `isLoading` stays on until the section
+        // is in so an empty title search doesn't flash "No Results Found".
+        let outcome = await SearchSession.run(query: query, mediaType: scopedType) { titles in
+            // A failed type keeps its previous results rather than blanking.
+            if titles.tvError == nil { tvShowResults = titles.tvShows }
+            if titles.movieError == nil { movieResults = titles.movies }
+            titleQuery = query
+            // Kept per type so flipping the segment re-reads the right banner without a refetch.
+            tvSearchError = titles.tvError
+            movieSearchError = titles.movieError
+        }
+        guard let outcome else { return }
         let previousType = describedResults?.interpretation.mediaType
-        describedResults = interpreted
+        describedResults = outcome.described
         // "slasher movies" — the query just named a type, so show it. Only on the change, so a
         // user who taps back to the other type isn't overruled by the next keystroke.
-        if showMediaTypePicker, let mediaType = interpreted?.interpretation.mediaType, mediaType != previousType {
+        if showMediaTypePicker, let mediaType = outcome.described?.interpretation.mediaType, mediaType != previousType {
             selectedMediaType = mediaType
         }
-        // "the bear hulu": the whole query matched no title, but its name part does.
-        if titleMatch == .none, let found = await DescriptiveSearch.remainderTitleSearch(
-            query: query, besideSection: !(interpreted?.isEmpty ?? true), reading: reading
-        ) {
-            guard !Task.isCancelled else { return }
+        if let found = outcome.remainder {
             tvShowResults = found.tvShows
             movieResults = found.movies
-            titleQuery = found.remainder
+            titleQuery = found.query
         }
         isLoading = false
     }

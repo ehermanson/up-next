@@ -7,7 +7,9 @@
 //
 // `finds` is recall — one right answer somewhere in the top rows — and a list can pass it while
 // being mostly junk. The precision cases (`precision`, `notAny`) say what the top rows should and
-// shouldn't be; they're the ones a ranking change has to move.
+// shouldn't be; they're the ones a ranking change has to move. Without the model the "like X"
+// ones sit near their threshold and move with TMDB's live data from run to run — another reason
+// the hard ones are `gap`s, not assertions.
 import Foundation
 
 // MARK: - Minimal stand-ins for the app types DescriptiveSearch touches
@@ -260,19 +262,20 @@ let cases: [Case] = [
     Case("christopher nolan", .finds(["Inception", "Oppenheimer", "Interstellar", "The Dark Knight"], .movie)),
     Case("zendaya", .finds(["Euphoria"], .tvShow)),
     Case("tom hanks comedies", .finds(["Big", "Splash", "The Money Pit", "You've Got Mail", "Sleepless in Seattle", "Toy Story"], .movie)),
-    Case("movies like the office", .finds(["Office Space", "The Intern", "Horrible Bosses", "Clerks", "The Devil Wears Prada", "Waiting...", "Superstore"], .movie)),
-    Case("shows like inception", .finds(["Westworld", "Black Mirror", "Dark", "Severance", "Devs", "Altered Carbon", "Fringe", "The OA", "Sense8", "Mr. Robot"], .tvShow)),
+    Case("movies like the office", .finds(["Office Space", "The Intern", "Horrible Bosses", "Clerks", "The Devil Wears Prada", "Waiting...", "Superstore"], .movie), needsModel: true),
+    Case("shows like inception", .finds(["Westworld", "Black Mirror", "Dark", "Severance", "Devs", "Altered Carbon", "Fringe", "The OA", "Sense8", "Mr. Robot"], .tvShow), needsModel: true),
     Case("shows like ted lasso on netflix", .finds(["Never Have I Ever", "Sex Education", "Schitt's Creek", "Kim's Convenience", "The Good Place", "Unstable", "Running Point", "Brooklyn Nine-Nine", "The Office"], .tvShow)),
     Case("i like comedies", .section(.tvShow), .section(.movie)),
     // Widened after the first run: the rules' family sitcoms are right answers the first list missed.
     Case("shows like modern family", .finds(["The Office", "Parks and Recreation", "Brooklyn Nine-Nine", "The Middle", "Black-ish", "Schitt's Creek", "Abbott Elementary", "Friends", "How I Met Your Mother", "The Goldbergs", "Malcolm in the Middle", "Young Sheldon", "The Fresh Prince of Bel-Air"], .tvShow)),
-    Case("shows like the morning show", .finds(["The Newsroom", "Succession", "Big Little Lies", "House of Cards", "Scandal", "The Crown", "Billions", "Industry", "The Loudest Voice"], .tvShow)),
+    Case("shows like the morning show", .finds(["The Newsroom", "Succession", "Big Little Lies", "House of Cards", "Scandal", "The Crown", "Billions", "Industry", "The Loudest Voice"], .tvShow), needsModel: true),
     Case("shows like friends from the 90s", .finds(["Seinfeld", "Frasier", "Will & Grace", "Mad About You", "Ellen", "Spin City", "Living Single", "The Nanny", "Everybody Loves Raymond", "3rd Rock from the Sun"], .tvShow)),
-    Case("shows like severance that are funny", .section(.tvShow)),
+    // Connector phrasing inside the reference ("…that are funny") is the model's to read.
+    Case("shows like severance that are funny", .section(.tvShow), needsModel: true),
     Case("shows like partners in crime", .heading("Like Partners in Crime", .tvShow)),
     Case("shows like married with children", .heading("Like Married", .tvShow)),
-    Case("shows like the bear hulu", .heading("Like The Bear", .tvShow), .heading("Hulu", .tvShow)),
-    Case("shows like ted lasso netflix", .heading("Like Ted Lasso", .tvShow), .heading("Netflix", .tvShow)),
+    Case("shows like the bear hulu", .heading("Like The Bear", .tvShow), .heading("Hulu", .tvShow), needsModel: true),
+    Case("shows like ted lasso netflix", .heading("Like Ted Lasso", .tvShow), .heading("Netflix", .tvShow), needsModel: true),
     Case("movies like inception 2010", .heading("Like Inception", .movie)),
     Case("i would like something like ted lasso", .finds(["The Office", "Parks and Recreation", "Brooklyn Nine-Nine", "The Good Place", "Abbott Elementary", "Schitt's Creek", "Shrinking", "Scrubs"], .tvShow)),
     Case("tom hanks christmas", .finds(["The Polar Express"], .movie)),
@@ -286,11 +289,11 @@ let cases: [Case] = [
     Case("shows like modern family", .precision(["The Office", "Parks and Recreation", "Brooklyn Nine-Nine", "The Middle", "Black-ish", "Schitt's Creek", "Abbott Elementary", "Friends", "How I Met Your Mother", "The Goldbergs", "Malcolm in the Middle", "Young Sheldon", "The Fresh Prince of Bel-Air", "Community", "Arrested Development", "Superstore", "Ghosts", "Married... with Children", "Everybody Loves Raymond"], .tvShow)),
     Case("movies like inception", .precision(["Interstellar", "Tenet", "The Matrix", "Shutter Island", "The Prestige", "Memento", "Source Code", "Looper", "Edge of Tomorrow", "Minority Report", "Paprika", "Dark City", "Arrival", "Oblivion", "Blade Runner 2049", "Predestination", "Coherence", "Primer", "Donnie Darko", "Eternal Sunshine of the Spotless Mind"], .movie),
          .notAny(["Solo: A Star Wars Story", "The Matrix Reloaded", "The Matrix Revolutions", "Inside Out", "The Lord of the Rings: The Two Towers"], .movie), needsModel: true),
-    Case("something similar to the bear", .precision(["Boiling Point", "Kitchen Confidential", "Shrinking", "Hacks", "Somebody Somewhere", "The Rehearsal", "Beef", "Barry", "Atlanta", "Reservation Dogs", "Ted Lasso", "Succession", "Fleabag", "Dave", "Ramy", "After Life", "The Studio", "Six Feet Under"], .tvShow), needsModel: true),
+    Case("something similar to the bear", .precision(["Boiling Point", "Kitchen Confidential", "Shrinking", "Hacks", "Somebody Somewhere", "The Rehearsal", "Beef", "Barry", "Atlanta", "Reservation Dogs", "Ted Lasso", "Succession", "Fleabag", "Dave", "Ramy", "After Life", "The Studio", "Six Feet Under"], .tvShow)),
     Case("shows like ted lasso", .precision(["Shrinking", "Schitt's Creek", "Abbott Elementary", "Ghosts", "The Good Place", "Parks and Recreation", "Brooklyn Nine-Nine", "The Office", "Scrubs", "Never Have I Ever", "Welcome to Wrexham", "Friday Night Lights", "Cobra Kai", "Superstore", "Community", "Shoresy", "Detroiters", "Kim's Convenience"], .tvShow), needsModel: true),
     Case("shows like inception", .precision(["Dark", "Westworld", "Severance", "Black Mirror", "Devs", "Fringe", "Mr. Robot", "Altered Carbon", "The OA", "Sense8", "Maniac", "Twin Peaks", "Lost", "Counterpart", "Tales from the Loop", "Bodies", "1899", "The Leftovers"], .tvShow),
          .notAny(["Riverdale", "Gravity Falls", "Money Heist", "Lupin", "Blindspot", "House of Cards"], .tvShow),
-         gap: "keyword neighbours of a heist/dream film are popular shows sharing a generic keyword — Riverdale, Gravity Falls"),
+         gap: "keyword neighbours of a heist/dream film are popular shows sharing a generic keyword — Riverdale, Gravity Falls; the judge only partly rescues it"),
     Case("shows like fleabag", .precision(["Catastrophe", "Insecure", "Russian Doll", "Dead to Me", "I May Destroy You", "Girls", "Crashing", "Killing Eve", "Normal People", "Barry", "Chewing Gum", "Somebody Somewhere", "Hacks", "Atlanta", "Ramy", "Shrinking", "Everything I Know About Love", "Starstruck", "Feel Good", "Baby Reindeer", "Only Murders in the Building", "Peep Show", "You're the Worst", "Catastrophe"], .tvShow),
          .notAny(["The Crown", "Malcolm in the Middle", "The Office", "It's Always Sunny in Philadelphia", "Broadchurch", "Adolescence", "Behind Her Eyes"], .tvShow),
          gap: "the model's picks for Fleabag are famous rather than alike (The Office, The Crown) and TMDB's neighbours are British-ness, not tone"),
@@ -299,19 +302,20 @@ let cases: [Case] = [
          gap: "TMDB's recommendations for Severance are popular thrillers; Stranger Things rides vote count"),
     Case("shows like the morning show", .precision(["The Newsroom", "Succession", "Big Little Lies", "House of Cards", "Scandal", "The Crown", "Billions", "Industry", "The Loudest Voice", "The Bold Type", "UnREAL", "Sports Night", "Studio 60 on the Sunset Strip", "Good Girls Revolt", "The Diplomat", "Mad Men", "The West Wing", "The Morning Show", "The Newsreader"], .tvShow),
          .notAny(["Chicago Fire", "The Strain", "FBI", "NCIS: Hawaiʻi", "Power Book III: Raising Kanan", "Wu-Tang: An American Saga"], .tvShow),
-         gap: "the reference's keywords (\"workplace\", \"news\") pull procedurals; nothing weighs tone"),
+         gap: "the reference's keywords (\"workplace\", \"news\") pull procedurals; the judge gets The Newsroom and The Newsreader up but not the rest"),
     Case("shows like ted lasso netflix", .notAny(["Peaky Blinders", "The Crown", "Wednesday", "Weak Hero", "Emily in Paris", "The English Game"], .tvShow),
-         gap: "with a service there are no recommendations or model picks, only keyword neighbours on that service"),
+         gap: "with a service there are no recommendations or model picks, only keyword neighbours on that service — the judge can only reorder those"),
     Case("shows like the bear hulu", .notAny(["Grey's Anatomy", "WandaVision", "ER", "Archer", "Bob's Burgers", "A Million Little Things", "This Is Us"], .tvShow),
-         gap: "with a service there are no recommendations or model picks, only keyword neighbours on that service"),
+         gap: "with a service there are no recommendations or model picks, only keyword neighbours on that service — the judge can only reorder those"),
     Case("movies like the office", .precision(["Office Space", "The Intern", "Horrible Bosses", "Clerks", "The Devil Wears Prada", "Waiting...", "Set It Up", "9 to 5", "Working Girl", "Up in the Air", "The Hudsucker Proxy", "Employee of the Month", "Extract", "Sorry to Bother You", "Boiler Room", "Glengarry Glen Ross"], .movie),
          .notAny(["Shrek", "Love Actually", "Ratatouille", "Project X", "The Proposal"], .movie),
-         gap: "across types there are no recommendations, and the judge still lets an office-set rom-com in (The Proposal)"),
+         gap: "across types there are no recommendations; one shared keyword lets any popular comedy in, and the judge still lets an office-set rom-com through"),
     Case("comedies about chefs", .finds(["The Bear"], .tvShow, top: 3),
          .notAny(["The Big Bang Theory", "Modern Family", "The Good Place", "The Neighborhood"], .tvShow, top: 3),
          gap: usesModel ? "the model's guesses verify as real titles but aren't about chefs, and verified guesses lead the section" : nil),
     Case("sports dramedy", .notAny(["The Last of Us", "The Mandalorian", "The Office"], .tvShow),
-         gap: usesModel ? "the model's guesses verify as real titles but aren't sports dramedies, and verified guesses lead the section" : nil),
+         gap: usesModel ? "the model's guesses verify as real titles but aren't sports dramedies, and verified guesses lead the section"
+                        : "\"sports dramedy\" is a TMDB keyword nothing carries, so without the model there's no section"),
     Case("tom hanks christmas", .notAny(["Band of Brothers", "The Pacific", "The Oscars", "The War", "Prohibition"], .tvShow),
          gap: "a person's TV credits can't be narrowed by a keyword, so the TV side ignores \"christmas\""),
     Case("i like comedies", .notAny(["Pulp Fiction", "The Wolf of Wall Street"], .movie, top: 8),
@@ -339,8 +343,7 @@ let usesModel = SearchModel.isAvailable
 struct Outcome {
     var rows: [MediaType: [String]] = [:]
     var reading: SearchModel.Reading?
-    /// How long the model took to read the query, and the whole search end to end.
-    var readingSeconds: Double = 0
+    /// The whole search end to end.
     var totalSeconds: Double = 0
     var described: DescriptiveSearch.Results?
     var titleMatch = SearchRanking.TitleMatch.none
@@ -354,35 +357,18 @@ struct Outcome {
 func normalizedTitle(_ title: String) -> String { SearchRanking.normalized(title) }
 
 func outcome(for query: String) async -> Outcome {
-    let service = TMDBService.shared
     let startedAt = ContinuousClock.now
-    async let tvTitles = (try? service.searchTVShows(query: query)) ?? []
-    async let movieTitles = (try? service.searchMovies(query: query)) ?? []
-    let modelOn = usesModel
-    async let modelReading: (SearchModel.Reading?, Double) = {
-        guard modelOn else { return (nil, 0) }
-        let started = ContinuousClock.now
-        let reading = await SearchModel.read(query)
-        let elapsed = ContinuousClock.now - started
-        return (reading, Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18)
-    }()
-    var (tv, movies) = await (tvTitles, movieTitles)
     var outcome = Outcome()
-    (outcome.reading, outcome.readingSeconds) = await modelReading
-    let best = SearchRanking.bestTitleMatch(
-        tvShow: tv.first.map { ($0.name, $0.voteCount, $0.firstAirDate, $0.popularity) },
-        movie: movies.first.map { ($0.title, $0.voteCount, $0.releaseDate, $0.popularity) }, query: query
-    )
-    outcome.titleMatch = best.match
-    outcome.described = await DescriptiveSearch.run(
-        query: query, titleMatch: outcome.titleMatch, titleVotes: best.votes, reading: outcome.reading
-    )
+    var tv: [TMDBTVShowSearchResult] = [], movies: [TMDBMovieSearchResult] = []
     var titleQuery = query
-    if outcome.titleMatch == .none, let found = await DescriptiveSearch.remainderTitleSearch(
-        query: query, besideSection: !(outcome.described?.isEmpty ?? true), reading: outcome.reading
-    ) {
-        (tv, movies, titleQuery) = (found.tvShows, found.movies, found.remainder)
-    }
+    // The same orchestration as Discover and the add sheet.
+    guard let session = await SearchSession.run(query: query, service: TMDBService.shared, titlesLanded: { titles in
+        tv = titles.tvShows; movies = titles.movies
+    }) else { return outcome }
+    outcome.reading = session.reading
+    outcome.titleMatch = session.titleMatch
+    outcome.described = session.described
+    if let found = session.remainder { (tv, movies, titleQuery) = (found.tvShows, found.movies, found.query) }
 
     // Same order as the add sheet and Discover.
     func rows<Item>(_ layout: DescriptiveSearch.Layout<Item>, _ name: (Item) -> String) -> [String] {
@@ -442,6 +428,7 @@ func failure(_ expectation: Expectation, _ outcome: Outcome) -> String? {
         let hits = rows.filter { wanted.contains(normalizedTitle($0)) }.count
         return hits >= atLeast ? nil : "\(type): \(hits) of top \(top) acceptable, wanted \(atLeast); saw \(rows.joined(separator: ", "))"
     case .notAny(let titles, let type, let top):
+        guard outcome.hasSection(type) else { return "\(type): no described section" }
         let rows = Array((outcome.rows[type] ?? []).prefix(top))
         let unwanted = Set(titles.map(normalizedTitle))
         guard let index = rows.firstIndex(where: { unwanted.contains(normalizedTitle($0)) }) else { return nil }
@@ -464,7 +451,7 @@ struct SearchChecks {
             if ProcessInfo.processInfo.environment["SEARCH_VERBOSE"] != nil {
                 print("\(testCase.query) [\(result.described.map { $0.summary(for: .tvShow) } ?? "no section")] \(String(format: "%.1f", result.totalSeconds)) s")
                 if let reading = result.reading {
-                    print("    model (\(String(format: "%.1f", result.readingSeconds)) s): \(describe(reading))")
+                    print("    model: \(describe(reading))")
                 }
                 for type in [MediaType.tvShow, .movie] where !(result.rows[type] ?? []).isEmpty {
                     print("    \(type): \(result.rows[type]!.prefix(8).joined(separator: ", "))")

@@ -602,13 +602,6 @@ final class DiscoverViewModel {
 
     // MARK: - Search
 
-    /// One search type's outcome. Failures are kept per-type so a movie outage can't blank the
-    /// TV results the user is actually looking at (mirrors `WatchlistSearchView`).
-    private struct SearchOutcome<Element> {
-        var results: [Element] = []
-        var error: String?
-    }
-
     private var searchTask: Task<Void, Never>?
     private var hasPrewarmedSearchModel = false
 
@@ -732,69 +725,31 @@ final class DiscoverViewModel {
     /// Both types are searched every time so the cross-type hint is accurate and flipping the
     /// segment is instant — the second request is served from the response cache.
     private func performSearch(query: String) async {
-        async let tvFetch = fetchTVSearch(query: query)
-        async let movieFetch = fetchMovieSearch(query: query)
-        // The on-device model reads the query alongside the title search (see `SearchModel`).
-        async let modelReading = SearchModel.read(query)
-        let (tv, movie) = await (tvFetch, movieFetch)
-
-        // The shared request task isn't cancelled by us, so check explicitly — a superseded
-        // keystroke's response must not overwrite the current one.
-        guard !Task.isCancelled else { return }
-
-        if tv.error == nil { searchTVResults = tv.results }
-        if movie.error == nil { searchMovieResults = movie.results }
-        searchTitleQuery = query
-        // Only the type on screen gets to raise the error banner.
-        tvSearchError = tv.error
-        movieSearchError = movie.error
-
-        // Interpreted after the title results land (they're shown meanwhile) — see
-        // `WatchlistSearchView.performSearch`.
-        let best = SearchRanking.bestTitleMatch(
-            tvShow: tv.results.first.map { ($0.name, $0.voteCount, $0.firstAirDate, $0.popularity) },
-            movie: movie.results.first.map { ($0.title, $0.voteCount, $0.releaseDate, $0.popularity) }, query: query
-        )
-        let titleMatch = best.match
-        let reading = await modelReading
-        let interpreted = await DescriptiveSearch.run(
-            query: query, titleMatch: titleMatch, titleVotes: best.votes, reading: reading
-        )
-        guard !Task.isCancelled else { return }
+        let outcome = await SearchSession.run(query: query) { titles in
+            // A failed type keeps its previous results rather than blanking.
+            if titles.tvError == nil { searchTVResults = titles.tvShows }
+            if titles.movieError == nil { searchMovieResults = titles.movies }
+            searchTitleQuery = query
+            // Only the type on screen gets to raise the error banner.
+            tvSearchError = titles.tvError
+            movieSearchError = titles.movieError
+        }
+        guard let outcome else { return }
         let previousType = describedSearchResults?.interpretation.mediaType
-        describedSearchResults = interpreted
+        describedSearchResults = outcome.described
         // "slasher movies" — the query just named a type, so show it. Only on the change, so a
         // user who taps back to the other type isn't overruled by the next keystroke.
-        if let mediaType = interpreted?.interpretation.mediaType, mediaType != previousType {
+        if let mediaType = outcome.described?.interpretation.mediaType, mediaType != previousType {
             selectedMediaType = mediaType == .tvShow ? .tvShows : .movies
         }
-        // "the bear hulu": the whole query matched no title, but its name part does.
-        if titleMatch == .none, let found = await DescriptiveSearch.remainderTitleSearch(
-            query: query, besideSection: !(interpreted?.isEmpty ?? true), reading: reading
-        ) {
-            guard !Task.isCancelled else { return }
+        if let found = outcome.remainder {
             searchTVResults = found.tvShows
             searchMovieResults = found.movies
-            searchTitleQuery = found.remainder
+            searchTitleQuery = found.query
         }
         isSearching = false
     }
 
-    private func fetchTVSearch(query: String) async -> SearchOutcome<TMDBTVShowSearchResult> {
-        do {
-            return SearchOutcome(results: try await service.searchTVShows(query: query))
-        } catch {
-            return SearchOutcome(error: Self.errorText(error))
-        }
-    }
-
-    private func fetchMovieSearch(query: String) async -> SearchOutcome<TMDBMovieSearchResult> {
-        do {
-            return SearchOutcome(results: try await service.searchMovies(query: query))
-        } catch {
-            return SearchOutcome(error: Self.errorText(error))
-        }
-    }
 
     // MARK: - Airing This Week: per-card air date
 

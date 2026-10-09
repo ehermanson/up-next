@@ -28,6 +28,30 @@ enum SearchRanking {
                                movie: (name: String, votes: Int?, date: String?, popularity: Double?)?,
                                query: String) -> (match: TitleMatch, votes: Int?) { (.none, nil) }
 }
+enum SearchSession {
+    struct Titles {
+        var tvShows: [TMDBTVShowSearchResult] = []; var movies: [TMDBMovieSearchResult] = []
+        var tvError: String?; var movieError: String?
+    }
+    struct Outcome {
+        var described: DescriptiveSearch.Results?
+        var remainder: (query: String, tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])?
+    }
+    /// Mirrors the real session's shape: both types fetched at once, each failure kept per type.
+    static func run(query: String, mediaType: MediaType? = nil, titlesLanded: (Titles) -> Void) async -> Outcome? {
+        async let tv: ([TMDBTVShowSearchResult], String?) = {
+            do { return (try await TMDBService.shared.searchTVShows(query: query), nil) } catch { return ([], errorText(error)) }
+        }()
+        async let movies: ([TMDBMovieSearchResult], String?) = {
+            do { return (try await TMDBService.shared.searchMovies(query: query), nil) } catch { return ([], errorText(error)) }
+        }()
+        let (shows, films) = await (tv, movies)
+        guard !Task.isCancelled else { return nil }
+        titlesLanded(Titles(tvShows: shows.0, movies: films.0, tvError: shows.1, movieError: films.1))
+        return Outcome()
+    }
+    nonisolated static func errorText(_ error: any Error) -> String? { error.localizedDescription }
+}
 enum SearchModel {
     struct Reading {}
     static func prewarm() {}
