@@ -30,6 +30,26 @@ enum DescriptiveSearch {
         func id(for mediaType: MediaType) -> Int? { mediaType == .tvShow ? tvID : movieID }
     }
 
+    /// "korean", "british": the original language or country of origin.
+    struct Origin: Equatable {
+        let label: String
+        var language: String?
+        var country: String?
+    }
+
+    /// Someone the query names ("tom hanks movies", "christopher nolan").
+    nonisolated struct Person: Sendable, Equatable {
+        let id: Int
+        let name: String
+    }
+
+    /// The title in "shows like Ted Lasso".
+    struct Reference: Equatable {
+        let title: String
+        let id: Int
+        let mediaType: MediaType
+    }
+
     struct Provider: Equatable {
         let id: Int
         let name: String
@@ -46,25 +66,32 @@ enum DescriptiveSearch {
         var yearsLabel: String?
         /// "new", "old", "classic" — words that are as often part of a name ("New Amsterdam").
         var yearsAreVague = false
+        var origin: Origin?
+        var person: Person?
+        var reference: Reference?
 
-        /// Genres, services and years — facets that only a description has. Keywords don't count
-        /// (most words in a name are some TMDB keyword: "the office us" → Office, US), nor do a
-        /// vague year or a service named by a common word ("Mad Max", "Apple Cider Vinegar").
+        /// Genres, services, years, origins, people and "like X" — facets that only a description
+        /// has. Keywords don't count (most words in a name are some TMDB keyword: "the office us"
+        /// → Office, US), nor do a vague year or a service named by a common word ("Mad Max",
+        /// "Apple Cider Vinegar").
         var descriptiveFacetCount: Int {
             genres.count + providers.filter { !$0.isNamedByCommonWord }.count
                 + (years != nil && !yearsAreVague ? 1 : 0)
+                + [origin != nil, person != nil, reference != nil].filter { $0 }.count
         }
 
         /// Facets that narrow the results, not counting the media type.
         var filterCount: Int {
             providers.count + genres.count + keywords.count + (years == nil ? 0 : 1)
+                + [origin != nil, person != nil, reference != nil].filter { $0 }.count
         }
 
         /// The section heading: "Comedy · Hockey · On Hulu". `matchedAny` is set when the subjects
         /// had to be loosened from all to any, so the heading says "Hockey or Christmas".
         func summary(for mediaType: MediaType, matchedAny: Bool = false) -> String {
             let subjects = genres.filter { $0.id(for: mediaType) == nil }.map(\.label) + keywords.map(\.label)
-            var parts = genres.filter { $0.id(for: mediaType) != nil }.map(\.label)
+            var parts = [reference.map { "Like \($0.title)" }, person?.name, origin?.label].compactMap { $0 }
+            parts += genres.filter { $0.id(for: mediaType) != nil }.map(\.label)
             parts += matchedAny ? [subjects.joined(separator: " or ")] : subjects
             if let yearsLabel { parts.append(yearsLabel) }
             if !providers.isEmpty {
@@ -82,6 +109,8 @@ enum DescriptiveSearch {
         let movies: [TMDBMovieSearchResult]
         fileprivate(set) var tvMatchedAny = false
         fileprivate(set) var moviesMatchedAny = false
+
+        var isEmpty: Bool { tvShows.isEmpty && movies.isEmpty }
 
         func summary(for mediaType: MediaType) -> String {
             interpretation.summary(for: mediaType, matchedAny: mediaType == .tvShow ? tvMatchedAny : moviesMatchedAny)
@@ -116,42 +145,55 @@ enum DescriptiveSearch {
             ? [] : (try? await service.fetchWatchProviders()) ?? []
         let parsed = parse(query, regionProviders: regionProviders, selectedProviderIDs: selected)
         var interpretation = parsed.interpretation
-        guard interpretation.filterCount > 0 || !parsed.subjectRuns.isEmpty else { return nil }
+        let hasReference = parsed.referenceQuery != nil
+        guard interpretation.filterCount > 0 || !parsed.subjectRuns.isEmpty || hasReference else { return nil }
+        let descriptive = interpretation.descriptiveFacetCount > 0 || hasReference
         switch titleMatch {
-        case .exact: guard interpretation.descriptiveFacetCount > 0, parsed.subjectRuns.isEmpty else { return nil }
-        case .strong: guard interpretation.descriptiveFacetCount > 0 else { return nil }
+        case .exact: guard descriptive, parsed.subjectRuns.isEmpty else { return nil }
+        case .strong: guard descriptive || parsed.subjectRuns.contains(where: { $0.count <= 3 }) else { return nil }
         case .none: break
         }
+        // A name prefix with nothing descriptive yet can still name a person ("christopher nolan"
+        // over the documentaries about him) — but its words aren't worth keyword lookups.
+        let peopleOnly = titleMatch == .strong && !descriptive
 
         let fallbackIndices = interpretation.genres.indices.filter {
             interpretation.genres[$0].tvID == nil || interpretation.genres[$0].movieID == nil
         }
         let fallbackTerms = fallbackIndices.map { interpretation.genres[$0].keywordTerm }
-        async let subjects = resolveKeywords(in: parsed.subjectRuns, genresAfter: parsed.genreAfterRun, service: service)
+        async let subjects = resolveSubjects(
+            in: parsed.subjectRuns, genresAfter: parsed.genreAfterRun, peopleOnly: peopleOnly, service: service
+        )
         async let fallbacks = concurrentMap(fallbackTerms) {
             await resolveKeyword($0, service: service)
         }
-        let (resolved, genreKeywords) = await (subjects, fallbacks)
+        let preferredType = mediaType ?? interpretation.mediaType
+        async let reference = resolveReference(parsed.referenceQuery, preferring: preferredType, service: service)
+        let (resolved, genreKeywords, referenced) = await (subjects, fallbacks, reference)
         guard !Task.isCancelled else { return nil }
         interpretation.keywords = resolved.keywords
+        interpretation.person = resolved.person
+        interpretation.reference = referenced
         for (index, keyword) in zip(fallbackIndices, genreKeywords) {
             interpretation.genres[index].keyword = keyword
         }
 
+        if hasReference, referenced == nil { return nil }
+        if titleMatch == .strong, interpretation.descriptiveFacetCount == 0 { return nil }
         // "hulu shoresy": the subject was the point, and without it the section would just be
         // Hulu's whole catalogue under a heading that claims to have understood.
-        if resolved.unresolvedWords > 0, interpretation.genres.isEmpty, interpretation.keywords.isEmpty {
+        if resolved.unresolvedWords > 0, interpretation.genres.isEmpty, interpretation.keywords.isEmpty,
+           interpretation.person == nil, interpretation.origin == nil {
             return nil
         }
 
         let type = mediaType ?? interpretation.mediaType
         let region = service.currentRegion
-        let tvFilters = type != .movie ? filters(for: .tvShow, interpretation, region: region) : nil
-        let movieFilters = type != .tvShow ? filters(for: .movie, interpretation, region: region) : nil
-        guard tvFilters != nil || movieFilters != nil else { return nil }
-
-        async let tv = fetch(tvFilters) { try await service.discoverTVShows(filters: $0) }
-        async let movies = fetch(movieFilters) { try await service.discoverMovies(filters: $0) }
+        let resolvedInterpretation = interpretation
+        async let tv = type != .movie
+            ? fetchTVShows(resolvedInterpretation, region: region, service: service) : (results: [], matchedAny: false)
+        async let movies = type != .tvShow
+            ? fetchMovies(resolvedInterpretation, region: region, service: service) : (results: [], matchedAny: false)
         let (tvFetch, movieFetch) = await (tv, movies)
         guard !Task.isCancelled else { return nil }
         var results = Results(query: query, interpretation: interpretation,
@@ -159,6 +201,138 @@ enum DescriptiveSearch {
         results.tvMatchedAny = tvFetch.matchedAny
         results.moviesMatchedAny = movieFetch.matchedAny
         return results
+    }
+
+    /// "hulu shoresy", "breaking bad netflix": a name with a service or type word attached. The
+    /// title search was given the whole string; the name alone finds it. Nil unless the rest of
+    /// the query (majors only — no provider list fetch) leaves a name that matches confidently.
+    static func remainderTitleSearch(
+        query: String, service: TMDBService = .shared
+    ) async -> (tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? {
+        let parsed = parse(query, regionProviders: [], selectedProviderIDs: [])
+        let interpretation = parsed.interpretation
+        guard interpretation.filterCount > 0 || interpretation.mediaType != nil, !parsed.subjectRuns.isEmpty,
+              parsed.referenceQuery == nil, !Task.isCancelled else { return nil }
+        let remainder = parsed.subjectRuns.map { $0.joined(separator: " ") }.joined(separator: " ")
+        async let tv = try? service.searchTVShows(query: remainder)
+        async let movies = try? service.searchMovies(query: remainder)
+        let (shows, films) = await (tv ?? [], movies ?? [])
+        let match = max(
+            shows.first.map { SearchRanking.titleMatch($0.name, query: remainder, voteCount: $0.voteCount) } ?? .none,
+            films.first.map { SearchRanking.titleMatch($0.title, query: remainder, voteCount: $0.voteCount) } ?? .none
+        )
+        guard match != .none, !Task.isCancelled else { return nil }
+        return (shows, films)
+    }
+
+    /// Shows for the interpretation: the reference's recommendations, the person's shows, or
+    /// `/discover/tv`.
+    private static func fetchTVShows(
+        _ interpretation: Interpretation, region: String, service: TMDBService
+    ) async -> (results: [TMDBTVShowSearchResult], matchedAny: Bool) {
+        if let reference = interpretation.reference {
+            guard reference.mediaType == .tvShow,
+                  let recommendations = try? await service.fetchTVRecommendations(id: reference.id) else { return ([], false) }
+            let ranked = rankedByRecognition(recommendations, votes: \.voteCount)
+            return (narrowed(ranked, interpretation, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate), false)
+        }
+        if let person = interpretation.person {
+            // Credits can't be checked against a service without a request per show.
+            guard interpretation.providers.isEmpty,
+                  let credits = try? await service.personTVCredits(id: person.id) else { return ([], false) }
+            return (personShows(credits, interpretation), false)
+        }
+        return await fetch(filters(for: .tvShow, interpretation, region: region)) {
+            try await service.discoverTVShows(filters: $0)
+        }
+    }
+
+    /// Movies for the interpretation: the reference's recommendations, or `/discover/movie`
+    /// (which takes the person as `with_people`).
+    private static func fetchMovies(
+        _ interpretation: Interpretation, region: String, service: TMDBService
+    ) async -> (results: [TMDBMovieSearchResult], matchedAny: Bool) {
+        if let reference = interpretation.reference {
+            guard reference.mediaType == .movie,
+                  let recommendations = try? await service.fetchMovieRecommendations(id: reference.id) else { return ([], false) }
+            let ranked = rankedByRecognition(recommendations, votes: \.voteCount)
+            return (narrowed(ranked, interpretation, .movie, genreIDs: \.genreIds, date: \.releaseDate), false)
+        }
+        return await fetch(filters(for: .movie, interpretation, region: region)) {
+            try await service.discoverMovies(filters: $0)
+        }
+    }
+
+    /// TMDB's recommendation order buries the obvious answers — for Inception, *The Matrix* and
+    /// *Interstellar* come 11th and 16th behind *Paycheck*. Someone asking for "movies like X"
+    /// wants titles people have seen, so vote count leads, with TMDB's order as a tiebreak-ish
+    /// penalty (a tenth of a log-vote per place).
+    private static func rankedByRecognition<T>(_ items: [T], votes: (T) -> Int?) -> [T] {
+        items.enumerated()
+            .map { (item: $0.element, score: log1p(Double(votes($0.element) ?? 0)) - Double($0.offset) / 10) }
+            .sorted { $0.score > $1.score }
+            .map(\.item)
+    }
+
+    /// Recommendations and credits can't be filtered server-side, so genres and years are
+    /// applied here (a fallback genre's keyword can't be — those genres are skipped).
+    private static func narrowed<T>(
+        _ items: [T], _ interpretation: Interpretation, _ mediaType: MediaType,
+        genreIDs: (T) -> [Int]?, date: (T) -> String?
+    ) -> [T] {
+        let wanted = interpretation.genres.compactMap { $0.id(for: mediaType) }
+        return items.filter { item in
+            let ids = Set(genreIDs(item) ?? [])
+            guard wanted.allSatisfy(ids.contains) else { return false }
+            guard let years = interpretation.years else { return true }
+            guard let year = date(item).flatMap({ Int($0.prefix(4)) }) else { return false }
+            return years.contains(year)
+        }
+    }
+
+    /// A person's shows: roles across two or more episodes, or ones they created, wrote or
+    /// directed — not guest spots, talk-show appearances ("Self") or news/reality/talk shows.
+    /// Best known first.
+    private static func personShows(
+        _ credits: TMDBPersonTVCredits, _ interpretation: Interpretation
+    ) -> [TMDBTVShowSearchResult] {
+        let roles = credits.cast.filter { credit in
+            let character = (credit.character ?? "").lowercased()
+            return (credit.episodeCount ?? 0) >= 2 && !character.hasPrefix("self")
+                && !character.contains("himself") && !character.contains("herself")
+        }
+        let work = credits.crew.filter { ["Creator", "Director", "Writer", "Screenplay"].contains($0.job ?? "") }
+        let nonFiction: Set<Int> = [10763, 10764, 10767]
+        var seen = Set<Int>()
+        let shows = (roles + work).map(\.show).filter { show in
+            seen.insert(show.id).inserted && nonFiction.isDisjoint(with: show.genreIds ?? [])
+        }
+        return narrowed(shows, interpretation, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate)
+            .sorted { ($0.voteCount ?? 0) > ($1.voteCount ?? 0) }
+    }
+
+    /// The title in "shows like ted lasso": the closest confident title match, preferring the
+    /// asked-for type, then the closer match, then the better known.
+    private static func resolveReference(
+        _ query: String?, preferring mediaType: MediaType?, service: TMDBService
+    ) async -> Reference? {
+        guard let query, !Task.isCancelled else { return nil }
+        async let tv = try? service.searchTVShows(query: query)
+        async let movies = try? service.searchMovies(query: query)
+        let (shows, films) = await (tv ?? [], movies ?? [])
+        var candidates: [(reference: Reference, match: SearchRanking.TitleMatch, votes: Int)] = []
+        if let show = shows.first {
+            candidates.append((Reference(title: show.name, id: show.id, mediaType: .tvShow),
+                               SearchRanking.titleMatch(show.name, query: query, voteCount: show.voteCount), show.voteCount ?? 0))
+        }
+        if let film = films.first {
+            candidates.append((Reference(title: film.title, id: film.id, mediaType: .movie),
+                               SearchRanking.titleMatch(film.title, query: query, voteCount: film.voteCount), film.voteCount ?? 0))
+        }
+        return candidates.filter { $0.match != .none }.max { lhs, rhs in
+            (lhs.reference.mediaType == mediaType ? 1 : 0, lhs.match, lhs.votes)
+                < (rhs.reference.mediaType == mediaType ? 1 : 0, rhs.match, rhs.votes)
+        }?.reference
     }
 
     /// Tried strictest first, stopping at the first that finds anything: the 50-vote floor keeps
@@ -203,7 +377,8 @@ enum DescriptiveSearch {
             }
         }
         guard !genreIDs.isEmpty || !keywordGroups.isEmpty || !interpretation.providers.isEmpty
-                || interpretation.years != nil else { return nil }
+                || interpretation.years != nil || interpretation.origin != nil
+                || interpretation.person != nil else { return nil }
 
         var filters = ["sort_by": "popularity.desc", "vote_count.gte": "50"]
         if !genreIDs.isEmpty {
@@ -214,6 +389,12 @@ enum DescriptiveSearch {
             filters["watch_region"] = region
             filters["with_watch_monetization_types"] = "flatrate|free|ads"
         }
+        if let origin = interpretation.origin {
+            if let language = origin.language { filters["with_original_language"] = language }
+            if let country = origin.country { filters["with_origin_country"] = country }
+        }
+        // Movies only — `/discover/tv` ignores it (see `fetchTVShows`).
+        if let person = interpretation.person { filters["with_people"] = String(person.id) }
         if let years = interpretation.years {
             let prefix = mediaType == .tvShow ? "first_air_date" : "primary_release_date"
             filters["\(prefix).gte"] = "\(years.lowerBound)-01-01"
@@ -238,32 +419,51 @@ enum DescriptiveSearch {
 
     // MARK: - Keywords
 
-    /// A run of two or three subject words is tried as one keyword first ("time travel", "high
-    /// school"), then word by word. Failing that, a run right before a genre word tries its last
-    /// word with the genre ("true crime", "dark comedy") — otherwise "true" becomes a keyword of
-    /// its own that nothing carries alongside the genre. The genre stays either way. Runs and
-    /// words resolve concurrently.
-    private static func resolveKeywords(
-        in runs: [[String]], genresAfter: [String?], service: TMDBService
-    ) async -> (keywords: [Keyword], unresolvedWords: Int) {
-        let perRun = await concurrentMap(Array(zip(runs, genresAfter))) { run, genre -> [Keyword?] in
-            if (2...3).contains(run.count),
-               let phrase = await resolveKeyword(run.joined(separator: " "), service: service) {
-                return [phrase]
-            }
-            var run = run
-            var compound: Keyword?
-            if let genre, let last = run.last,
-               let keyword = await resolveKeyword("\(last) \(genre)", service: service) {
-                compound = keyword
-                run.removeLast()
-            }
-            let words = await concurrentMap(run) { await resolveKeyword($0, service: service) }
-            return compound.map { words + [$0] } ?? words
+    /// Each run is looked up as a person ("tom hanks", "zendaya") and as keywords at once; a
+    /// person wins. For keywords, a run of two or three words is tried as one keyword first ("time
+    /// travel", "high school"), then word by word. Failing that, a run right before a genre word
+    /// tries its last word with the genre ("true crime", "dark comedy") — otherwise "true" becomes
+    /// a keyword of its own that nothing carries alongside the genre. The genre stays either way.
+    /// `peopleOnly` skips the keywords. Runs resolve concurrently.
+    private static func resolveSubjects(
+        in runs: [[String]], genresAfter: [String?], peopleOnly: Bool, service: TMDBService
+    ) async -> (keywords: [Keyword], unresolvedWords: Int, person: Person?) {
+        let perRun = await concurrentMap(Array(zip(runs, genresAfter))) { run, genre -> ([Keyword?], Person?) in
+            async let person = resolvePerson(run, service: service)
+            async let keywords = peopleOnly ? [] : resolveKeywords(in: run, genreAfter: genre, service: service)
+            let (named, found) = await (person, keywords)
+            return named.map { ([], $0) } ?? (peopleOnly ? run.map { _ in nil } : found, nil)
         }
         var seen = Set<[Int]>()
-        let keywords = perRun.joined().compactMap { $0 }.filter { seen.insert($0.ids).inserted }
-        return (keywords, perRun.joined().filter { $0 == nil }.count)
+        let keywords = perRun.flatMap(\.0).compactMap { $0 }.filter { seen.insert($0.ids).inserted }
+        return (keywords, perRun.flatMap(\.0).filter { $0 == nil }.count, perRun.lazy.compactMap(\.1).first)
+    }
+
+    private static func resolveKeywords(in run: [String], genreAfter genre: String?, service: TMDBService) async -> [Keyword?] {
+        if (2...3).contains(run.count),
+           let phrase = await resolveKeyword(run.joined(separator: " "), service: service) {
+            return [phrase]
+        }
+        var run = run
+        var compound: Keyword?
+        if let genre, let last = run.last,
+           let keyword = await resolveKeyword("\(last) \(genre)", service: service) {
+            compound = keyword
+            run.removeLast()
+        }
+        let words = await concurrentMap(run) { await resolveKeyword($0, service: service) }
+        return compound.map { words + [$0] } ?? words
+    }
+
+    /// The TMDB person named exactly the run, if they're well known. A one-word name needs more
+    /// popularity — TMDB has a "Dog" and a "Drake" (1.6); Zendaya is ~17, Tom Hanks ~13.
+    private static func resolvePerson(_ run: [String], service: TMDBService) async -> Person? {
+        guard (1...3).contains(run.count), !Task.isCancelled else { return nil }
+        let name = run.joined(separator: " ")
+        guard let people = try? await service.searchPeople(query: name),
+              let match = people.first(where: { SearchRanking.normalized($0.name) == name }),
+              (match.popularity ?? 0) >= (run.count == 1 ? 5 : 1) else { return nil }
+        return Person(id: match.id, name: match.name)
     }
 
     /// TMDB's keyword search is fuzzy rather than plural-aware ("zombies" surfaces "zombie", but
@@ -340,6 +540,8 @@ enum DescriptiveSearch {
         var subjectRuns: [[String]] = []
         /// For each subject run, the genre words right after it, if any — "true" before "crime".
         var genreAfterRun: [String?] = []
+        /// Everything after "like" / "similar to": a title to find ("shows like ted lasso").
+        var referenceQuery: String?
     }
 
     private enum Facet {
@@ -347,17 +549,26 @@ enum DescriptiveSearch {
         case genres([Genre])
         case provider(Provider)
         case years(ClosedRange<Int>, label: String, isVague: Bool)
+        case origin(Origin, genres: [Genre])
     }
 
     static func parse(
         _ query: String, regionProviders: [TMDBWatchProviderInfo], selectedProviderIDs: Set<Int>
     ) -> Parse {
-        let words = SearchRanking.normalized(
+        var words = SearchRanking.normalized(
             query.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "’", with: "")
         ).split(separator: " ").map(String.init)
         let providers = providerLookup(regionProviders, selectedIDs: selectedProviderIDs)
 
         var parse = Parse()
+        let similarTo = words.indices.first { words[$0] == "similar" && words.indices.contains($0 + 1) && words[$0 + 1] == "to" }
+        if let marker = words.firstIndex(of: "like") ?? similarTo {
+            let start = marker + (words[marker] == "like" ? 1 : 2)
+            if start < words.count {
+                parse.referenceQuery = words[start...].joined(separator: " ")
+            }
+            words = Array(words[..<marker])
+        }
         var run: [String] = []
         func flushRun(beforeGenre genre: String? = nil) {
             if !run.isEmpty {
@@ -398,6 +609,7 @@ enum DescriptiveSearch {
             for form in singularForms(phrase) {
                 if let type = mediaWords[form] { return (length, .media(type)) }
                 if let genres = genreWords[form] { return (length, .genres(genres)) }
+                if let (origin, genres) = originWords[form] { return (length, .origin(origin, genres: genres)) }
                 if let provider = providers[form] { return (length, .provider(provider)) }
             }
             if length == 1, let years = yearRange(phrase) {
@@ -419,6 +631,9 @@ enum DescriptiveSearch {
             if !interpretation.providers.contains(where: { $0.id == provider.id }) {
                 interpretation.providers.append(provider)
             }
+        case .origin(let origin, let genres):
+            interpretation.origin = origin
+            apply(.genres(genres), to: &interpretation)
         case .years(let range, let label, let isVague):
             interpretation.years = range
             interpretation.yearsLabel = label
@@ -492,6 +707,34 @@ enum DescriptiveSearch {
     private static let war = Genre(label: "War", tvID: 10768, movieID: 10752, keywordTerm: "war")
     private static let western = Genre(label: "Western", tvID: 37, movieID: 37, keywordTerm: "western")
     private static let reality = Genre(label: "Reality", tvID: 10764, movieID: nil, keywordTerm: "reality tv")
+
+    private static let korean = Origin(label: "Korean", language: "ko")
+
+    /// Language and country words. "kdrama" brings its genre along.
+    private static let originWords: [String: (Origin, [Genre])] = [
+        "korean": (korean, []), "kdrama": (korean, [drama]), "k drama": (korean, [drama]),
+        "japanese": (Origin(label: "Japanese", language: "ja"), []),
+        "chinese": (Origin(label: "Chinese", language: "zh"), []),
+        "mandarin": (Origin(label: "Mandarin", language: "zh"), []),
+        "cantonese": (Origin(label: "Cantonese", language: "cn"), []),
+        "french": (Origin(label: "French", language: "fr"), []),
+        "spanish": (Origin(label: "Spanish", language: "es"), []),
+        "italian": (Origin(label: "Italian", language: "it"), []),
+        "german": (Origin(label: "German", language: "de"), []),
+        "danish": (Origin(label: "Danish", language: "da"), []),
+        "swedish": (Origin(label: "Swedish", language: "sv"), []),
+        "norwegian": (Origin(label: "Norwegian", language: "no"), []),
+        "turkish": (Origin(label: "Turkish", language: "tr"), []),
+        "thai": (Origin(label: "Thai", language: "th"), []),
+        "hindi": (Origin(label: "Hindi", language: "hi"), []),
+        "bollywood": (Origin(label: "Bollywood", language: "hi"), []),
+        "british": (Origin(label: "British", country: "GB"), []),
+        "australian": (Origin(label: "Australian", country: "AU"), []),
+        "canadian": (Origin(label: "Canadian", country: "CA"), []),
+        "irish": (Origin(label: "Irish", country: "IE"), []),
+        "mexican": (Origin(label: "Mexican", country: "MX"), []),
+        "indian": (Origin(label: "Indian", country: "IN"), []),
+    ]
 
     private static let genreWords: [String: [Genre]] = [
         "action": [action], "adventure": [adventure],

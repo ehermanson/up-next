@@ -736,6 +736,13 @@ struct WatchlistSearchView: View {
         if showMediaTypePicker, let mediaType = interpreted?.interpretation.mediaType, mediaType != previousType {
             selectedMediaType = mediaType
         }
+        // "hulu shoresy": nothing descriptive came of it, and the name on its own is a title.
+        if titleMatch == .none, interpreted?.isEmpty ?? true,
+           let found = await DescriptiveSearch.remainderTitleSearch(query: query) {
+            guard !Task.isCancelled else { return }
+            tvShowResults = found.tvShows
+            movieResults = found.movies
+        }
         isLoading = false
     }
 

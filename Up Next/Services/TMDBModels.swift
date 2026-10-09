@@ -35,6 +35,44 @@ nonisolated struct TMDBKeywordSearchResponse: Codable, Sendable {
     let results: [TMDBKeyword]
 }
 
+// MARK: - People Search
+
+/// A `/search/person` hit — `DescriptiveSearch` reads queries that name someone ("tom hanks
+/// movies", "christopher nolan").
+nonisolated struct TMDBPersonSearchResult: Codable, Sendable {
+    let id: Int
+    let name: String
+    let popularity: Double?
+}
+
+nonisolated struct TMDBPersonSearchResponse: Codable, Sendable {
+    let results: [TMDBPersonSearchResult]
+}
+
+/// `/person/{id}/tv_credits`: each credit is the show plus this person's part in it.
+/// `/discover/tv` ignores `with_people`, so a person's shows come from here.
+nonisolated struct TMDBPersonTVCredits: Decodable, Sendable {
+    nonisolated struct Credit: Decodable, Sendable {
+        let show: TMDBTVShowSearchResult
+        let character: String?
+        let episodeCount: Int?
+        let job: String?
+
+        private enum CodingKeys: String, CodingKey { case character, episodeCount, job }
+
+        init(from decoder: any Decoder) throws {
+            show = try TMDBTVShowSearchResult(from: decoder)
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            character = try container.decodeIfPresent(String.self, forKey: .character)
+            episodeCount = try container.decodeIfPresent(Int.self, forKey: .episodeCount)
+            job = try container.decodeIfPresent(String.self, forKey: .job)
+        }
+    }
+
+    let cast: [Credit]
+    let crew: [Credit]
+}
+
 // MARK: - Genre List Response
 
 nonisolated struct TMDBGenreListResponse: Codable, Sendable {

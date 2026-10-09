@@ -96,6 +96,19 @@ final class TMDBService {
         return response.results
     }
 
+    /// People named `query` (first page, TMDB's order).
+    func searchPeople(query: String) async throws -> [TMDBPersonSearchResult] {
+        let response: TMDBPersonSearchResponse = try await performRequest(
+            endpoint: "/search/person", queryItems: [URLQueryItem(name: "query", value: query)]
+        )
+        return response.results
+    }
+
+    /// Every show a person acted in or worked on (see `TMDBPersonTVCredits`).
+    func personTVCredits(id: Int) async throws -> TMDBPersonTVCredits {
+        try await performRequest(endpoint: "/person/\(id)/tv_credits", queryItems: [])
+    }
+
     /// `/discover/tv` with raw TMDB filter parameters (see `DescriptiveSearch`).
     func discoverTVShows(filters: [String: String]) async throws -> [TMDBTVShowSearchResult] {
         let response: TMDBTVShowSearchResponse = try await discover("/discover/tv", filters)

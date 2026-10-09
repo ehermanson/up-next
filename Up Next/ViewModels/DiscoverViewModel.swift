@@ -753,6 +753,13 @@ final class DiscoverViewModel {
         if let mediaType = interpreted?.interpretation.mediaType, mediaType != previousType {
             selectedMediaType = mediaType == .tvShow ? .tvShows : .movies
         }
+        // "hulu shoresy": nothing descriptive came of it, and the name on its own is a title.
+        if titleMatch == .none, interpreted?.isEmpty ?? true,
+           let found = await DescriptiveSearch.remainderTitleSearch(query: query) {
+            guard !Task.isCancelled else { return }
+            searchTVResults = found.tvShows
+            searchMovieResults = found.movies
+        }
         isSearching = false
     }
 

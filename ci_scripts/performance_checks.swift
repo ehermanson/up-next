@@ -34,9 +34,11 @@ enum DescriptiveSearch {
         let interpretation: Interpretation
         let tvShows: [TMDBTVShowSearchResult]
         let movies: [TMDBMovieSearchResult]
+        var isEmpty: Bool { tvShows.isEmpty && movies.isEmpty }
         func summary(for mediaType: MediaType) -> String { "" }
     }
     static func run(query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType? = nil) async -> Results? { nil }
+    static func remainderTitleSearch(query: String) async -> (tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? { nil }
 }
 @Observable final class ProviderSettings {
     static let shared = ProviderSettings()

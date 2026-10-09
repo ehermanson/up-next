@@ -16,9 +16,27 @@ nonisolated struct TMDBKeyword: Codable, Sendable { let id: Int; let name: Strin
 nonisolated struct TMDBKeywordPage: Codable, Sendable { let results: [TMDBKeyword] }
 nonisolated struct TMDBTVShowSearchResult: Codable, Sendable {
     let id: Int; let name: String; let originalName: String?; let popularity: Double?; let voteCount: Int?
+    let genreIds: [Int]?; let firstAirDate: String?
 }
 nonisolated struct TMDBMovieSearchResult: Codable, Sendable {
     let id: Int; let title: String; let originalTitle: String?; let popularity: Double?; let voteCount: Int?
+    let genreIds: [Int]?; let releaseDate: String?
+}
+nonisolated struct TMDBPersonSearchResult: Codable, Sendable { let id: Int; let name: String; let popularity: Double? }
+nonisolated struct PersonPage: Codable, Sendable { let results: [TMDBPersonSearchResult] }
+nonisolated struct TMDBPersonTVCredits: Decodable, Sendable {
+    nonisolated struct Credit: Decodable, Sendable {
+        let show: TMDBTVShowSearchResult; let character: String?; let episodeCount: Int?; let job: String?
+        private enum CodingKeys: String, CodingKey { case character, episodeCount, job }
+        init(from decoder: any Decoder) throws {
+            show = try TMDBTVShowSearchResult(from: decoder)
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            character = try container.decodeIfPresent(String.self, forKey: .character)
+            episodeCount = try container.decodeIfPresent(Int.self, forKey: .episodeCount)
+            job = try container.decodeIfPresent(String.self, forKey: .job)
+        }
+    }
+    let cast: [Credit]; let crew: [Credit]
 }
 nonisolated struct TVPage: Codable, Sendable { let results: [TMDBTVShowSearchResult]; let totalPages: Int? }
 nonisolated struct MoviePage: Codable, Sendable { let results: [TMDBMovieSearchResult]; let totalPages: Int? }
@@ -72,6 +90,16 @@ final class TMDBService {
     }
     func searchKeywords(query: String) async throws -> [TMDBKeyword] {
         let page: TMDBKeywordPage = try await get("/search/keyword", ["query": query]); return page.results
+    }
+    func searchPeople(query: String) async throws -> [TMDBPersonSearchResult] {
+        let page: PersonPage = try await get("/search/person", ["query": query]); return page.results
+    }
+    func personTVCredits(id: Int) async throws -> TMDBPersonTVCredits { try await get("/person/\(id)/tv_credits", [:]) }
+    func fetchTVRecommendations(id: Int) async throws -> [TMDBTVShowSearchResult] {
+        let page: TVPage = try await get("/tv/\(id)/recommendations", [:]); return page.results
+    }
+    func fetchMovieRecommendations(id: Int) async throws -> [TMDBMovieSearchResult] {
+        let page: MoviePage = try await get("/movie/\(id)/recommendations", [:]); return page.results
     }
     func discoverTVShows(filters: [String: String]) async throws -> [TMDBTVShowSearchResult] {
         let page: TVPage = try await get("/discover/tv", filters); return page.results
@@ -168,19 +196,18 @@ let cases: [Case] = [
     Case("war", .finds(["War"], .movie, top: 3)),
     Case("the office us", .noSection),
     // Known gaps — the to-do list
-    Case("hulu shoresy", .finds(["Shoresy"], .tvShow, top: 3),
-         gap: "a service word plus a name: the title search gets the whole string"),
+    Case("hulu shoresy", .finds(["Shoresy"], .tvShow, top: 3)),
+    Case("breaking bad netflix", .finds(["Breaking Bad"], .tvShow, top: 3)),
     Case("zombies", .finds(["The Walking Dead", "World War Z", "Zombieland"], .movie),
          gap: "keyword-only query that's also a title (Zombies) isn't interpreted"),
-    Case("tom hanks movies", .finds(["Forrest Gump", "Cast Away", "Saving Private Ryan", "Toy Story"], .movie),
-         gap: "people aren't searched"),
-    Case("christopher nolan", .finds(["Inception", "Oppenheimer", "Interstellar", "The Dark Knight"], .movie),
-         gap: "people aren't searched"),
-    Case("zendaya", .finds(["Euphoria"], .tvShow), gap: "people aren't searched"),
+    Case("tom hanks movies", .finds(["Forrest Gump", "Cast Away", "Saving Private Ryan", "Toy Story"], .movie)),
+    Case("christopher nolan", .finds(["Inception", "Oppenheimer", "Interstellar", "The Dark Knight"], .movie)),
+    Case("zendaya", .finds(["Euphoria"], .tvShow)),
+    Case("tom hanks comedies", .finds(["Big", "Splash", "The Money Pit", "You've Got Mail", "Sleepless in Seattle", "Toy Story"], .movie)),
     Case("shows like ted lasso", .finds(["Shrinking", "Schitt's Creek", "Abbott Elementary", "Ghosts", "The Good Place"], .tvShow),
-         gap: "\"like X\" isn't understood"),
-    Case("movies like inception", .finds(["Interstellar", "Tenet", "The Matrix", "Shutter Island", "The Prestige"], .movie),
-         gap: "\"like X\" isn't understood"),
+         gap: "TMDB's recommendations match the sport, not the tone (Ballers, Shoresy) — a Jev or model re-rank"),
+    Case("movies like inception", .finds(["Interstellar", "Tenet", "The Matrix", "Shutter Island", "The Prestige"], .movie)),
+    Case("something similar to the bear", .finds(["Boiling Point", "Kitchen Confidential", "Shrinking", "Hacks", "Somebody Somewhere", "The Rehearsal", "Beef"], .tvShow, top: 20)),
     Case("show about a chemistry teacher who makes meth", .finds(["Breaking Bad"], .tvShow),
          gap: "plot recall needs a model"),
     Case("movie where a guy relives the same day", .finds(["Groundhog Day", "Palm Springs", "Edge of Tomorrow"], .movie),
@@ -189,8 +216,9 @@ let cases: [Case] = [
          gap: "mood words aren't TMDB keywords"),
     Case("sports dramedy", .finds(["Ted Lasso", "Shoresy", "Friday Night Lights"], .tvShow),
          gap: "\"sports\" and \"dramedy\" aren't TMDB keywords"),
-    Case("korean dramas", .finds(["Squid Game", "Crash Landing on You", "Goblin", "Extraordinary Attorney Woo", "When Life Gives You Tangerines"], .tvShow),
-         gap: "language/country isn't a filter (with_original_language)"),
+    Case("korean dramas", .finds(["Squid Game", "Crash Landing on You", "Goblin", "Extraordinary Attorney Woo", "When Life Gives You Tangerines"], .tvShow)),
+    Case("british crime shows", .finds(["Sherlock", "Line of Duty", "Peaky Blinders", "Luther", "Happy Valley", "Broadchurch"], .tvShow)),
+    Case("japanese horror movies", .finds(["Ringu", "Ju-on: The Grudge", "Audition", "Dark Water", "Kairo", "Exit 8", "Dollhouse"], .movie)),
 ]
 
 // MARK: - Running
@@ -213,13 +241,17 @@ func outcome(for query: String) async -> Outcome {
     let service = TMDBService.shared
     async let tvTitles = (try? service.searchTVShows(query: query)) ?? []
     async let movieTitles = (try? service.searchMovies(query: query)) ?? []
-    let (tv, movies) = await (tvTitles, movieTitles)
+    var (tv, movies) = await (tvTitles, movieTitles)
     var outcome = Outcome()
     outcome.titleMatch = max(
         tv.first.map { SearchRanking.titleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? .none,
         movies.first.map { SearchRanking.titleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? .none
     )
     outcome.described = await DescriptiveSearch.run(query: query, titleMatch: outcome.titleMatch)
+    if outcome.titleMatch == .none, outcome.described?.isEmpty ?? true,
+       let found = await DescriptiveSearch.remainderTitleSearch(query: query) {
+        (tv, movies) = (found.tvShows, found.movies)
+    }
 
     // Same order and dedupe as the add sheet / Discover: the described section leads unless the
     // type's top title hit is a strong match, and a title is listed only in the first section.
