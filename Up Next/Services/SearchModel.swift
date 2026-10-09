@@ -125,10 +125,54 @@ enum SearchModel {
         }
     }
 
-    /// `body`'s result, or nil when it throws or outlives `timeout` — returning at the timeout
+    @Generable
+    nonisolated struct RankingOutput {
+        @Guide(description: "The numbers of the candidates most like the title in tone, feel and viewing experience, most alike first — up to eight. Leave out any that only share a subject or a setting.", .maximumCount(8))
+        var picks: [Int]
+    }
+
+    /// Which of `candidates` — numbered from 1, each "Title (year) — one-line overview" — are most
+    /// like `title` in tone, most alike first, as indices into `candidates`. The model chooses
+    /// among titles TMDB already found, so nothing it says needs verifying; a 3B model is far
+    /// better at choosing among options than at recalling titles. Nil like `read`.
+    ///
+    /// Longer input than a query, so a longer budget: ~24 candidates run 2–3 s warm.
+    static func rank(
+        candidates: [String], like title: String, overview: String?, referenceIsTVShow: Bool, wantsTVShows: Bool,
+        qualities: [String] = []
+    ) async -> [Int]? {
+        guard isAvailable, candidates.count >= 2 else { return nil }
+        let list = candidates.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        // X's synopsis stays in: without it the model matches candidate blurbs against a title
+        // it may barely know (a restaurant anime for The Bear); the instructions steer it off
+        // setting and premise instead.
+        let about = overview.map { " — \($0)" } ?? ""
+        let prompt = "Someone who likes \(title) (\(referenceIsTVShow ? "TV show" : "movie")\(about)) wants "
+            + "\(wantsTVShows ? "TV shows" : "movies") like it"
+            + (qualities.isEmpty ? "." : " that are \(qualities.joined(separator: " and ")).")
+            + "\n\nCandidates:\n\(list)\n\nWhich are most like it in tone and feel?"
+        let picks = await withTimeout(rankingTimeout) {
+            let session = LanguageModelSession(
+                model: model,
+                instructions: "You pick, from a numbered list of candidates, the ones most like a given title in tone, feel and viewing experience — not the ones that merely share its setting, city, profession or premise. Answer with candidate numbers only."
+            )
+            return try await session.respond(
+                to: prompt, generating: RankingOutput.self, options: GenerationOptions(samplingMode: .greedy)
+            ).content.picks
+        }
+        guard let picks else { return nil }
+        var seen = Set<Int>()
+        return picks.compactMap { (1...candidates.count).contains($0) && seen.insert($0).inserted ? $0 - 1 : nil }
+    }
+
+    private nonisolated static let rankingTimeout: Duration = .seconds(6)
+
+    /// `body`'s result, or nil when it throws or outlives `limit` — returning at the timeout
     /// even if `body` hasn't stopped (a task group would wait for it). Failures other than
     /// cancellation are logged.
-    private static func withTimeout<T: Sendable>(_ body: @escaping @Sendable () async throws -> T) async -> T? {
+    private static func withTimeout<T: Sendable>(
+        _ limit: Duration = timeout, _ body: @escaping @Sendable () async throws -> T
+    ) async -> T? {
         let gate = FirstResult<T>()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
@@ -143,7 +187,7 @@ enum SearchModel {
                     }
                 }
                 let timer = Task {
-                    try? await Task.sleep(for: timeout)
+                    try? await Task.sleep(for: limit)
                     gate.finish(nil)
                 }
                 gate.install(continuation, cancelling: [work, timer])

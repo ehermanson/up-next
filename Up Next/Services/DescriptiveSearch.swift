@@ -54,6 +54,8 @@ enum DescriptiveSearch {
         let id: Int
         let mediaType: MediaType
         var genreIDs: [Int] = []
+        /// TMDB's synopsis — what the model is told X is about when ranking candidates.
+        var overview: String?
     }
 
     struct Provider: Equatable {
@@ -548,7 +550,11 @@ enum DescriptiveSearch {
                 search: { try await service.searchTVShows(query: $0) },
                 id: \.id, name: \.name, genreIDs: \.genreIds, votes: \.voteCount
             )
-            return (Array(narrowed(pool, interpretation, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate).prefix(20)), false)
+            let fitting = narrowed(pool, interpretation, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate)
+            let ranked = await judged(fitting, like: reference, wantsTVShows: true, interpretation: interpretation, id: \.id) {
+                candidateLine($0.name, date: $0.firstAirDate, overview: $0.overview)
+            }
+            return (Array(ranked.prefix(20)), false)
         }
         if let person = interpretation.person {
             // Credits can't be checked against a service without a request per show.
@@ -574,11 +580,53 @@ enum DescriptiveSearch {
                 search: { try await service.searchMovies(query: $0) },
                 id: \.id, name: \.title, genreIDs: \.genreIds, votes: \.voteCount
             )
-            return (Array(narrowed(pool, interpretation, .movie, genreIDs: \.genreIds, date: \.releaseDate).prefix(20)), false)
+            let fitting = narrowed(pool, interpretation, .movie, genreIDs: \.genreIds, date: \.releaseDate)
+            let ranked = await judged(fitting, like: reference, wantsTVShows: false, interpretation: interpretation, id: \.id) {
+                candidateLine($0.title, date: $0.releaseDate, overview: $0.overview)
+            }
+            return (Array(ranked.prefix(20)), false)
         }
         return await fetch(filters(for: .movie, interpretation, region: region)) {
             try await service.discoverMovies(filters: $0)
         }
+    }
+
+    /// The pool's top two dozen, re-ordered with the on-device model's sense of tone
+    /// (`SearchModel.rank`): the fused rank and the model's pick rank are blended by reciprocal
+    /// rank, so a pick rises by how sure the model was but no single source promotes a weak
+    /// candidate on its own — the judge once put *Shameless* and *The Chi* first for The Bear on
+    /// shared setting alone. The fusion finds candidates; this is what tells *Abbott Elementary*
+    /// from *Ballers* for Ted Lasso. Without the model the fused order stands.
+    private static func judged<T>(
+        _ pool: [T], like reference: Reference, wantsTVShows: Bool, interpretation: Interpretation,
+        id: (T) -> Int, line: (T) -> String
+    ) async -> [T] {
+        let candidates = Array(pool.prefix(24))
+        guard candidates.count >= 4, !Task.isCancelled,
+              let picks = await SearchModel.rank(
+                candidates: candidates.map(line), like: reference.title, overview: reference.overview,
+                referenceIsTVShow: reference.mediaType == .tvShow, wantsTVShows: wantsTVShows,
+                qualities: interpretation.genres.map { $0.label.lowercased() }
+              ), !picks.isEmpty
+        else { return pool }
+        // Reciprocal rank fusion: 1/(k + rank) per source. The judge leads — its first pick
+        // outscores anything unpicked — while the pool's own first few stay near the top rather
+        // than dropping behind every pick.
+        let k = 3.0
+        var score = pool.indices.map { 1 / (k + Double($0)) }
+        for (rank, index) in picks.enumerated() { score[index] += 3 / (k + Double(rank)) }
+        return pool.indices.sorted { score[$0] > score[$1] }.map { pool[$0] }
+    }
+
+    /// "Ted Lasso (2020) — An American football coach…", the overview cut to a line.
+    private static func candidateLine(_ name: String, date: String?, overview: String?) -> String {
+        var line = name
+        if let year = date?.prefix(4), year.count == 4 { line += " (\(year))" }
+        if let overview = overview?.trimmingCharacters(in: .whitespacesAndNewlines), !overview.isEmpty {
+            let cut = overview.count > 160 ? String(overview.prefix(157)).trimmingCharacters(in: .whitespaces) + "…" : overview
+            line += " — \(cut)"
+        }
+        return line
     }
 
     /// "Like X" from three sources, fused by rank so a title more than one of them names rises:
@@ -768,13 +816,15 @@ enum DescriptiveSearch {
         let (shows, films) = await (tv ?? [], movies ?? [])
         var candidates: [(reference: Reference, match: SearchRanking.TitleMatch, votes: Int)] = []
         if let show = shows.first {
-            candidates.append((Reference(title: show.name, id: show.id, mediaType: .tvShow, genreIDs: show.genreIds ?? []),
+            candidates.append((Reference(title: show.name, id: show.id, mediaType: .tvShow, genreIDs: show.genreIds ?? [],
+                                         overview: show.overview),
                                SearchRanking.titleMatch(show.name, query: query, voteCount: show.voteCount, releaseDate: show.firstAirDate,
                                                         popularity: show.popularity),
                                show.voteCount ?? 0))
         }
         if let film = films.first {
-            candidates.append((Reference(title: film.title, id: film.id, mediaType: .movie, genreIDs: film.genreIds ?? []),
+            candidates.append((Reference(title: film.title, id: film.id, mediaType: .movie, genreIDs: film.genreIds ?? [],
+                                         overview: film.overview),
                                SearchRanking.titleMatch(film.title, query: query, voteCount: film.voteCount, releaseDate: film.releaseDate,
                                                         popularity: film.popularity),
                                film.voteCount ?? 0))
