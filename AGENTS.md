@@ -10,7 +10,7 @@ Rules and map for working in this repo. Rationale for *why* code is shaped the w
 - **Concurrency**: `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` + `SWIFT_APPROACHABLE_CONCURRENCY = YES` — everything unannotated is `@MainActor`. That's why `TMDBService`'s caches need no locking and why `nonisolated` markers in models/services are deliberate. `nonisolated async` still runs on the caller's actor; use `@concurrent` for real background work.
 - **Logging**: `AppLog.<category>` (`Services/AppLog.swift`). No `print`.
 - **Persistence**: Core Data via `NSPersistentCloudKitContainer`, two stores (private + shared scope), container `iCloud.com.erichermanson.upnext.shared`.
-- **Tests**: no test target. `./ci_scripts/check_performance.sh` runs standalone loading/cache regression checks with Xcode's Swift compiler.
+- **Tests**: no test target. `./ci_scripts/check_performance.sh` runs standalone loading/cache regression checks with Xcode's Swift compiler. `./ci_scripts/check_search.sh [filter]` scores search quality against live TMDB (network + key): run it before and after any change to `DescriptiveSearch`/`SearchRanking`. Cases marked `gap` are the to-do list and don't fail it; a passing case that breaks does. Add a case for every query a fix is for.
 
 ## Setup
 
@@ -77,6 +77,7 @@ Up Next/
 AppStore/                          <version>-metadata.md (paste-ready ASC copy), <version>-performance-audit.md; screenshots/ is gitignored (regenerated, lives in ASC)
 ci_scripts/ci_post_clone.sh        Xcode Cloud: writes Info.plist from env, sets build number
 ci_scripts/check_performance.sh / performance_checks.swift   Standalone async loading/cache regression checks
+ci_scripts/check_search.sh / search_checks.swift   Search quality score: ~50 queries vs live TMDB, known gaps marked
 ```
 
 ## Rules and traps
