@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import os
+import Synchronization
 
 /// Apple's on-device language model (Foundation Models) reading a search query, for the two
 /// things `DescriptiveSearch`'s rules can't do: tell a title's name from a description when TMDB
@@ -60,7 +61,7 @@ enum SearchModel {
 
     @Generable
     nonisolated struct SimilarOutput {
-        @Guide(description: "Eight real, well-known titles of the same type most similar in tone, feel and viewing experience, by exact official title, most similar first. Not the title itself.", .maximumCount(8))
+        @Guide(description: "Five real, well-known titles of the type asked for, most similar in tone, feel and viewing experience, by exact official title, most similar first. Not the title itself.", .maximumCount(5))
         var titles: [String]
     }
 
@@ -68,9 +69,16 @@ enum SearchModel {
     /// they're sports shows (*Ballers*, *Shoresy*), while this names *The Office*, *Abbott
     /// Elementary*, *Schitt's Creek*. A prompt of its own: asked as part of reading a query, the
     /// model's answers were much worse. Nil like `read`.
-    static func similarTitles(to title: String, isTVShow: Bool) async -> [String]? {
+    ///
+    /// The asked-for type can differ from the title's ("movies like the office").
+    /// `qualities` are genres the results must have too ("severance that are funny" → comedy).
+    static func similarTitles(
+        to title: String, referenceIsTVShow: Bool, wantsTVShows: Bool, qualities: [String] = []
+    ) async -> [String]? {
         guard isAvailable else { return nil }
-        let prompt = "Someone searched for titles like \(title) (\(isTVShow ? "TV show" : "movie"))."
+        let prompt = "Someone searched for \(wantsTVShows ? "TV shows" : "movies") like \(title) "
+            + "(\(referenceIsTVShow ? "TV show" : "movie"))"
+            + (qualities.isEmpty ? "." : " that are \(qualities.joined(separator: " and ")).")
         return await withTimeout {
             let session = LanguageModelSession(
                 model: model,
@@ -86,29 +94,31 @@ enum SearchModel {
         }
     }
 
-    /// `body`'s result, or nil when it throws or outlives `timeout`. Failures other than
+    /// `body`'s result, or nil when it throws or outlives `timeout` — returning at the timeout
+    /// even if `body` hasn't stopped (a task group would wait for it). Failures other than
     /// cancellation are logged.
     private static func withTimeout<T: Sendable>(_ body: @escaping @Sendable () async throws -> T) async -> T? {
-        let outcome = await withTaskGroup(of: Result<T, any Error>?.self) { group in
-            group.addTask {
-                do { return .success(try await body()) } catch { return .failure(error) }
+        let gate = FirstResult<T>()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let work = Task {
+                    do {
+                        gate.finish(try await body())
+                    } catch {
+                        if !(error is CancellationError) {
+                            AppLog.search.info("Search model gave no answer: \(error.localizedDescription, privacy: .public)")
+                        }
+                        gate.finish(nil)
+                    }
+                }
+                let timer = Task {
+                    try? await Task.sleep(for: timeout)
+                    gate.finish(nil)
+                }
+                gate.install(continuation, cancelling: [work, timer])
             }
-            group.addTask {
-                try? await Task.sleep(for: timeout)
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
-        switch outcome {
-        case .success(let value):
-            return value
-        case .failure(let error) where !(error is CancellationError):
-            AppLog.search.info("Search model gave no answer: \(error.localizedDescription, privacy: .public)")
-            return nil
-        default:
-            return nil
+        } onCancel: {
+            gate.finish(nil)
         }
     }
 
@@ -126,7 +136,8 @@ enum SearchModel {
     /// Nil when the model is unavailable, refuses, errors or runs past `timeout`.
     static func read(_ query: String) async -> Reading? {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isAvailable, !query.isEmpty, query.count <= 200 else { return nil }
+        // "a", "th": still being typed, and nothing to read.
+        guard isAvailable, query.count >= 3, query.count <= 200 else { return nil }
         let reading = await withTimeout {
             // A fresh session per query: a session keeps its transcript, and an earlier query
             // would color this one.
@@ -137,5 +148,41 @@ enum SearchModel {
             return Reading(isTitleName: response.content.isTitleName, titles: response.content.titles)
         }
         return reading.map { consistent($0, query: query) }
+    }
+}
+
+/// The first of several racing outcomes resumes the continuation; the rest are dropped and the
+/// racers cancelled. An outcome may arrive before the continuation is installed.
+private nonisolated final class FirstResult<T: Sendable>: Sendable {
+    private struct State {
+        var continuation: CheckedContinuation<T?, Never>?
+        var outcome: T??
+        var racers: [Task<Void, Never>] = []
+    }
+
+    private let state = Mutex(State())
+
+    func install(_ continuation: CheckedContinuation<T?, Never>, cancelling racers: [Task<Void, Never>]) {
+        let early: T?? = state.withLock { state in
+            guard state.outcome == nil else { return state.outcome }
+            state.continuation = continuation
+            state.racers = racers
+            return nil
+        }
+        if let early {
+            racers.forEach { $0.cancel() }
+            continuation.resume(returning: early)
+        }
+    }
+
+    func finish(_ value: T?) {
+        let (continuation, racers): (CheckedContinuation<T?, Never>?, [Task<Void, Never>]) = state.withLock { state in
+            guard state.outcome == nil else { return (nil, []) }
+            state.outcome = .some(value)
+            defer { state.continuation = nil; state.racers = [] }
+            return (state.continuation, state.racers)
+        }
+        racers.forEach { $0.cancel() }
+        continuation?.resume(returning: value)
     }
 }

@@ -85,6 +85,13 @@ final class DiscoverViewModel {
             }
         }
 
+        var airOrReleaseDate: String? {
+            switch self {
+            case .tvShow(let r): r.firstAirDate
+            case .movie(let r): r.releaseDate
+            }
+        }
+
         var mediaType: MediaType {
             switch self {
             case .tvShow: .tvShow
@@ -610,6 +617,9 @@ final class DiscoverViewModel {
     /// Titles matching the query read as a description ("hulu hockey comedy") — see
     /// `DescriptiveSearch`. Shown as its own section beside the title matches.
     private var describedSearchResults: DescriptiveSearch.Results?
+    /// What the title results were searched with: the query, or its name part after
+    /// `DescriptiveSearch.remainderTitleSearch` ("the bear hulu" → "the bear").
+    private var searchTitleQuery = ""
 
     /// `describedSearchResults` while it still answers the current query — a slower
     /// interpretation of the previous query never shows beside the new one's title matches.
@@ -645,11 +655,11 @@ final class DiscoverViewModel {
         let described: [DiscoverItem] = selectedMediaType == .tvShows
             ? (describedSearch?.tvShows ?? []).map { .tvShow($0) }
             : (describedSearch?.movies ?? []).map { .movie($0) }
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         return DescriptiveSearch.layout(
-            titles: titles, described: described,
-            query: searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
-            readsAsDescription: describedSearch?.readsAsDescription == true,
-            id: \.tmdbId, name: \.title, votes: \.voteCount
+            titles: titles, described: described, query: searchTitleQuery,
+            descriptionFirst: describedSearch?.readsAsDescription == true || searchTitleQuery != query,
+            id: \.tmdbId, name: \.title, votes: \.voteCount, date: \.airOrReleaseDate
         )
     }
 
@@ -727,17 +737,21 @@ final class DiscoverViewModel {
 
         if tv.error == nil { searchTVResults = tv.results }
         if movie.error == nil { searchMovieResults = movie.results }
+        searchTitleQuery = query
         // Only the type on screen gets to raise the error banner.
         tvSearchError = tv.error
         movieSearchError = movie.error
 
         // Interpreted after the title results land (they're shown meanwhile) — see
         // `WatchlistSearchView.performSearch`.
-        let titleMatch = max(
-            tv.results.first.map { SearchRanking.titleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? .none,
-            movie.results.first.map { SearchRanking.titleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? .none
+        let best = SearchRanking.bestTitleMatch(
+            tvShow: tv.results.first.map { ($0.name, $0.voteCount, $0.firstAirDate) },
+            movie: movie.results.first.map { ($0.title, $0.voteCount, $0.releaseDate) }, query: query
         )
-        let interpreted = await DescriptiveSearch.run(query: query, titleMatch: titleMatch, reading: await modelReading)
+        let titleMatch = best.match
+        let interpreted = await DescriptiveSearch.run(
+            query: query, titleMatch: titleMatch, titleVotes: best.votes, reading: await modelReading
+        )
         guard !Task.isCancelled else { return }
         let previousType = describedSearchResults?.interpretation.mediaType
         describedSearchResults = interpreted
@@ -746,12 +760,14 @@ final class DiscoverViewModel {
         if let mediaType = interpreted?.interpretation.mediaType, mediaType != previousType {
             selectedMediaType = mediaType == .tvShow ? .tvShows : .movies
         }
-        // "hulu shoresy": nothing descriptive came of it, and the name on its own is a title.
-        if titleMatch == .none, interpreted?.isEmpty ?? true,
-           let found = await DescriptiveSearch.remainderTitleSearch(query: query) {
+        // "the bear hulu": the whole query matched no title, but its name part does.
+        if titleMatch == .none, let found = await DescriptiveSearch.remainderTitleSearch(
+            query: query, besideSection: !(interpreted?.isEmpty ?? true)
+        ) {
             guard !Task.isCancelled else { return }
             searchTVResults = found.tvShows
             searchMovieResults = found.movies
+            searchTitleQuery = found.remainder
         }
         isSearching = false
     }

@@ -34,6 +34,9 @@ struct WatchlistSearchView: View {
     /// Titles matching the query read as a description ("hulu hockey comedy") — see
     /// `DescriptiveSearch`. Shown as its own section beside the title matches.
     @State private var describedResults: DescriptiveSearch.Results?
+    /// What the title rows were searched with: the query, or its name part after
+    /// `DescriptiveSearch.remainderTitleSearch` ("the bear hulu" → "the bear").
+    @State private var titleQuery = ""
     /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
     @State private var tvRecommendations: [TMDBTVShowSearchResult] = []
@@ -340,17 +343,17 @@ struct WatchlistSearchView: View {
     /// Title matches and the described section in list order (see `DescriptiveSearch.layout`).
     private var tvLayout: DescriptiveSearch.Layout<TMDBTVShowSearchResult> {
         DescriptiveSearch.layout(
-            titles: tvShowResults, described: described?.tvShows ?? [], query: trimmedQuery,
-            readsAsDescription: described?.readsAsDescription == true,
-            id: \.id, name: \.name, votes: \.voteCount
+            titles: tvShowResults, described: described?.tvShows ?? [], query: titleQuery,
+            descriptionFirst: described?.readsAsDescription == true || titleQuery != trimmedQuery,
+            id: \.id, name: \.name, votes: \.voteCount, date: \.firstAirDate
         )
     }
 
     private var movieLayout: DescriptiveSearch.Layout<TMDBMovieSearchResult> {
         DescriptiveSearch.layout(
-            titles: movieResults, described: described?.movies ?? [], query: trimmedQuery,
-            readsAsDescription: described?.readsAsDescription == true,
-            id: \.id, name: \.title, votes: \.voteCount
+            titles: movieResults, described: described?.movies ?? [], query: titleQuery,
+            descriptionFirst: described?.readsAsDescription == true || titleQuery != trimmedQuery,
+            id: \.id, name: \.title, votes: \.voteCount, date: \.releaseDate
         )
     }
 
@@ -694,6 +697,7 @@ struct WatchlistSearchView: View {
         // A failed type keeps its previous results rather than blanking.
         if tv.error == nil { tvShowResults = tv.results }
         if movies.error == nil { movieResults = movies.results }
+        titleQuery = query
         // Kept per type so flipping the segment re-reads the right banner without a refetch.
         tvSearchError = tv.error
         movieSearchError = movies.error
@@ -701,17 +705,18 @@ struct WatchlistSearchView: View {
         // Interpreted after the title results land (they're shown meanwhile), since a strong title
         // match decides whether a keyword-only query is worth interpreting at all. `isLoading`
         // stays on until then so an empty title search doesn't flash "No Results Found".
-        let titleMatch = max(
-            tv.results.first.map { SearchRanking.titleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? .none,
-            movies.results.first.map { SearchRanking.titleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? .none
+        let best = SearchRanking.bestTitleMatch(
+            tvShow: tv.results.first.map { ($0.name, $0.voteCount, $0.firstAirDate) },
+            movie: movies.results.first.map { ($0.title, $0.voteCount, $0.releaseDate) }, query: query
         )
+        let titleMatch = best.match
         let scopedType: MediaType? = switch context {
         case .tvShows: .tvShow
         case .movies: .movie
         case .all, .specificList: nil
         }
         let interpreted = await DescriptiveSearch.run(
-            query: query, titleMatch: titleMatch, mediaType: scopedType, reading: await modelReading
+            query: query, titleMatch: titleMatch, titleVotes: best.votes, mediaType: scopedType, reading: await modelReading
         )
         guard !Task.isCancelled else { return }
         let previousType = describedResults?.interpretation.mediaType
@@ -721,12 +726,14 @@ struct WatchlistSearchView: View {
         if showMediaTypePicker, let mediaType = interpreted?.interpretation.mediaType, mediaType != previousType {
             selectedMediaType = mediaType
         }
-        // "hulu shoresy": nothing descriptive came of it, and the name on its own is a title.
-        if titleMatch == .none, interpreted?.isEmpty ?? true,
-           let found = await DescriptiveSearch.remainderTitleSearch(query: query) {
+        // "the bear hulu": the whole query matched no title, but its name part does.
+        if titleMatch == .none, let found = await DescriptiveSearch.remainderTitleSearch(
+            query: query, besideSection: !(interpreted?.isEmpty ?? true)
+        ) {
             guard !Task.isCancelled else { return }
             tvShowResults = found.tvShows
             movieResults = found.movies
+            titleQuery = found.remainder
         }
         isLoading = false
     }

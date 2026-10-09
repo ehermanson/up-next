@@ -24,8 +24,8 @@ nonisolated struct Detail { let nextEpisodeToAir: Episode? }
 func episodeCode(season: Int, episode: Int) -> String { "S\(season)E\(episode)" }
 enum SearchRanking {
     enum TitleMatch: Comparable { case none, strong, exact }
-    static func titleMatch(_ title: String, query: String, voteCount: Int?) -> TitleMatch { .none }
-    static func isStrongTitleMatch(_ title: String, query: String, voteCount: Int?) -> Bool { false }
+    static func bestTitleMatch(tvShow: (name: String, votes: Int?, date: String?)?, movie: (name: String, votes: Int?, date: String?)?,
+                               query: String) -> (match: TitleMatch, votes: Int?) { (.none, nil) }
 }
 enum SearchModel {
     struct Reading {}
@@ -44,13 +44,14 @@ enum DescriptiveSearch {
         func summary(for mediaType: MediaType) -> String { "" }
     }
     struct Layout<Item> { var leadingTitles: [Item] = []; var described: [Item] = []; var trailingTitles: [Item] = [] }
-    static func layout<Item>(titles: [Item], described: [Item], query: String, readsAsDescription: Bool,
-                             id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?) -> Layout<Item> {
+    static func layout<Item>(titles: [Item], described: [Item], query: String, descriptionFirst: Bool,
+                             id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?,
+                             date: (Item) -> String?) -> Layout<Item> {
         Layout(leadingTitles: titles, described: described)
     }
-    static func run(query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType? = nil,
+    static func run(query: String, titleMatch: SearchRanking.TitleMatch, titleVotes: Int? = nil, mediaType: MediaType? = nil,
                     reading: SearchModel.Reading? = nil) async -> Results? { nil }
-    static func remainderTitleSearch(query: String) async -> (tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? { nil }
+    static func remainderTitleSearch(query: String, besideSection: Bool) async -> (remainder: String, tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? { nil }
 }
 @Observable final class ProviderSettings {
     static let shared = ProviderSettings()

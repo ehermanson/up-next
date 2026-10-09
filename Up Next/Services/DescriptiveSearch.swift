@@ -114,11 +114,17 @@ enum DescriptiveSearch {
         /// The on-device model read the query as a description, not a name — so this section
         /// leads even over a title that matches it exactly ("zombies" over *Zombies*).
         fileprivate(set) var readsAsDescription = false
+        /// The model's verified guesses lead the rows.
+        fileprivate(set) var suggestionsLead = false
 
         var isEmpty: Bool { tvShows.isEmpty && movies.isEmpty }
 
+        /// When the model's guesses lead and the rules found nothing to name the rows by.
         func summary(for mediaType: MediaType) -> String {
-            interpretation.summary(for: mediaType, matchedAny: mediaType == .tvShow ? tvMatchedAny : moviesMatchedAny)
+            if suggestionsLead, interpretation.descriptiveFacetCount == 0, interpretation.keywords.isEmpty {
+                return "Suggested Titles"
+            }
+            return interpretation.summary(for: mediaType, matchedAny: mediaType == .tvShow ? tvMatchedAny : moviesMatchedAny)
         }
     }
 
@@ -146,28 +152,39 @@ enum DescriptiveSearch {
     /// guesses that check out (`verifiedTitles`) lead the section — unless the query carries
     /// filters a guess might not meet: a service, a year, an origin, a person or "like X".
     static func run(
-        query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType? = nil,
+        query: String, titleMatch: SearchRanking.TitleMatch, titleVotes: Int? = nil, mediaType: MediaType? = nil,
         reading: SearchModel.Reading? = nil, service: TMDBService = .shared
     ) async -> Results? {
-        let readsAsDescription = reading?.isTitleName == false
+        // The query's own words: filters a guess might not meet even when the rules come up empty
+        // ("hulu shoresy" — guesses aren't checked against Hulu), and the type and genre words that
+        // do apply to guesses ("cozy mystery shows").
+        let parsedWords = parse(query, regionProviders: [], selectedProviderIDs: [])
+        let words = parsedWords.interpretation
+        // The model misreads a plain name now and then ("you", "industry", "scandal"), so its
+        // "description" never overrides an exact title people know — nor one with "like" in it
+        // ("something like summer" isn't "like Summer").
+        let modelSaysDescription = reading?.isTitleName == false
+            && !(titleMatch == .exact && (titleVotes ?? 0) >= SearchRanking.wellKnownTitleVoteCount)
+            && !(titleMatch == .exact && parsedWords.referenceQuery != nil)
+        let guessesApply = modelSaysDescription && !hasHardFacets(words)
         async let ruled = interpret(
-            query: query, titleMatch: readsAsDescription ? .none : titleMatch, mediaType: mediaType, service: service
+            query: query, titleMatch: modelSaysDescription ? .none : titleMatch, mediaType: mediaType, service: service
         )
-        async let verified = verifiedTitles(readsAsDescription ? reading?.titles ?? [] : [], service: service)
+        async let verified = verifiedTitles(guessesApply ? reading?.titles ?? [] : [], service: service)
         let (rules, guesses) = await (ruled, verified)
         guard !Task.isCancelled else { return nil }
 
-        var results = rules
-        results?.readsAsDescription = readsAsDescription
-        // The query's own words, for filters a guess might not meet even when the rules came up
-        // empty ("hulu shoresy" — guesses aren't checked against Hulu), and for the type and
-        // genre words that do apply to guesses ("cozy mystery shows").
-        let words = parse(query, regionProviders: [], selectedProviderIDs: []).interpretation
-        for interpretation in [words, rules?.interpretation].compactMap({ $0 })
-        where !interpretation.providers.isEmpty || (interpretation.years != nil && !interpretation.yearsAreVague)
-            || interpretation.origin != nil || interpretation.person != nil || interpretation.reference != nil {
-            return results
+        // A "description" with nothing to show for it — no guess that checks out, and only
+        // keywords from the rules — was a name after all, and the veto it lifted stands.
+        if modelSaysDescription, titleMatch != .none, guesses.tvShows.isEmpty, guesses.movies.isEmpty,
+           (rules?.interpretation.descriptiveFacetCount ?? 0) == 0 {
+            return nil
         }
+        var results = rules
+        results?.readsAsDescription = modelSaysDescription
+        if let interpretation = rules?.interpretation, hasHardFacets(interpretation) { return results }
+        guard guessesApply else { return results }
+
         let type = mediaType ?? words.mediaType
         let tvGuesses = type == .movie
             ? [] : narrowed(guesses.tvShows, words, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate)
@@ -183,8 +200,16 @@ enum DescriptiveSearch {
         )
         merged.tvMatchedAny = rules?.tvMatchedAny ?? false
         merged.moviesMatchedAny = rules?.moviesMatchedAny ?? false
-        merged.readsAsDescription = readsAsDescription
+        merged.readsAsDescription = modelSaysDescription
+        merged.suggestionsLead = true
         return merged
+    }
+
+    /// Filters a model guess isn't checked against: a service, a real year, an origin, a person
+    /// or "like X".
+    private static func hasHardFacets(_ interpretation: Interpretation) -> Bool {
+        !interpretation.providers.isEmpty || (interpretation.years != nil && !interpretation.yearsAreVague)
+            || interpretation.origin != nil || interpretation.person != nil || interpretation.reference != nil
     }
 
     // MARK: - Layout
@@ -200,26 +225,30 @@ enum DescriptiveSearch {
     /// - No confident title match: the section leads.
     /// - The query starts a title's name ("the office us"): the titles lead — unless the model
     ///   read a description, then the section does.
-    /// - A title is exactly the query: the titles lead — unless the model read a description
-    ///   ("zombies"), then only the exact title leads, the section follows, and the rest of the
-    ///   title matches come after it. *Zombies* stays first; zombie titles are right below.
+    /// - A title is exactly the query: the titles lead — unless `descriptionFirst` (the model read
+    ///   a description, as for "zombies", or the titles came from `remainderTitleSearch`), then
+    ///   only the best exact title leads, the section follows, and the rest of the title matches
+    ///   come after it. *Zombies* stays first; zombie titles are right below.
+    ///
+    /// `query` is what the titles were searched with.
     static func layout<Item>(
-        titles: [Item], described: [Item], query: String, readsAsDescription: Bool,
-        id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?
+        titles: [Item], described: [Item], query: String, descriptionFirst: Bool,
+        id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?, date: (Item) -> String?
     ) -> Layout<Item> {
         func match(_ item: Item) -> SearchRanking.TitleMatch {
-            SearchRanking.titleMatch(name(item), query: query, voteCount: votes(item))
+            SearchRanking.titleMatch(name(item), query: query, voteCount: votes(item), releaseDate: date(item))
         }
         func removing(_ items: [Item], from list: [Item]) -> [Item] {
             let ids = Set(items.map(id))
             return list.filter { !ids.contains(id($0)) }
         }
         guard !described.isEmpty else { return Layout(leadingTitles: titles) }
-        switch (titles.first.map(match) ?? .none, readsAsDescription) {
+        switch (titles.first.map(match) ?? .none, descriptionFirst) {
         case (.none, _), (.strong, true):
             return Layout(described: described, trailingTitles: removing(described, from: titles))
         case (.exact, true):
-            let exact = titles.filter { match($0) == .exact }
+            // One title: TMDB has five films called *Zombies* and several called *High School*.
+            let exact = titles.first { match($0) == .exact }.map { [$0] } ?? []
             let section = removing(exact, from: described)
             return Layout(leadingTitles: exact, described: section,
                           trailingTitles: removing(exact + section, from: titles))
@@ -264,7 +293,8 @@ enum DescriptiveSearch {
         guard interpretation.filterCount > 0 || !parsed.subjectRuns.isEmpty || hasReference else { return nil }
         let descriptive = interpretation.descriptiveFacetCount > 0 || hasReference
         switch titleMatch {
-        case .exact: guard descriptive, parsed.subjectRuns.isEmpty else { return nil }
+        // "something like summer" is a title, not "like Summer".
+        case .exact: guard interpretation.descriptiveFacetCount > 0, parsed.subjectRuns.isEmpty, !hasReference else { return nil }
         case .strong: guard descriptive || parsed.subjectRuns.contains(where: { $0.count <= 3 }) else { return nil }
         case .none: break
         }
@@ -298,11 +328,12 @@ enum DescriptiveSearch {
         // "hulu shoresy": the subject was the point, and without it the section would just be
         // Hulu's whole catalogue under a heading that claims to have understood.
         if resolved.unresolvedWords > 0, interpretation.genres.isEmpty, interpretation.keywords.isEmpty,
-           interpretation.person == nil, interpretation.origin == nil {
+           interpretation.person == nil, interpretation.origin == nil, interpretation.reference == nil {
             return nil
         }
 
-        let type = mediaType ?? interpretation.mediaType
+        // "like X" with no type asked for means X's type.
+        let type = mediaType ?? interpretation.mediaType ?? interpretation.reference?.mediaType
         let region = service.currentRegion
         let resolvedInterpretation = interpretation
         async let tv = type != .movie
@@ -318,26 +349,38 @@ enum DescriptiveSearch {
         return results
     }
 
-    /// "hulu shoresy", "breaking bad netflix": a name with a service or type word attached. The
-    /// title search was given the whole string; the name alone finds it. Nil unless the rest of
-    /// the query (majors only — no provider list fetch) leaves a name that matches confidently.
+    /// "hulu shoresy", "the bear hulu": a name with a service or type word attached. The title
+    /// search was given the whole string; the name alone finds it. Nil unless the rest of the
+    /// query (majors only — no provider list fetch) leaves a name that matches confidently.
+    /// Callers try it whenever the whole query matched no title, even beside a described section
+    /// — "the bear" is also a keyword, and the section alone would bury the show (`layout` puts
+    /// an exact name first).
+    ///
+    /// `besideSection`: a described section is showing. Then only a service word ("the bear hulu")
+    /// or a name of two or more words reads as a name — "heist movies" is a description even
+    /// though a film is called *Heist*, and promoting it would bury the section.
     static func remainderTitleSearch(
-        query: String, service: TMDBService = .shared
-    ) async -> (tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? {
+        query: String, besideSection: Bool, service: TMDBService = .shared
+    ) async -> (remainder: String, tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? {
         let parsed = parse(query, regionProviders: [], selectedProviderIDs: [])
         let interpretation = parsed.interpretation
         guard interpretation.filterCount > 0 || interpretation.mediaType != nil, !parsed.subjectRuns.isEmpty,
               parsed.referenceQuery == nil, !Task.isCancelled else { return nil }
-        let remainder = parsed.subjectRuns.map { $0.joined(separator: " ") }.joined(separator: " ")
+        let remainder = parsed.nameWords.joined(separator: " ")
+        if besideSection, interpretation.providers.isEmpty, parsed.nameWords.count < 2 { return nil }
         async let tv = try? service.searchTVShows(query: remainder)
         async let movies = try? service.searchMovies(query: remainder)
         let (shows, films) = await (tv ?? [], movies ?? [])
         let match = max(
-            shows.first.map { SearchRanking.titleMatch($0.name, query: remainder, voteCount: $0.voteCount) } ?? .none,
-            films.first.map { SearchRanking.titleMatch($0.title, query: remainder, voteCount: $0.voteCount) } ?? .none
+            shows.first.map {
+                SearchRanking.titleMatch($0.name, query: remainder, voteCount: $0.voteCount, releaseDate: $0.firstAirDate)
+            } ?? .none,
+            films.first.map {
+                SearchRanking.titleMatch($0.title, query: remainder, voteCount: $0.voteCount, releaseDate: $0.releaseDate)
+            } ?? .none
         )
         guard match != .none, !Task.isCancelled else { return nil }
-        return (shows, films)
+        return (remainder, shows, films)
     }
 
     /// Shows for the interpretation: the reference's recommendations, the person's shows, or
@@ -346,15 +389,14 @@ enum DescriptiveSearch {
         _ interpretation: Interpretation, region: String, service: TMDBService
     ) async -> (results: [TMDBTVShowSearchResult], matchedAny: Bool) {
         if let reference = interpretation.reference {
-            guard reference.mediaType == .tvShow else { return ([], false) }
             let pool = await similarPool(
-                to: reference, service: service,
-                recommendations: { try await service.fetchTVRecommendations(id: reference.id) },
+                to: reference, wantsTVShows: true, interpretation: interpretation, region: region, service: service,
+                recommendations: { reference.mediaType == .tvShow ? try await service.fetchTVRecommendations(id: reference.id) : [] },
                 discover: { try await service.discoverTVShows(filters: $0) },
                 search: { try await service.searchTVShows(query: $0) },
                 id: \.id, name: \.name, genreIDs: \.genreIds, votes: \.voteCount
             )
-            return (narrowed(pool, interpretation, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate), false)
+            return (Array(narrowed(pool, interpretation, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate).prefix(20)), false)
         }
         if let person = interpretation.person {
             // Credits can't be checked against a service without a request per show.
@@ -373,15 +415,14 @@ enum DescriptiveSearch {
         _ interpretation: Interpretation, region: String, service: TMDBService
     ) async -> (results: [TMDBMovieSearchResult], matchedAny: Bool) {
         if let reference = interpretation.reference {
-            guard reference.mediaType == .movie else { return ([], false) }
             let pool = await similarPool(
-                to: reference, service: service,
-                recommendations: { try await service.fetchMovieRecommendations(id: reference.id) },
+                to: reference, wantsTVShows: false, interpretation: interpretation, region: region, service: service,
+                recommendations: { reference.mediaType == .movie ? try await service.fetchMovieRecommendations(id: reference.id) : [] },
                 discover: { try await service.discoverMovies(filters: $0) },
                 search: { try await service.searchMovies(query: $0) },
                 id: \.id, name: \.title, genreIDs: \.genreIds, votes: \.voteCount
             )
-            return (narrowed(pool, interpretation, .movie, genreIDs: \.genreIds, date: \.releaseDate), false)
+            return (Array(narrowed(pool, interpretation, .movie, genreIDs: \.genreIds, date: \.releaseDate).prefix(20)), false)
         }
         return await fetch(filters(for: .movie, interpretation, region: region)) {
             try await service.discoverMovies(filters: $0)
@@ -399,19 +440,34 @@ enum DescriptiveSearch {
     ///   blind to tone.
     ///
     /// Vote count breaks near-ties: someone asking for "like X" wants titles people have seen.
+    ///
+    /// The other type ("movies like the office") has no TMDB recommendations — the model and the
+    /// keywords carry it. A service ("…on netflix") can only be checked by `/discover`, so then
+    /// it's keywords alone, filtered to the service, and one shared keyword is enough.
     private static func similarPool<T: Sendable>(
-        to reference: Reference, service: TMDBService,
+        to reference: Reference, wantsTVShows: Bool, interpretation: Interpretation, region: String,
+        service: TMDBService,
         recommendations: @escaping @Sendable () async throws -> [T],
         discover: @escaping @Sendable ([String: String]) async throws -> [T],
         search: @escaping @Sendable (String) async throws -> [T],
         id: (T) -> Int, name: (T) -> String, genreIDs: (T) -> [Int]?, votes: (T) -> Int?
     ) async -> [T] {
-        let isTVShow = reference.mediaType == .tvShow
-        async let recommended = (try? recommendations()) ?? []
-        async let neighbours = keywordNeighbours(of: reference, service: service, discover: discover)
+        let restriction: [String: String] = interpretation.providers.isEmpty ? [:] : [
+            "with_watch_providers": interpretation.providers.map { String($0.id) }.joined(separator: "|"),
+            "watch_region": region,
+            "with_watch_monetization_types": "flatrate|free|ads",
+        ]
+        let restricted = !restriction.isEmpty
+        let referenceIsTVShow = reference.mediaType == .tvShow
+        // "severance that are funny": the model's picks should be funny too.
+        let qualities = interpretation.genres.map { $0.label.lowercased() }
+        async let recommended = restricted ? [] : (try? recommendations()) ?? []
+        async let neighbours = keywordNeighbours(of: reference, restriction: restriction, service: service, discover: discover)
         async let picks: [(guess: String, results: [T])] = {
-            guard let titles = await SearchModel.similarTitles(to: reference.title, isTVShow: isTVShow) else { return [] }
-            return await concurrentMap(Array(titles.prefix(8))) { ($0, (try? await search($0)) ?? []) }
+            guard !restricted, let titles = await SearchModel.similarTitles(
+                to: reference.title, referenceIsTVShow: referenceIsTVShow, wantsTVShows: wantsTVShows, qualities: qualities
+            ) else { return [] }
+            return await concurrentMap(Array(titles.prefix(5))) { ($0, (try? await search($0)) ?? []) }
         }()
         let (recs, lists, searched) = await (recommended, neighbours, picks)
         guard !Task.isCancelled else { return [] }
@@ -453,23 +509,29 @@ enum DescriptiveSearch {
                 byID[id(item)] = byID[id(item)] ?? item
             }
         }
-        overlap = overlap.filter { hits[$0.key, default: 0] >= 2 }
+        // Filtered to a service or across types (shows rarely carry two of a film's keywords),
+        // one shared keyword has to do.
+        let crossType = referenceIsTVShow != wantsTVShows
+        overlap = overlap.filter { hits[$0.key, default: 0] >= (restricted || crossType ? 1 : 2) }
         let topOverlap = max(overlap.values.max() ?? 0, 1)
         for (key, value) in overlap { score[key, default: 0] += 1.5 * value / topOverlap }
         for key in score.keys { score[key, default: 0] += 0.1 * log1p(Double(byID[key].flatMap(votes) ?? 0)) }
-        return score.sorted { $0.value > $1.value }.prefix(20).compactMap { byID[$0.key] }
+        // Unbounded: callers narrow by the query's genres and years before taking the top.
+        return score.sorted { $0.value > $1.value }.compactMap { byID[$0.key] }
     }
 
-    /// For each of X's first dozen keywords, the most popular known titles carrying it.
+    /// For each of X's first dozen keywords, the most popular known titles carrying it (of
+    /// whatever type `discover` asks for), within `restriction`.
     private static func keywordNeighbours<T: Sendable>(
-        of reference: Reference, service: TMDBService,
+        of reference: Reference, restriction: [String: String], service: TMDBService,
         discover: @escaping @Sendable ([String: String]) async throws -> [T]
     ) async -> [[T]] {
         guard !Task.isCancelled,
               let keywords = try? await service.titleKeywords(id: reference.id, isTVShow: reference.mediaType == .tvShow)
         else { return [] }
         return await concurrentMap(Array(keywords.prefix(12))) { keyword in
-            (try? await discover(["with_keywords": String(keyword.id), "sort_by": "popularity.desc", "vote_count.gte": "50"])) ?? []
+            let filters = ["with_keywords": String(keyword.id), "sort_by": "popularity.desc", "vote_count.gte": "50"]
+            return (try? await discover(filters.merging(restriction) { _, new in new })) ?? []
         }
     }
 
@@ -510,8 +572,9 @@ enum DescriptiveSearch {
             .sorted { ($0.voteCount ?? 0) > ($1.voteCount ?? 0) }
     }
 
-    /// The title in "shows like ted lasso": the closest confident title match, preferring the
-    /// asked-for type, then the closer match, then the better known.
+    /// The title in "shows like ted lasso": the closest confident title match, then the better
+    /// known, and only then the asked-for type — "movies like friends" means the show, not
+    /// *Friends with Benefits*; `similarPool` finds movies for it.
     private static func resolveReference(
         _ query: String?, preferring mediaType: MediaType?, service: TMDBService
     ) async -> Reference? {
@@ -522,15 +585,17 @@ enum DescriptiveSearch {
         var candidates: [(reference: Reference, match: SearchRanking.TitleMatch, votes: Int)] = []
         if let show = shows.first {
             candidates.append((Reference(title: show.name, id: show.id, mediaType: .tvShow, genreIDs: show.genreIds ?? []),
-                               SearchRanking.titleMatch(show.name, query: query, voteCount: show.voteCount), show.voteCount ?? 0))
+                               SearchRanking.titleMatch(show.name, query: query, voteCount: show.voteCount, releaseDate: show.firstAirDate),
+                               show.voteCount ?? 0))
         }
         if let film = films.first {
             candidates.append((Reference(title: film.title, id: film.id, mediaType: .movie, genreIDs: film.genreIds ?? []),
-                               SearchRanking.titleMatch(film.title, query: query, voteCount: film.voteCount), film.voteCount ?? 0))
+                               SearchRanking.titleMatch(film.title, query: query, voteCount: film.voteCount, releaseDate: film.releaseDate),
+                               film.voteCount ?? 0))
         }
         return candidates.filter { $0.match != .none }.max { lhs, rhs in
-            (lhs.reference.mediaType == mediaType ? 1 : 0, lhs.match, lhs.votes)
-                < (rhs.reference.mediaType == mediaType ? 1 : 0, rhs.match, rhs.votes)
+            (lhs.match, lhs.votes, lhs.reference.mediaType == mediaType ? 1 : 0)
+                < (rhs.match, rhs.votes, rhs.reference.mediaType == mediaType ? 1 : 0)
         }?.reference
     }
 
@@ -629,9 +694,16 @@ enum DescriptiveSearch {
     ) async -> (keywords: [Keyword], unresolvedWords: Int, person: Person?) {
         let perRun = await concurrentMap(Array(zip(runs, genresAfter))) { run, genre -> ([Keyword?], Person?) in
             async let person = resolvePerson(run, service: service)
+            // "tom hanks christmas": a name, then a subject.
+            async let leadingPerson = run.count >= 3 ? resolvePerson(Array(run.prefix(2)), service: service) : nil
             async let keywords = peopleOnly ? [] : resolveKeywords(in: run, genreAfter: genre, service: service)
-            let (named, found) = await (person, keywords)
-            return named.map { ([], $0) } ?? (peopleOnly ? run.map { _ in nil } : found, nil)
+            let (named, leading, found) = await (person, leadingPerson, keywords)
+            if let named { return ([], named) }
+            if let leading {
+                let rest = peopleOnly ? [] : await resolveKeywords(in: Array(run.dropFirst(2)), genreAfter: genre, service: service)
+                return (rest, leading)
+            }
+            return (peopleOnly ? run.map { _ in nil } : found, nil)
         }
         var seen = Set<[Int]>()
         let keywords = perRun.flatMap(\.0).compactMap { $0 }.filter { seen.insert($0.ids).inserted }
@@ -741,6 +813,8 @@ enum DescriptiveSearch {
         var genreAfterRun: [String?] = []
         /// Everything after "like" / "similar to": a title to find ("shows like ted lasso").
         var referenceQuery: String?
+        /// The words no facet claimed, stopwords included — the name in "the studio apple tv".
+        var nameWords: [String] = []
     }
 
     private enum Facet {
@@ -760,13 +834,18 @@ enum DescriptiveSearch {
         let providers = providerLookup(regionProviders, selectedIDs: selectedProviderIDs)
 
         var parse = Parse()
-        let similarTo = words.indices.first { words[$0] == "similar" && words.indices.contains($0 + 1) && words[$0 + 1] == "to" }
-        if let marker = words.firstIndex(of: "like") ?? similarTo {
-            let start = marker + (words[marker] == "like" ? 1 : 2)
-            if start < words.count {
-                parse.referenceQuery = words[start...].joined(separator: " ")
-            }
-            words = Array(words[..<marker])
+        // The first "like" (or "similar to") that starts a reference — "i would like something
+        // like ted lasso" is the second.
+        let marker = words.indices.first { index in
+            let isMarker = words[index] == "like"
+                || (words[index] == "similar" && words.indices.contains(index + 1) && words[index + 1] == "to")
+            return isMarker && isReferenceMarker(after: Array(words[..<index]), providers: providers)
+        }
+        if let marker {
+            let (title, facetWords) = splitReference(Array(words[(marker + (words[marker] == "like" ? 1 : 2))...]),
+                                                     providers: providers)
+            if !title.isEmpty { parse.referenceQuery = title.joined(separator: " ") }
+            words = Array(words[..<marker]) + facetWords
         }
         var run: [String] = []
         func flushRun(beforeGenre genre: String? = nil) {
@@ -789,6 +868,7 @@ enum DescriptiveSearch {
                 index += length
                 continue
             }
+            parse.nameWords.append(words[index])
             if stopwords.contains(words[index]) {
                 flushRun()
             } else {
@@ -799,6 +879,47 @@ enum DescriptiveSearch {
         flushRun()
         return parse
     }
+
+    /// "ted lasso on netflix", "friends from the 90s", "severance that are funny": a connector
+    /// followed by nothing but facets and connectors ends the title; those facets filter the
+    /// results instead (they go back to the main loop). Without a connector nothing is split off —
+    /// "modern family" and "the morning show" end in genre and type words but are titles.
+    private static func splitReference(_ tail: [String], providers: [String: Provider]) -> (title: [String], facets: [String]) {
+        for start in tail.indices.dropFirst() where tailFillers.contains(tail[start]) {
+            var facets: [String] = []
+            var index = start
+            while index < tail.count {
+                if tailFillers.contains(tail[index]) {
+                    index += 1
+                } else if let (length, _) = longestFacet(in: tail, at: index, providers: providers) {
+                    facets += tail[index..<index + length]
+                    index += length
+                } else {
+                    break
+                }
+            }
+            if index == tail.count, !facets.isEmpty { return (Array(tail[..<start]), facets) }
+        }
+        return (tail, [])
+    }
+
+    /// "like" starts a reference only after nothing, a type word or a placeholder ("like ted
+    /// lasso", "shows like…", "something like…") — not "i like comedies".
+    private static func isReferenceMarker(after head: [String], providers: [String: Provider]) -> Bool {
+        head.isEmpty || head.contains { word in
+            referencePlaceholders.contains(word) || singularForms(word).contains { mediaWords[$0] != nil }
+        } || head.indices.contains { longestFacet(in: head, at: $0, providers: providers) != nil }
+    }
+
+    private static let referencePlaceholders: Set<String> = [
+        "something", "anything", "stuff", "more", "titles", "things", "others", "ones",
+    ]
+
+    /// Words between a reference's title and the facets after it ("…on netflix", "…but funny").
+    private static let tailFillers: Set<String> = [
+        "on", "but", "in", "from", "with", "and", "that", "is", "are", "were", "which", "who", "the", "a",
+        "only", "streaming", "set", "made",
+    ]
 
     private static func longestFacet(
         in words: [String], at start: Int, providers: [String: Provider]
@@ -936,6 +1057,7 @@ enum DescriptiveSearch {
     ]
 
     private static let genreWords: [String: [Genre]] = [
+        "true crime": [crime, documentary],
         "action": [action], "adventure": [adventure],
         "animation": [animation], "animated": [animation], "cartoon": [animation],
         "comedy": [comedy], "funny": [comedy], "sitcom": [comedy],
@@ -997,6 +1119,9 @@ enum DescriptiveSearch {
         "some", "any", "something", "anything", "good", "best", "great", "top", "really", "very",
         "one", "ones", "thing", "things", "kind", "type", "watch", "streaming", "stream", "available",
         "like", "plus", "only", "just", "free",
+        // How people ask: "i would like…", "looking for…", "recommend me…"
+        "would", "want", "wanna", "need", "looking", "find", "recommend", "recommendations", "suggest",
+        "suggestions", "please", "give", "something",
     ]
 }
 
