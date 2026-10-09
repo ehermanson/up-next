@@ -23,6 +23,9 @@ enum ScreenshotMode {
     /// Collection name following `--collection`; `MyListsView` pushes it once seeding finishes.
     static let requestedCollectionName: String? = value(after: "--collection")
 
+    /// Query following `--search`; `DiscoverView` types it into its search field on launch.
+    static let requestedSearch: String? = value(after: "--search")
+
     /// Set once `seed(library:lists:)` finishes so a second call (there shouldn't be one) is a no-op.
     private(set) static var isReady = false
 

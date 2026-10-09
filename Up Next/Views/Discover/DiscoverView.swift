@@ -74,6 +74,11 @@ struct DiscoverView: View {
             }
         }
         .task {
+            #if DEBUG
+            if ScreenshotMode.isEnabled, let query = ScreenshotMode.requestedSearch {
+                viewModel.searchQuery = query
+            }
+            #endif
             await viewModel.initialLoad()
         }
         .onChange(of: settings.onlyMyServicesInDiscover) {
