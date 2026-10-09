@@ -166,7 +166,8 @@ enum DescriptiveSearch {
         let modelSaysDescription = reading?.isTitleName == false
             && !(titleMatch == .exact && (titleVotes ?? 0) >= SearchRanking.wellKnownTitleVoteCount)
             && !(titleMatch == .exact && parsedWords.referenceQuery != nil)
-        let guessesApply = modelSaysDescription && !hasHardFacets(words)
+        // "like X" is answered by `similarPool`; facets after X aren't in `words` yet.
+        let guessesApply = modelSaysDescription && !hasHardFacets(words) && parsedWords.referenceQuery == nil
         async let ruled = interpret(
             query: query, titleMatch: modelSaysDescription ? .none : titleMatch, mediaType: mediaType, service: service
         )
@@ -233,10 +234,12 @@ enum DescriptiveSearch {
     /// `query` is what the titles were searched with.
     static func layout<Item>(
         titles: [Item], described: [Item], query: String, descriptionFirst: Bool,
-        id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?, date: (Item) -> String?
+        id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?, date: (Item) -> String?,
+        popularity: (Item) -> Double?
     ) -> Layout<Item> {
         func match(_ item: Item) -> SearchRanking.TitleMatch {
-            SearchRanking.titleMatch(name(item), query: query, voteCount: votes(item), releaseDate: date(item))
+            SearchRanking.titleMatch(name(item), query: query, voteCount: votes(item), releaseDate: date(item),
+                                     popularity: popularity(item))
         }
         func removing(_ items: [Item], from list: [Item]) -> [Item] {
             let ids = Set(items.map(id))
@@ -272,10 +275,19 @@ enum DescriptiveSearch {
                 films.first { SearchRanking.titleMatch($0.title, query: guess, voteCount: $0.voteCount) == .exact }
             )
         }
+        // One guess is one title. When both types have it, the type most of the other guesses
+        // resolved to decides — "find me a thriller" guesses films, so not the namesake shows;
+        // "sports dramedy" guesses shows, so *Friday Night Lights* the series, not the film.
+        let showsOnly = found.filter { $0.0 != nil && $0.1 == nil }.count
+        let filmsOnly = found.filter { $0.0 == nil && $0.1 != nil }.count
+        let decided = found.map { show, film -> (TMDBTVShowSearchResult?, TMDBMovieSearchResult?) in
+            guard show != nil, film != nil, showsOnly != filmsOnly else { return (show, film) }
+            return showsOnly > filmsOnly ? (show, nil) : (nil, film)
+        }
         var tvSeen = Set<Int>(), movieSeen = Set<Int>()
         return (
-            found.compactMap(\.0).filter { tvSeen.insert($0.id).inserted },
-            found.compactMap(\.1).filter { movieSeen.insert($0.id).inserted }
+            decided.compactMap(\.0).filter { tvSeen.insert($0.id).inserted },
+            decided.compactMap(\.1).filter { movieSeen.insert($0.id).inserted }
         )
     }
 
@@ -313,14 +325,19 @@ enum DescriptiveSearch {
             await resolveKeyword($0, service: service)
         }
         let preferredType = mediaType ?? interpretation.mediaType
-        async let reference = resolveReference(parsed.referenceQuery, preferring: preferredType, service: service)
+        async let reference = resolveReference(parsed.referenceCandidates, preferring: preferredType, service: service)
         let (resolved, genreKeywords, referenced) = await (subjects, fallbacks, reference)
         guard !Task.isCancelled else { return nil }
         interpretation.keywords = resolved.keywords
         interpretation.person = resolved.person
-        interpretation.reference = referenced
+        interpretation.reference = referenced?.reference
         for (index, keyword) in zip(fallbackIndices, genreKeywords) {
             interpretation.genres[index].keyword = keyword
+        }
+        // The facets that reading split off ("…on netflix", "…but funny") filter the results.
+        if let facets = referenced?.facets, !facets.isEmpty {
+            merge(parse(facets.joined(separator: " "), regionProviders: regionProviders, selectedProviderIDs: selected)
+                .interpretation, into: &interpretation)
         }
 
         if hasReference, referenced == nil { return nil }
@@ -357,8 +374,8 @@ enum DescriptiveSearch {
     /// an exact name first).
     ///
     /// `besideSection`: a described section is showing. Then only a service word ("the bear hulu")
-    /// or a name of two or more words reads as a name — "heist movies" is a description even
-    /// though a film is called *Heist*, and promoting it would bury the section.
+    /// makes it a name — "heist movies", "road trip movies", "the heist movies" are descriptions
+    /// though films carry those names, and promoting one would bury the section.
     static func remainderTitleSearch(
         query: String, besideSection: Bool, service: TMDBService = .shared
     ) async -> (remainder: String, tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? {
@@ -367,16 +384,18 @@ enum DescriptiveSearch {
         guard interpretation.filterCount > 0 || interpretation.mediaType != nil, !parsed.subjectRuns.isEmpty,
               parsed.referenceQuery == nil, !Task.isCancelled else { return nil }
         let remainder = parsed.nameWords.joined(separator: " ")
-        if besideSection, interpretation.providers.isEmpty, parsed.nameWords.count < 2 { return nil }
+        if besideSection, interpretation.providers.isEmpty { return nil }
         async let tv = try? service.searchTVShows(query: remainder)
         async let movies = try? service.searchMovies(query: remainder)
         let (shows, films) = await (tv ?? [], movies ?? [])
         let match = max(
             shows.first.map {
-                SearchRanking.titleMatch($0.name, query: remainder, voteCount: $0.voteCount, releaseDate: $0.firstAirDate)
+                SearchRanking.titleMatch($0.name, query: remainder, voteCount: $0.voteCount, releaseDate: $0.firstAirDate,
+                                         popularity: $0.popularity)
             } ?? .none,
             films.first.map {
-                SearchRanking.titleMatch($0.title, query: remainder, voteCount: $0.voteCount, releaseDate: $0.releaseDate)
+                SearchRanking.titleMatch($0.title, query: remainder, voteCount: $0.voteCount, releaseDate: $0.releaseDate,
+                                         popularity: $0.popularity)
             } ?? .none
         )
         guard match != .none, !Task.isCancelled else { return nil }
@@ -572,31 +591,65 @@ enum DescriptiveSearch {
             .sorted { ($0.voteCount ?? 0) > ($1.voteCount ?? 0) }
     }
 
+    /// The first reading (`Parse.referenceCandidates`) that names a title exactly, else the first
+    /// that names one at all — "ted lasso netflix" prefix-matches *Ted Lasso*, but "ted lasso"
+    /// matches it exactly and leaves "netflix" to filter.
+    private static func resolveReference(
+        _ candidates: [(title: String, facets: [String])], preferring mediaType: MediaType?, service: TMDBService
+    ) async -> (reference: Reference, facets: [String])? {
+        var fallback: (reference: Reference, facets: [String])?
+        for candidate in candidates {
+            guard let (reference, match) = await bestReference(for: candidate.title, preferring: mediaType, service: service)
+            else { continue }
+            if match == .exact { return (reference, candidate.facets) }
+            fallback = fallback ?? (reference, candidate.facets)
+        }
+        return fallback
+    }
+
+    private static func merge(_ facets: Interpretation, into interpretation: inout Interpretation) {
+        interpretation.mediaType = interpretation.mediaType ?? facets.mediaType
+        for provider in facets.providers where !interpretation.providers.contains(where: { $0.id == provider.id }) {
+            interpretation.providers.append(provider)
+        }
+        for genre in facets.genres where !interpretation.genres.contains(where: { $0.label == genre.label }) {
+            interpretation.genres.append(genre)
+        }
+        if let years = facets.years {
+            interpretation.years = years
+            interpretation.yearsLabel = facets.yearsLabel
+            interpretation.yearsAreVague = facets.yearsAreVague
+        }
+        interpretation.origin = interpretation.origin ?? facets.origin
+    }
+
     /// The title in "shows like ted lasso": the closest confident title match, then the better
     /// known, and only then the asked-for type — "movies like friends" means the show, not
     /// *Friends with Benefits*; `similarPool` finds movies for it.
-    private static func resolveReference(
-        _ query: String?, preferring mediaType: MediaType?, service: TMDBService
-    ) async -> Reference? {
-        guard let query, !Task.isCancelled else { return nil }
+    private static func bestReference(
+        for query: String, preferring mediaType: MediaType?, service: TMDBService
+    ) async -> (Reference, SearchRanking.TitleMatch)? {
+        guard !Task.isCancelled else { return nil }
         async let tv = try? service.searchTVShows(query: query)
         async let movies = try? service.searchMovies(query: query)
         let (shows, films) = await (tv ?? [], movies ?? [])
         var candidates: [(reference: Reference, match: SearchRanking.TitleMatch, votes: Int)] = []
         if let show = shows.first {
             candidates.append((Reference(title: show.name, id: show.id, mediaType: .tvShow, genreIDs: show.genreIds ?? []),
-                               SearchRanking.titleMatch(show.name, query: query, voteCount: show.voteCount, releaseDate: show.firstAirDate),
+                               SearchRanking.titleMatch(show.name, query: query, voteCount: show.voteCount, releaseDate: show.firstAirDate,
+                                                        popularity: show.popularity),
                                show.voteCount ?? 0))
         }
         if let film = films.first {
             candidates.append((Reference(title: film.title, id: film.id, mediaType: .movie, genreIDs: film.genreIds ?? []),
-                               SearchRanking.titleMatch(film.title, query: query, voteCount: film.voteCount, releaseDate: film.releaseDate),
+                               SearchRanking.titleMatch(film.title, query: query, voteCount: film.voteCount, releaseDate: film.releaseDate,
+                                                        popularity: film.popularity),
                                film.voteCount ?? 0))
         }
         return candidates.filter { $0.match != .none }.max { lhs, rhs in
             (lhs.match, lhs.votes, lhs.reference.mediaType == mediaType ? 1 : 0)
                 < (rhs.match, rhs.votes, rhs.reference.mediaType == mediaType ? 1 : 0)
-        }?.reference
+        }.map { ($0.reference, $0.match) }
     }
 
     /// Tried strictest first, stopping at the first that finds anything: the 50-vote floor keeps
@@ -644,7 +697,10 @@ enum DescriptiveSearch {
                 || interpretation.years != nil || interpretation.origin != nil
                 || interpretation.person != nil else { return nil }
 
-        var filters = ["sort_by": "popularity.desc", "vote_count.gte": "50"]
+        // Most-voted first: a description wants the titles that define it — "slasher movies" →
+        // *Psycho*, *Scream*; "coming of age movies" → *Dead Poets Society* — where popularity put
+        // whatever's trending (*Moana 2*). Discover's carousels cover what's new.
+        var filters = ["sort_by": "vote_count.desc", "vote_count.gte": "50"]
         if !genreIDs.isEmpty {
             filters["with_genres"] = Set(genreIDs).sorted().map(String.init).joined(separator: ",")
         }
@@ -722,7 +778,7 @@ enum DescriptiveSearch {
             compound = keyword
             run.removeLast()
         }
-        let words = await concurrentMap(run) { await resolveKeyword($0, service: service) }
+        let words = await concurrentMap(run.filter { !stopwords.contains($0) }) { await resolveKeyword($0, service: service) }
         return compound.map { words + [$0] } ?? words
     }
 
@@ -775,14 +831,17 @@ enum DescriptiveSearch {
         return Keyword(label: titleCased(best.keyword.name), ids: ids)
     }
 
-    /// "ice hockey" → "Ice Hockey", "1800s" stays, "nyc" → "NYC". TMDB keywords are all
-    /// lowercase, so acronyms have to be known.
+    /// "ice hockey" → "Ice Hockey", "coming of age" → "Coming of Age", "1800s" stays, "nyc" →
+    /// "NYC". TMDB keywords are all lowercase, so acronyms have to be known.
     static func titleCased(_ text: String) -> String {
-        text.split(separator: " ").map { word in
+        text.split(separator: " ").enumerated().map { index, word in
             if acronyms.contains(String(word)) { return word.uppercased() }
+            if index > 0, minorWords.contains(String(word)) { return String(word) }
             return word.prefix(1).uppercased() + word.dropFirst()
         }.joined(separator: " ")
     }
+
+    private static let minorWords: Set<String> = ["of", "the", "and", "in", "on", "a", "an", "to", "for", "at", "by"]
 
     private static let acronyms: Set<String> = [
         "ai", "bbc", "cia", "cgi", "dc", "fbi", "kgb", "la", "lgbt", "lgbtq", "mlb", "nba", "nfl",
@@ -813,6 +872,10 @@ enum DescriptiveSearch {
         var genreAfterRun: [String?] = []
         /// Everything after "like" / "similar to": a title to find ("shows like ted lasso").
         var referenceQuery: String?
+        /// Readings of that text, tried in order (`resolveReference`): all of it, then split at a
+        /// connector ("…on netflix"), then with trailing facets stripped ("…netflix") — each with
+        /// the facet words it split off, which then filter the results.
+        var referenceCandidates: [(title: String, facets: [String])] = []
         /// The words no facet claimed, stopwords included — the name in "the studio apple tv".
         var nameWords: [String] = []
     }
@@ -842,13 +905,22 @@ enum DescriptiveSearch {
             return isMarker && isReferenceMarker(after: Array(words[..<index]), providers: providers)
         }
         if let marker {
-            let (title, facetWords) = splitReference(Array(words[(marker + (words[marker] == "like" ? 1 : 2))...]),
-                                                     providers: providers)
-            if !title.isEmpty { parse.referenceQuery = title.joined(separator: " ") }
-            words = Array(words[..<marker]) + facetWords
+            let tail = Array(words[(marker + (words[marker] == "like" ? 1 : 2))...])
+            if !tail.isEmpty {
+                parse.referenceQuery = tail.joined(separator: " ")
+                var candidates = [(title: tail, facets: [String]())]
+                if let split = splitReference(tail, providers: providers) { candidates.append(split) }
+                if let stripped = stripTrailingFacets(tail, providers: providers) { candidates.append(stripped) }
+                var seen = Set<[String]>()
+                parse.referenceCandidates = candidates
+                    .filter { seen.insert($0.title).inserted }
+                    .map { (title: $0.title.joined(separator: " "), facets: $0.facets) }
+            }
+            words = Array(words[..<marker])
         }
         var run: [String] = []
         func flushRun(beforeGenre genre: String? = nil) {
+            while let last = run.last, runJoiners.contains(last) { run.removeLast() }
             if !run.isEmpty {
                 parse.subjectRuns.append(run)
                 parse.genreAfterRun.append(genre)
@@ -869,7 +941,10 @@ enum DescriptiveSearch {
                 continue
             }
             parse.nameWords.append(words[index])
-            if stopwords.contains(words[index]) {
+            if runJoiners.contains(words[index]), !run.isEmpty {
+                // "coming of age": kept so the phrase can be tried as one keyword.
+                run.append(words[index])
+            } else if stopwords.contains(words[index]) {
                 flushRun()
             } else {
                 run.append(words[index])
@@ -884,7 +959,7 @@ enum DescriptiveSearch {
     /// followed by nothing but facets and connectors ends the title; those facets filter the
     /// results instead (they go back to the main loop). Without a connector nothing is split off —
     /// "modern family" and "the morning show" end in genre and type words but are titles.
-    private static func splitReference(_ tail: [String], providers: [String: Provider]) -> (title: [String], facets: [String]) {
+    private static func splitReference(_ tail: [String], providers: [String: Provider]) -> (title: [String], facets: [String])? {
         for start in tail.indices.dropFirst() where tailFillers.contains(tail[start]) {
             var facets: [String] = []
             var index = start
@@ -900,8 +975,31 @@ enum DescriptiveSearch {
             }
             if index == tail.count, !facets.isEmpty { return (Array(tail[..<start]), facets) }
         }
-        return (tail, [])
+        return nil
     }
+
+    /// "the bear hulu", "inception 2010": trailing facets with no connector — tried only after
+    /// the whole text failed as a title ("partners in crime", "modern family" don't).
+    private static func stripTrailingFacets(_ tail: [String], providers: [String: Provider]) -> (title: [String], facets: [String])? {
+        var title = tail
+        var facets: [String] = []
+        while title.count > 1 {
+            if let length = (1...min(3, title.count - 1)).reversed().first(where: { length in
+                longestFacet(in: Array(title.suffix(length)), at: 0, providers: providers)?.0 == length
+            }) {
+                facets = title.suffix(length) + facets
+                title.removeLast(length)
+            } else if !facets.isEmpty, let last = title.last, tailFillers.contains(last) {
+                title.removeLast()
+            } else {
+                break
+            }
+        }
+        return facets.isEmpty ? nil : (title, facets)
+    }
+
+    /// Stopwords kept inside a subject run so a phrase holds together ("coming of age").
+    private static let runJoiners: Set<String> = ["of", "and", "the"]
 
     /// "like" starts a reference only after nothing, a type word or a placeholder ("like ted
     /// lasso", "shows like…", "something like…") — not "i like comedies".

@@ -48,9 +48,10 @@ enum SearchRanking {
     /// name just because a film is called *Zombie*.
     ///
     /// A title hardly anyone has rated counts only as an exact match, and only if it's unreleased
-    /// or just out (`isNewOrUpcoming`): "avengers doomsday" (out in December, 0 votes) is a name,
-    /// while TMDB's 0-vote 2017 *Time Travel* doesn't make "time travel" one — TMDB has an obscure
-    /// title for nearly every phrase.
+    /// or just out (`isNewOrUpcoming`) *and* people are looking at it (popularity ≥ 10):
+    /// "avengers doomsday" (out in December, 0 votes, popularity 94) is a name, while TMDB's
+    /// 0-vote 2017 *Time Travel* — or a fresh 0-vote upload called *Haunted House* — doesn't make
+    /// the phrase one. TMDB has an obscure title for nearly every phrase.
     nonisolated enum TitleMatch: Comparable, Sendable {
         case none, strong, exact
     }
@@ -62,11 +63,13 @@ enum SearchRanking {
     /// not the 44-vote *Zombies*.
     static let wellKnownTitleVoteCount = 200
 
-    static func titleMatch(_ title: String, query: String, voteCount: Int?, releaseDate: String? = nil) -> TitleMatch {
+    static func titleMatch(
+        _ title: String, query: String, voteCount: Int?, releaseDate: String? = nil, popularity: Double? = nil
+    ) -> TitleMatch {
         let title = normalized(title), query = normalized(query)
         let score = matchScore(title: title, query: query)
         if (voteCount ?? 0) < knownTitleVoteCount {
-            return score >= 4 && isNewOrUpcoming(releaseDate) ? .exact : .none
+            return score >= 4 && isNewOrUpcoming(releaseDate) && (popularity ?? 0) >= 10 ? .exact : .none
         }
         if score >= 4 { return .exact }
         if score >= 2.5 || (title.contains(" ") && query.hasPrefix(title + " ")) { return .strong }
@@ -87,11 +90,13 @@ enum SearchRanking {
 
     /// The better of the two types' top title hits, with that title's vote count.
     static func bestTitleMatch(
-        tvShow: (name: String, votes: Int?, date: String?)?, movie: (name: String, votes: Int?, date: String?)?,
+        tvShow: (name: String, votes: Int?, date: String?, popularity: Double?)?,
+        movie: (name: String, votes: Int?, date: String?, popularity: Double?)?,
         query: String
     ) -> (match: TitleMatch, votes: Int?) {
         let candidates = [tvShow, movie].compactMap { $0 }.map {
-            (match: titleMatch($0.name, query: query, voteCount: $0.votes, releaseDate: $0.date), votes: $0.votes)
+            (match: titleMatch($0.name, query: query, voteCount: $0.votes, releaseDate: $0.date, popularity: $0.popularity),
+             votes: $0.votes)
         }
         return candidates.max { ($0.match, $0.votes ?? 0) < ($1.match, $1.votes ?? 0) } ?? (.none, nil)
     }

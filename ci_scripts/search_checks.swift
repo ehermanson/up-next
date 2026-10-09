@@ -146,6 +146,8 @@ enum Expectation {
     case section(MediaType)
     /// `title` isn't the first row for `type` — a name-match that shouldn't lead.
     case notFirst(String, MediaType)
+    /// The described section's heading for `type` contains `text`.
+    case heading(String, MediaType)
 }
 
 struct Case {
@@ -191,6 +193,11 @@ let cases: [Case] = [
     Case("haunted house", .section(.movie)),
     Case("true crime", .section(.tvShow)),
     Case("heist movies", .notFirst("Heist", .movie), .finds(["Ocean's Eleven", "Inception", "Baby Driver", "The Italian Job"], .movie)),
+    Case("the heist movies", .notFirst("The Heist", .movie), .section(.movie)),
+    Case("high school comedy movies", .notFirst("High School", .movie)),
+    Case("road trip movies", .notFirst("Road Trip", .movie), .section(.movie)),
+    Case("summer camp movies", .notFirst("Summer Camp", .movie), .section(.movie)),
+    Case("coming of age movies", .finds(["Lady Bird", "Boyhood", "The Perks of Being a Wallflower", "Stand by Me", "Eighth Grade", "The Breakfast Club", "Moonlight", "Juno", "Dead Poets Society", "Good Will Hunting"], .movie)),
     // Genre words that are also titles
     Case("comedy", .section(.tvShow), .section(.movie)),
     Case("kids", .section(.tvShow)),
@@ -241,6 +248,11 @@ let cases: [Case] = [
     Case("shows like the morning show", .finds(["The Newsroom", "Succession", "Big Little Lies", "House of Cards", "Scandal", "The Crown", "Billions", "Industry", "The Loudest Voice"], .tvShow)),
     Case("shows like friends from the 90s", .finds(["Seinfeld", "Frasier", "Will & Grace", "Mad About You", "Ellen", "Spin City", "Living Single", "The Nanny", "Everybody Loves Raymond", "3rd Rock from the Sun"], .tvShow)),
     Case("shows like severance that are funny", .section(.tvShow)),
+    Case("shows like partners in crime", .heading("Like Partners in Crime", .tvShow)),
+    Case("shows like married with children", .heading("Like Married", .tvShow)),
+    Case("shows like the bear hulu", .heading("Like The Bear", .tvShow), .heading("Hulu", .tvShow)),
+    Case("shows like ted lasso netflix", .heading("Like Ted Lasso", .tvShow), .heading("Netflix", .tvShow)),
+    Case("movies like inception 2010", .heading("Like Inception", .movie)),
     Case("i would like something like ted lasso", .finds(["The Office", "Parks and Recreation", "Brooklyn Nine-Nine", "The Good Place", "Abbott Elementary", "Schitt's Creek", "Shrinking", "Scrubs"], .tvShow)),
     Case("tom hanks christmas", .finds(["The Polar Express"], .movie)),
     // Known gaps — the to-do list
@@ -287,8 +299,8 @@ func outcome(for query: String) async -> Outcome {
     var outcome = Outcome()
     outcome.reading = await modelReading
     let best = SearchRanking.bestTitleMatch(
-        tvShow: tv.first.map { ($0.name, $0.voteCount, $0.firstAirDate) },
-        movie: movies.first.map { ($0.title, $0.voteCount, $0.releaseDate) }, query: query
+        tvShow: tv.first.map { ($0.name, $0.voteCount, $0.firstAirDate, $0.popularity) },
+        movie: movies.first.map { ($0.title, $0.voteCount, $0.releaseDate, $0.popularity) }, query: query
     )
     outcome.titleMatch = best.match
     outcome.described = await DescriptiveSearch.run(
@@ -308,10 +320,10 @@ func outcome(for query: String) async -> Outcome {
     let descriptionFirst = outcome.described?.readsAsDescription == true || titleQuery != query
     outcome.rows[.tvShow] = rows(DescriptiveSearch.layout(
         titles: tv, described: outcome.described?.tvShows ?? [], query: titleQuery, descriptionFirst: descriptionFirst,
-        id: \.id, name: \.name, votes: \.voteCount, date: \.firstAirDate), \.name)
+        id: \.id, name: \.name, votes: \.voteCount, date: \.firstAirDate, popularity: \.popularity), \.name)
     outcome.rows[.movie] = rows(DescriptiveSearch.layout(
         titles: movies, described: outcome.described?.movies ?? [], query: titleQuery, descriptionFirst: descriptionFirst,
-        id: \.id, name: \.title, votes: \.voteCount, date: \.releaseDate), \.title)
+        id: \.id, name: \.title, votes: \.voteCount, date: \.releaseDate, popularity: \.popularity), \.title)
     return outcome
 }
 
@@ -333,6 +345,10 @@ func failure(_ expectation: Expectation, _ outcome: Outcome) -> String? {
         return "unexpected section \"\(described.summary(for: type))\""
     case .section(let type):
         return outcome.hasSection(type) ? nil : "\(type): no described section (title match \(outcome.titleMatch))"
+    case .heading(let text, let type):
+        guard let described = outcome.described, outcome.hasSection(type) else { return "\(type): no described section" }
+        let heading = described.summary(for: type)
+        return heading.localizedCaseInsensitiveContains(text) ? nil : "\(type): heading \"\(heading)\" lacks \"\(text)\""
     case .notFirst(let title, let type):
         guard let first = outcome.rows[type]?.first, normalizedTitle(first) == normalizedTitle(title) else { return nil }
         return "\(type): \(title) leads"

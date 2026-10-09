@@ -345,7 +345,7 @@ struct WatchlistSearchView: View {
         DescriptiveSearch.layout(
             titles: tvShowResults, described: described?.tvShows ?? [], query: titleQuery,
             descriptionFirst: described?.readsAsDescription == true || titleQuery != trimmedQuery,
-            id: \.id, name: \.name, votes: \.voteCount, date: \.firstAirDate
+            id: \.id, name: \.name, votes: \.voteCount, date: \.firstAirDate, popularity: \.popularity
         )
     }
 
@@ -353,7 +353,7 @@ struct WatchlistSearchView: View {
         DescriptiveSearch.layout(
             titles: movieResults, described: described?.movies ?? [], query: titleQuery,
             descriptionFirst: described?.readsAsDescription == true || titleQuery != trimmedQuery,
-            id: \.id, name: \.title, votes: \.voteCount, date: \.releaseDate
+            id: \.id, name: \.title, votes: \.voteCount, date: \.releaseDate, popularity: \.popularity
         )
     }
 
@@ -706,8 +706,8 @@ struct WatchlistSearchView: View {
         // match decides whether a keyword-only query is worth interpreting at all. `isLoading`
         // stays on until then so an empty title search doesn't flash "No Results Found".
         let best = SearchRanking.bestTitleMatch(
-            tvShow: tv.results.first.map { ($0.name, $0.voteCount, $0.firstAirDate) },
-            movie: movies.results.first.map { ($0.title, $0.voteCount, $0.releaseDate) }, query: query
+            tvShow: tv.results.first.map { ($0.name, $0.voteCount, $0.firstAirDate, $0.popularity) },
+            movie: movies.results.first.map { ($0.title, $0.voteCount, $0.releaseDate, $0.popularity) }, query: query
         )
         let titleMatch = best.match
         let scopedType: MediaType? = switch context {

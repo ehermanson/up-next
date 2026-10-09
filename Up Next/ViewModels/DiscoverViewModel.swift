@@ -85,6 +85,13 @@ final class DiscoverViewModel {
             }
         }
 
+        var popularity: Double? {
+            switch self {
+            case .tvShow(let r): r.popularity
+            case .movie(let r): r.popularity
+            }
+        }
+
         var airOrReleaseDate: String? {
             switch self {
             case .tvShow(let r): r.firstAirDate
@@ -659,7 +666,7 @@ final class DiscoverViewModel {
         return DescriptiveSearch.layout(
             titles: titles, described: described, query: searchTitleQuery,
             descriptionFirst: describedSearch?.readsAsDescription == true || searchTitleQuery != query,
-            id: \.tmdbId, name: \.title, votes: \.voteCount, date: \.airOrReleaseDate
+            id: \.tmdbId, name: \.title, votes: \.voteCount, date: \.airOrReleaseDate, popularity: \.popularity
         )
     }
 
@@ -745,8 +752,8 @@ final class DiscoverViewModel {
         // Interpreted after the title results land (they're shown meanwhile) — see
         // `WatchlistSearchView.performSearch`.
         let best = SearchRanking.bestTitleMatch(
-            tvShow: tv.results.first.map { ($0.name, $0.voteCount, $0.firstAirDate) },
-            movie: movie.results.first.map { ($0.title, $0.voteCount, $0.releaseDate) }, query: query
+            tvShow: tv.results.first.map { ($0.name, $0.voteCount, $0.firstAirDate, $0.popularity) },
+            movie: movie.results.first.map { ($0.title, $0.voteCount, $0.releaseDate, $0.popularity) }, query: query
         )
         let titleMatch = best.match
         let interpreted = await DescriptiveSearch.run(

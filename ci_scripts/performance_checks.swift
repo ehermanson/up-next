@@ -9,13 +9,13 @@ nonisolated struct TMDBTVShowSearchResult {
     let id: Int
     var name: String { "TV \(id)" }
     var posterPath: String? { nil }; var overview: String? { nil }
-    var voteAverage: Double? { nil }; var firstAirDate: String? { nil }; var voteCount: Int? { nil }
+    var voteAverage: Double? { nil }; var firstAirDate: String? { nil }; var voteCount: Int? { nil }; var popularity: Double? { nil }
 }
 nonisolated struct TMDBMovieSearchResult {
     let id: Int
     var title: String { "Movie \(id)" }
     var posterPath: String? { nil }; var overview: String? { nil }
-    var voteAverage: Double? { nil }; var releaseDate: String? { nil }; var voteCount: Int? { nil }
+    var voteAverage: Double? { nil }; var releaseDate: String? { nil }; var voteCount: Int? { nil }; var popularity: Double? { nil }
 }
 nonisolated struct TMDBTVShowSearchResponse { let results: [TMDBTVShowSearchResult]; let totalPages: Int? }
 nonisolated struct TMDBMovieSearchResponse { let results: [TMDBMovieSearchResult]; let totalPages: Int? }
@@ -24,7 +24,8 @@ nonisolated struct Detail { let nextEpisodeToAir: Episode? }
 func episodeCode(season: Int, episode: Int) -> String { "S\(season)E\(episode)" }
 enum SearchRanking {
     enum TitleMatch: Comparable { case none, strong, exact }
-    static func bestTitleMatch(tvShow: (name: String, votes: Int?, date: String?)?, movie: (name: String, votes: Int?, date: String?)?,
+    static func bestTitleMatch(tvShow: (name: String, votes: Int?, date: String?, popularity: Double?)?,
+                               movie: (name: String, votes: Int?, date: String?, popularity: Double?)?,
                                query: String) -> (match: TitleMatch, votes: Int?) { (.none, nil) }
 }
 enum SearchModel {
@@ -46,7 +47,7 @@ enum DescriptiveSearch {
     struct Layout<Item> { var leadingTitles: [Item] = []; var described: [Item] = []; var trailingTitles: [Item] = [] }
     static func layout<Item>(titles: [Item], described: [Item], query: String, descriptionFirst: Bool,
                              id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?,
-                             date: (Item) -> String?) -> Layout<Item> {
+                             date: (Item) -> String?, popularity: (Item) -> Double?) -> Layout<Item> {
         Layout(leadingTitles: titles, described: described)
     }
     static func run(query: String, titleMatch: SearchRanking.TitleMatch, titleVotes: Int? = nil, mediaType: MediaType? = nil,
