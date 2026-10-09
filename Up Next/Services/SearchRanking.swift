@@ -42,6 +42,31 @@ enum SearchRanking {
         return titleMatch + popularity + votes
     }
 
+    /// How surely the user typed a name: `.exact` when the title is the query, `.strong` when it
+    /// starts with the query or the query starts with a title of two or more words plus extra
+    /// words ("the office us"). One-word titles don't count that way — "zombie movies" isn't a
+    /// name just because a film is called *Zombie* — and nor does a title hardly anyone has rated:
+    /// TMDB has a "Dinosaur Movies" with a handful of votes.
+    enum TitleMatch: Comparable {
+        case none, strong, exact
+    }
+
+    static let knownTitleVoteCount = 20
+
+    static func titleMatch(_ title: String, query: String, voteCount: Int?) -> TitleMatch {
+        guard (voteCount ?? 0) >= knownTitleVoteCount else { return .none }
+        let title = normalized(title), query = normalized(query)
+        let score = matchScore(title: title, query: query)
+        if score >= 4 { return .exact }
+        if score >= 2.5 || (title.contains(" ") && query.hasPrefix(title + " ")) { return .strong }
+        return .none
+    }
+
+    /// True for any `titleMatch` above `.none` — the user most likely typed a name.
+    static func isStrongTitleMatch(_ title: String, query: String, voteCount: Int?) -> Bool {
+        titleMatch(title, query: query, voteCount: voteCount) != .none
+    }
+
     /// Tiers, best first: exact title → title starts with the query → the query appears at a
     /// word boundary ("fear the walk…") → every query token prefixes some title token in any
     /// order ("walk the prank" for "the walk") → nothing.

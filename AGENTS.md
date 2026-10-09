@@ -63,6 +63,7 @@ Up Next/
 │   ├── TMDBService.swift            TMDB client: search, details, providers, discover, aliases, retries, response cache
 │   ├── TMDBModels.swift             Codable TMDB types
 │   ├── SearchRanking.swift          Client-side re-rank of /search
+│   ├── DescriptiveSearch.swift      "hulu hockey comedy" → /discover filters (services, genres, type, years, TMDB keywords)
 │   ├── JevRecommendationService.swift  TypeSafe/Jev scoring client with disk cache + TMDB fallback
 │   ├── CollectionIdeas.swift        Suggested collection names + the TMDB /discover query that seeds each while empty
 │   ├── LegacyStoreReader.swift / LegacyImporter.swift   1.x SQLite reader + one-time importer
