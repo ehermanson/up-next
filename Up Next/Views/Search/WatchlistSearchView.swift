@@ -715,8 +715,9 @@ struct WatchlistSearchView: View {
         case .movies: .movie
         case .all, .specificList: nil
         }
+        let reading = await modelReading
         let interpreted = await DescriptiveSearch.run(
-            query: query, titleMatch: titleMatch, titleVotes: best.votes, mediaType: scopedType, reading: await modelReading
+            query: query, titleMatch: titleMatch, titleVotes: best.votes, mediaType: scopedType, reading: reading
         )
         guard !Task.isCancelled else { return }
         let previousType = describedResults?.interpretation.mediaType
@@ -728,7 +729,7 @@ struct WatchlistSearchView: View {
         }
         // "the bear hulu": the whole query matched no title, but its name part does.
         if titleMatch == .none, let found = await DescriptiveSearch.remainderTitleSearch(
-            query: query, besideSection: !(interpreted?.isEmpty ?? true)
+            query: query, besideSection: !(interpreted?.isEmpty ?? true), reading: reading
         ) {
             guard !Task.isCancelled else { return }
             tvShowResults = found.tvShows

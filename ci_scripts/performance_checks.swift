@@ -52,7 +52,7 @@ enum DescriptiveSearch {
     }
     static func run(query: String, titleMatch: SearchRanking.TitleMatch, titleVotes: Int? = nil, mediaType: MediaType? = nil,
                     reading: SearchModel.Reading? = nil) async -> Results? { nil }
-    static func remainderTitleSearch(query: String, besideSection: Bool) async -> (remainder: String, tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? { nil }
+    static func remainderTitleSearch(query: String, besideSection: Bool, reading: SearchModel.Reading? = nil) async -> (remainder: String, tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? { nil }
 }
 @Observable final class ProviderSettings {
     static let shared = ProviderSettings()

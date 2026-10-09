@@ -756,8 +756,9 @@ final class DiscoverViewModel {
             movie: movie.results.first.map { ($0.title, $0.voteCount, $0.releaseDate, $0.popularity) }, query: query
         )
         let titleMatch = best.match
+        let reading = await modelReading
         let interpreted = await DescriptiveSearch.run(
-            query: query, titleMatch: titleMatch, titleVotes: best.votes, reading: await modelReading
+            query: query, titleMatch: titleMatch, titleVotes: best.votes, reading: reading
         )
         guard !Task.isCancelled else { return }
         let previousType = describedSearchResults?.interpretation.mediaType
@@ -769,7 +770,7 @@ final class DiscoverViewModel {
         }
         // "the bear hulu": the whole query matched no title, but its name part does.
         if titleMatch == .none, let found = await DescriptiveSearch.remainderTitleSearch(
-            query: query, besideSection: !(interpreted?.isEmpty ?? true)
+            query: query, besideSection: !(interpreted?.isEmpty ?? true), reading: reading
         ) {
             guard !Task.isCancelled else { return }
             searchTVResults = found.tvShows
