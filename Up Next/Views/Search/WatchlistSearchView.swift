@@ -229,6 +229,7 @@ struct WatchlistSearchView: View {
                 }
             }
             .task {
+                SearchModel.prewarm()
                 loadRecommendations()
             }
             .onDisappear {
@@ -334,86 +335,66 @@ struct WatchlistSearchView: View {
 
     // MARK: - Results
 
-    /// The title search's best hit for the type on screen is the name the user typed — then the
-    /// title matches lead and the described section follows.
-    private var titleMatchIsStrong: Bool {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if effectiveMediaType == .tvShow {
-            return tvShowResults.first.map { SearchRanking.isStrongTitleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? false
-        }
-        return movieResults.first.map { SearchRanking.isStrongTitleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? false
+    private var trimmedQuery: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Title matches and the described section in list order (see `DescriptiveSearch.layout`).
+    private var tvLayout: DescriptiveSearch.Layout<TMDBTVShowSearchResult> {
+        DescriptiveSearch.layout(
+            titles: tvShowResults, described: described?.tvShows ?? [], query: trimmedQuery,
+            readsAsDescription: described?.readsAsDescription == true,
+            id: \.id, name: \.name, votes: \.voteCount
+        )
     }
 
-    private var describedLeads: Bool { !titleMatchIsStrong }
-
-    // A title can match both ways; it's listed only in whichever section comes first.
-    private var titleTVRows: [TMDBTVShowSearchResult] {
-        guard describedLeads, let described else { return tvShowResults }
-        let shown = Set(described.tvShows.map(\.id))
-        return tvShowResults.filter { !shown.contains($0.id) }
-    }
-
-    private var titleMovieRows: [TMDBMovieSearchResult] {
-        guard describedLeads, let described else { return movieResults }
-        let shown = Set(described.movies.map(\.id))
-        return movieResults.filter { !shown.contains($0.id) }
-    }
-
-    private var describedTVRows: [TMDBTVShowSearchResult] {
-        guard let described else { return [] }
-        guard !describedLeads else { return described.tvShows }
-        let shown = Set(tvShowResults.map(\.id))
-        return described.tvShows.filter { !shown.contains($0.id) }
-    }
-
-    private var describedMovieRows: [TMDBMovieSearchResult] {
-        guard let described else { return [] }
-        guard !describedLeads else { return described.movies }
-        let shown = Set(movieResults.map(\.id))
-        return described.movies.filter { !shown.contains($0.id) }
-    }
-
-    private var hasTitleRows: Bool {
-        effectiveMediaType == .tvShow ? !titleTVRows.isEmpty : !titleMovieRows.isEmpty
+    private var movieLayout: DescriptiveSearch.Layout<TMDBMovieSearchResult> {
+        DescriptiveSearch.layout(
+            titles: movieResults, described: described?.movies ?? [], query: trimmedQuery,
+            readsAsDescription: described?.readsAsDescription == true,
+            id: \.id, name: \.title, votes: \.voteCount
+        )
     }
 
     private var hasDescribedRows: Bool {
-        effectiveMediaType == .tvShow ? !describedTVRows.isEmpty : !describedMovieRows.isEmpty
+        effectiveMediaType == .tvShow ? !tvLayout.described.isEmpty : !movieLayout.described.isEmpty
     }
 
+    private var hasTitleRows: Bool {
+        if effectiveMediaType == .tvShow {
+            return !tvLayout.leadingTitles.isEmpty || !tvLayout.trailingTitles.isEmpty
+        }
+        return !movieLayout.leadingTitles.isEmpty || !movieLayout.trailingTitles.isEmpty
+    }
+
+    /// Title headings appear only beside a described section; titles it pushed below are "More".
     @ViewBuilder
     private var resultRows: some View {
-        if describedLeads {
-            describedSection
-            titleSection
-        } else {
-            titleSection
-            describedSection
-        }
-    }
-
-    @ViewBuilder
-    private var titleSection: some View {
-        if hasTitleRows && hasDescribedRows {
-            sectionHeaderRow("Title Matches", systemImage: "textformat", id: "titleHeader")
-        }
         if effectiveMediaType == .tvShow {
-            ForEach(titleTVRows) { tvShowRow($0) }
+            resultBlocks(tvLayout, id: \.id) { tvShowRow($0, sourcePrefix: $1) }
         } else {
-            ForEach(titleMovieRows) { movieRow($0) }
+            resultBlocks(movieLayout, id: \.id) { movieRow($0, sourcePrefix: $1) }
         }
     }
 
-    /// Zoom sources are prefixed — the same title can sit in both sections.
+    /// `row` gets a zoom-source prefix — the same title can sit in two blocks.
     @ViewBuilder
-    private var describedSection: some View {
-        if hasDescribedRows, let described {
-            sectionHeaderRow(described.summary(for: effectiveMediaType), systemImage: "text.magnifyingglass", id: "describedHeader")
-            if effectiveMediaType == .tvShow {
-                ForEach(describedTVRows) { tvShowRow($0, sourcePrefix: "described-") }
-            } else {
-                ForEach(describedMovieRows) { movieRow($0, sourcePrefix: "described-") }
+    private func resultBlocks<Item, Row: View>(
+        _ layout: DescriptiveSearch.Layout<Item>, id: KeyPath<Item, Int>,
+        @ViewBuilder row: @escaping (Item, String) -> Row
+    ) -> some View {
+        if !layout.leadingTitles.isEmpty {
+            if !layout.described.isEmpty {
+                sectionHeaderRow("Title Matches", systemImage: "textformat", id: "leadingTitlesHeader")
             }
+            ForEach(layout.leadingTitles, id: id) { row($0, "") }
+        }
+        if !layout.described.isEmpty, let described {
+            sectionHeaderRow(described.summary(for: effectiveMediaType), systemImage: "text.magnifyingglass", id: "describedHeader")
+            ForEach(layout.described, id: id) { row($0, "described-") }
+        }
+        if !layout.trailingTitles.isEmpty {
+            sectionHeaderRow(layout.leadingTitles.isEmpty ? "Title Matches" : "More Title Matches",
+                             systemImage: "textformat", id: "trailingTitlesHeader")
+            ForEach(layout.trailingTitles, id: id) { row($0, "") }
         }
     }
 
@@ -702,6 +683,8 @@ struct WatchlistSearchView: View {
         // the response cache.
         async let tvFetch = fetchTVShowResults(query: query)
         async let movieFetch = fetchMovieResults(query: query)
+        // The on-device model reads the query alongside the title search (see `SearchModel`).
+        async let modelReading = SearchModel.read(query)
         let (tv, movies) = await (tvFetch, movieFetch)
 
         // The shared request task isn't cancelled by us, so check explicitly after the awaits —
@@ -727,7 +710,9 @@ struct WatchlistSearchView: View {
         case .movies: .movie
         case .all, .specificList: nil
         }
-        let interpreted = await DescriptiveSearch.run(query: query, titleMatch: titleMatch, mediaType: scopedType)
+        let interpreted = await DescriptiveSearch.run(
+            query: query, titleMatch: titleMatch, mediaType: scopedType, reading: await modelReading
+        )
         guard !Task.isCancelled else { return }
         let previousType = describedResults?.interpretation.mediaType
         describedResults = interpreted

@@ -14,6 +14,7 @@ enum MediaType: CustomStringConvertible {
 }
 nonisolated struct TMDBKeyword: Codable, Sendable { let id: Int; let name: String }
 nonisolated struct TMDBKeywordPage: Codable, Sendable { let results: [TMDBKeyword] }
+nonisolated struct TitleKeywordsPage: Codable, Sendable { let results: [TMDBKeyword]?; let keywords: [TMDBKeyword]? }
 nonisolated struct TMDBTVShowSearchResult: Codable, Sendable {
     let id: Int; let name: String; let originalName: String?; let popularity: Double?; let voteCount: Int?
     let genreIds: [Int]?; let firstAirDate: String?
@@ -91,6 +92,10 @@ final class TMDBService {
     func searchKeywords(query: String) async throws -> [TMDBKeyword] {
         let page: TMDBKeywordPage = try await get("/search/keyword", ["query": query]); return page.results
     }
+    func titleKeywords(id: Int, isTVShow: Bool) async throws -> [TMDBKeyword] {
+        let page: TitleKeywordsPage = try await get("/\(isTVShow ? "tv" : "movie")/\(id)/keywords", [:])
+        return page.results ?? page.keywords ?? []
+    }
     func searchPeople(query: String) async throws -> [TMDBPersonSearchResult] {
         let page: PersonPage = try await get("/search/person", ["query": query]); return page.results
     }
@@ -144,11 +149,13 @@ enum Expectation {
 struct Case {
     let query: String
     let expectations: [Expectation]
-    /// Why it fails today, if it's a known gap.
+    /// Why it fails today, if it's a known gap. A case that `needsModel` is a gap only when the
+    /// on-device model isn't in use; with it, it's a regular case.
     var gap: String?
 
-    init(_ query: String, _ expectations: Expectation..., gap: String? = nil) {
-        self.query = query; self.expectations = expectations; self.gap = gap
+    init(_ query: String, _ expectations: Expectation..., gap: String? = nil, needsModel: Bool = false) {
+        self.query = query; self.expectations = expectations
+        self.gap = gap ?? (needsModel && !usesModel ? "needs the on-device model" : nil)
     }
 }
 
@@ -195,27 +202,30 @@ let cases: [Case] = [
     Case("arrow", .noSection, .finds(["Arrow"], .tvShow, top: 1)),
     Case("war", .finds(["War"], .movie, top: 3)),
     Case("the office us", .noSection),
-    // Known gaps — the to-do list
+    // A service or type word plus a name
     Case("hulu shoresy", .finds(["Shoresy"], .tvShow, top: 3)),
     Case("breaking bad netflix", .finds(["Breaking Bad"], .tvShow, top: 3)),
-    Case("zombies", .finds(["The Walking Dead", "World War Z", "Zombieland"], .movie),
-         gap: "keyword-only query that's also a title (Zombies) isn't interpreted"),
+    // The on-device model's cases
+    Case("zombies", .finds(["The Walking Dead", "World War Z", "Zombieland"], .movie), needsModel: true),
+    Case("movie where a guy relives the same day", .finds(["Groundhog Day", "Palm Springs", "Edge of Tomorrow"], .movie), needsModel: true),
+    Case("cozy mystery shows", .finds(["Only Murders in the Building", "Murder, She Wrote", "Poker Face", "Death in Paradise"], .tvShow), needsModel: true),
+    Case("sports dramedy", .finds(["Ted Lasso", "Shoresy", "Friday Night Lights"], .tvShow), needsModel: true),
+    // People, origins, "like X"
     Case("tom hanks movies", .finds(["Forrest Gump", "Cast Away", "Saving Private Ryan", "Toy Story"], .movie)),
     Case("christopher nolan", .finds(["Inception", "Oppenheimer", "Interstellar", "The Dark Knight"], .movie)),
     Case("zendaya", .finds(["Euphoria"], .tvShow)),
     Case("tom hanks comedies", .finds(["Big", "Splash", "The Money Pit", "You've Got Mail", "Sleepless in Seattle", "Toy Story"], .movie)),
-    Case("shows like ted lasso", .finds(["Shrinking", "Schitt's Creek", "Abbott Elementary", "Ghosts", "The Good Place"], .tvShow),
-         gap: "TMDB's recommendations match the sport, not the tone (Ballers, Shoresy) — a Jev or model re-rank"),
+    // Known gaps — the to-do list
+    Case("shows like ted lasso", .finds(["Shrinking", "Schitt's Creek", "Abbott Elementary", "Ghosts", "The Good Place"], .tvShow), needsModel: true),
     Case("movies like inception", .finds(["Interstellar", "Tenet", "The Matrix", "Shutter Island", "The Prestige"], .movie)),
+    Case("shows like breaking bad", .finds(["Better Call Saul", "Ozark", "Narcos", "The Sopranos", "Weeds"], .tvShow, top: 5)),
+    Case("shows like fleabag", .finds(["Catastrophe", "Insecure", "Russian Doll", "Dead to Me", "I May Destroy You", "Girls", "Crashing", "Killing Eve", "Normal People"], .tvShow)),
+    Case("shows like severance", .finds(["Black Mirror", "Silo", "Mr. Robot", "Dark", "Westworld", "The Leftovers", "Pluribus", "Devs", "Fringe"], .tvShow), needsModel: true),
     Case("something similar to the bear", .finds(["Boiling Point", "Kitchen Confidential", "Shrinking", "Hacks", "Somebody Somewhere", "The Rehearsal", "Beef"], .tvShow, top: 20)),
     Case("show about a chemistry teacher who makes meth", .finds(["Breaking Bad"], .tvShow),
-         gap: "plot recall needs a model"),
-    Case("movie where a guy relives the same day", .finds(["Groundhog Day", "Palm Springs", "Edge of Tomorrow"], .movie),
-         gap: "plot recall needs a model"),
-    Case("cozy mystery shows", .finds(["Only Murders in the Building", "Murder, She Wrote", "Poker Face", "Death in Paradise"], .tvShow),
-         gap: "mood words aren't TMDB keywords"),
-    Case("sports dramedy", .finds(["Ted Lasso", "Shoresy", "Friday Night Lights"], .tvShow),
-         gap: "\"sports\" and \"dramedy\" aren't TMDB keywords"),
+         gap: "Apple's guardrails refuse the description (\"meth\"), so the model can't help"),
+    Case("show about a guy who inherits a minor league hockey team", .finds(["Shoresy"], .tvShow),
+         gap: "the model doesn't know Shoresy; the rules AND too many keywords"),
     Case("korean dramas", .finds(["Squid Game", "Crash Landing on You", "Goblin", "Extraordinary Attorney Woo", "When Life Gives You Tangerines"], .tvShow)),
     Case("british crime shows", .finds(["Sherlock", "Line of Duty", "Peaky Blinders", "Luther", "Happy Valley", "Broadchurch"], .tvShow)),
     Case("japanese horror movies", .finds(["Ringu", "Ju-on: The Grudge", "Audition", "Dark Water", "Kairo", "Exit 8", "Dollhouse"], .movie)),
@@ -224,8 +234,11 @@ let cases: [Case] = [
 // MARK: - Running
 
 /// What the app would show for one query: per type, the rows in on-screen order.
+let usesModel = SearchModel.isAvailable
+
 struct Outcome {
     var rows: [MediaType: [String]] = [:]
+    var reading: SearchModel.Reading?
     var described: DescriptiveSearch.Results?
     var titleMatch = SearchRanking.TitleMatch.none
 
@@ -241,30 +254,31 @@ func outcome(for query: String) async -> Outcome {
     let service = TMDBService.shared
     async let tvTitles = (try? service.searchTVShows(query: query)) ?? []
     async let movieTitles = (try? service.searchMovies(query: query)) ?? []
+    async let modelReading = usesModel ? SearchModel.read(query) : nil
     var (tv, movies) = await (tvTitles, movieTitles)
     var outcome = Outcome()
+    outcome.reading = await modelReading
     outcome.titleMatch = max(
         tv.first.map { SearchRanking.titleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? .none,
         movies.first.map { SearchRanking.titleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? .none
     )
-    outcome.described = await DescriptiveSearch.run(query: query, titleMatch: outcome.titleMatch)
+    outcome.described = await DescriptiveSearch.run(query: query, titleMatch: outcome.titleMatch, reading: outcome.reading)
     if outcome.titleMatch == .none, outcome.described?.isEmpty ?? true,
        let found = await DescriptiveSearch.remainderTitleSearch(query: query) {
         (tv, movies) = (found.tvShows, found.movies)
     }
 
-    // Same order and dedupe as the add sheet / Discover: the described section leads unless the
-    // type's top title hit is a strong match, and a title is listed only in the first section.
-    func arrange(titles: [(Int, String)], topVotes: Int?, described: [(Int, String)]) -> [String] {
-        let leads = !(titles.first.map { SearchRanking.isStrongTitleMatch($0.1, query: query, voteCount: topVotes) } ?? false)
-        let (first, second) = leads ? (described, titles) : (titles, described)
-        let shown = Set(first.map(\.0))
-        return (first + second.filter { !shown.contains($0.0) }).map(\.1)
+    // Same order as the add sheet and Discover.
+    func rows<Item>(_ layout: DescriptiveSearch.Layout<Item>, _ name: (Item) -> String) -> [String] {
+        (layout.leadingTitles + layout.described + layout.trailingTitles).map(name)
     }
-    outcome.rows[.tvShow] = arrange(titles: tv.map { ($0.id, $0.name) }, topVotes: tv.first?.voteCount,
-                                    described: outcome.described?.tvShows.map { ($0.id, $0.name) } ?? [])
-    outcome.rows[.movie] = arrange(titles: movies.map { ($0.id, $0.title) }, topVotes: movies.first?.voteCount,
-                                   described: outcome.described?.movies.map { ($0.id, $0.title) } ?? [])
+    let readsAsDescription = outcome.described?.readsAsDescription == true
+    outcome.rows[.tvShow] = rows(DescriptiveSearch.layout(
+        titles: tv, described: outcome.described?.tvShows ?? [], query: query, readsAsDescription: readsAsDescription,
+        id: \.id, name: \.name, votes: \.voteCount), \.name)
+    outcome.rows[.movie] = rows(DescriptiveSearch.layout(
+        titles: movies, described: outcome.described?.movies ?? [], query: query, readsAsDescription: readsAsDescription,
+        id: \.id, name: \.title, votes: \.voteCount), \.title)
     return outcome
 }
 
@@ -301,6 +315,12 @@ struct SearchChecks {
             total += 1
             let result = await outcome(for: testCase.query)
             let failures = testCase.expectations.compactMap { failure($0, result) }
+            if ProcessInfo.processInfo.environment["SEARCH_VERBOSE"] != nil {
+                print("\(testCase.query) [\(result.described.map { $0.summary(for: .tvShow) } ?? "no section")]")
+                for type in [MediaType.tvShow, .movie] where !(result.rows[type] ?? []).isEmpty {
+                    print("    \(type): \(result.rows[type]!.prefix(8).joined(separator: ", "))")
+                }
+            }
             switch (failures.isEmpty, testCase.gap) {
             case (true, nil):
                 passed += 1
@@ -312,13 +332,15 @@ struct SearchChecks {
                 regressions.append(testCase.query)
                 print("✗ \(testCase.query)")
                 failures.forEach { print("    \($0)") }
+                if let reading = result.reading { print("    model: \(reading.isTitleName ? "name" : "description") \(reading.titles)") }
             case (false, .some(let reason)):
                 gaps += 1
                 print("· \(testCase.query) — gap: \(reason)")
                 failures.forEach { print("    \($0)") }
+                if let reading = result.reading { print("    model: \(reading.isTitleName ? "name" : "description") \(reading.titles)") }
             }
         }
-        print("\nSearch checks: \(passed)/\(total) pass · \(gaps) known gaps · \(regressions.count) regressions · \(TMDBService.shared.requestCount) TMDB requests")
+        print("\nSearch checks (\(usesModel ? "with" : "without") on-device model): \(passed)/\(total) pass · \(gaps) known gaps · \(regressions.count) regressions · \(TMDBService.shared.requestCount) TMDB requests")
         if !promoted.isEmpty { print("Now passing: \(promoted.joined(separator: ", "))") }
         exit(regressions.isEmpty ? 0 : 1)
     }

@@ -35,6 +35,12 @@ nonisolated struct TMDBKeywordSearchResponse: Codable, Sendable {
     let results: [TMDBKeyword]
 }
 
+/// `/tv/{id}/keywords` lists them under `results`, `/movie/{id}/keywords` under `keywords`.
+nonisolated struct TMDBTitleKeywordsResponse: Codable, Sendable {
+    let results: [TMDBKeyword]?
+    let keywords: [TMDBKeyword]?
+}
+
 // MARK: - People Search
 
 /// A `/search/person` hit — `DescriptiveSearch` reads queries that name someone ("tom hanks

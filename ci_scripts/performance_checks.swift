@@ -27,6 +27,11 @@ enum SearchRanking {
     static func titleMatch(_ title: String, query: String, voteCount: Int?) -> TitleMatch { .none }
     static func isStrongTitleMatch(_ title: String, query: String, voteCount: Int?) -> Bool { false }
 }
+enum SearchModel {
+    struct Reading {}
+    static func prewarm() {}
+    static func read(_ query: String) async -> Reading? { nil }
+}
 enum DescriptiveSearch {
     struct Interpretation { var mediaType: MediaType? }
     struct Results {
@@ -35,9 +40,16 @@ enum DescriptiveSearch {
         let tvShows: [TMDBTVShowSearchResult]
         let movies: [TMDBMovieSearchResult]
         var isEmpty: Bool { tvShows.isEmpty && movies.isEmpty }
+        var readsAsDescription: Bool { false }
         func summary(for mediaType: MediaType) -> String { "" }
     }
-    static func run(query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType? = nil) async -> Results? { nil }
+    struct Layout<Item> { var leadingTitles: [Item] = []; var described: [Item] = []; var trailingTitles: [Item] = [] }
+    static func layout<Item>(titles: [Item], described: [Item], query: String, readsAsDescription: Bool,
+                             id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?) -> Layout<Item> {
+        Layout(leadingTitles: titles, described: described)
+    }
+    static func run(query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType? = nil,
+                    reading: SearchModel.Reading? = nil) async -> Results? { nil }
     static func remainderTitleSearch(query: String) async -> (tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])? { nil }
 }
 @Observable final class ProviderSettings {

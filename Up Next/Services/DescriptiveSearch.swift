@@ -48,6 +48,7 @@ enum DescriptiveSearch {
         let title: String
         let id: Int
         let mediaType: MediaType
+        var genreIDs: [Int] = []
     }
 
     struct Provider: Equatable {
@@ -97,7 +98,8 @@ enum DescriptiveSearch {
             if !providers.isEmpty {
                 parts.append("On " + providers.map(\.name).joined(separator: " or "))
             }
-            return parts.joined(separator: " · ")
+            // Only the model's guesses, nothing the rules could name.
+            return parts.isEmpty ? "Suggested Titles" : parts.joined(separator: " · ")
         }
     }
 
@@ -109,6 +111,9 @@ enum DescriptiveSearch {
         let movies: [TMDBMovieSearchResult]
         fileprivate(set) var tvMatchedAny = false
         fileprivate(set) var moviesMatchedAny = false
+        /// The on-device model read the query as a description, not a name — so this section
+        /// leads even over a title that matches it exactly ("zombies" over *Zombies*).
+        fileprivate(set) var readsAsDescription = false
 
         var isEmpty: Bool { tvShows.isEmpty && movies.isEmpty }
 
@@ -135,9 +140,119 @@ enum DescriptiveSearch {
     /// a title ("zombies") isn't interpreted — "zombie movies" is.
     ///
     /// `mediaType` limits the fetch to one type (an add sheet scoped to TV or movies).
+    ///
+    /// `reading` is the on-device model's take (`SearchModel`), nil where it's unavailable. Its
+    /// name-or-description call overrides `titleMatch` when it says description, and its title
+    /// guesses that check out (`verifiedTitles`) lead the section — unless the query carries
+    /// filters a guess might not meet: a service, a year, an origin, a person or "like X".
     static func run(
         query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType? = nil,
-        service: TMDBService = .shared
+        reading: SearchModel.Reading? = nil, service: TMDBService = .shared
+    ) async -> Results? {
+        let readsAsDescription = reading?.isTitleName == false
+        async let ruled = interpret(
+            query: query, titleMatch: readsAsDescription ? .none : titleMatch, mediaType: mediaType, service: service
+        )
+        async let verified = verifiedTitles(readsAsDescription ? reading?.titles ?? [] : [], service: service)
+        let (rules, guesses) = await (ruled, verified)
+        guard !Task.isCancelled else { return nil }
+
+        var results = rules
+        results?.readsAsDescription = readsAsDescription
+        // The query's own words, for filters a guess might not meet even when the rules came up
+        // empty ("hulu shoresy" — guesses aren't checked against Hulu), and for the type and
+        // genre words that do apply to guesses ("cozy mystery shows").
+        let words = parse(query, regionProviders: [], selectedProviderIDs: []).interpretation
+        for interpretation in [words, rules?.interpretation].compactMap({ $0 })
+        where !interpretation.providers.isEmpty || (interpretation.years != nil && !interpretation.yearsAreVague)
+            || interpretation.origin != nil || interpretation.person != nil || interpretation.reference != nil {
+            return results
+        }
+        let type = mediaType ?? words.mediaType
+        let tvGuesses = type == .movie
+            ? [] : narrowed(guesses.tvShows, words, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate)
+        let movieGuesses = type == .tvShow
+            ? [] : narrowed(guesses.movies, words, .movie, genreIDs: \.genreIds, date: \.releaseDate)
+        guard !tvGuesses.isEmpty || !movieGuesses.isEmpty else { return results }
+
+        let tvIDs = Set(tvGuesses.map(\.id)), movieIDs = Set(movieGuesses.map(\.id))
+        var merged = Results(
+            query: query, interpretation: rules?.interpretation ?? words,
+            tvShows: tvGuesses + (rules?.tvShows ?? []).filter { !tvIDs.contains($0.id) },
+            movies: movieGuesses + (rules?.movies ?? []).filter { !movieIDs.contains($0.id) }
+        )
+        merged.tvMatchedAny = rules?.tvMatchedAny ?? false
+        merged.moviesMatchedAny = rules?.moviesMatchedAny ?? false
+        merged.readsAsDescription = readsAsDescription
+        return merged
+    }
+
+    // MARK: - Layout
+
+    /// How the title matches and the described section share one list: titles, the section,
+    /// then any titles it pushed down. Each title appears once, in the first block that has it.
+    struct Layout<Item> {
+        var leadingTitles: [Item] = []
+        var described: [Item] = []
+        var trailingTitles: [Item] = []
+    }
+
+    /// - No confident title match: the section leads.
+    /// - The query starts a title's name ("the office us"): the titles lead — unless the model
+    ///   read a description, then the section does.
+    /// - A title is exactly the query: the titles lead — unless the model read a description
+    ///   ("zombies"), then only the exact title leads, the section follows, and the rest of the
+    ///   title matches come after it. *Zombies* stays first; zombie titles are right below.
+    static func layout<Item>(
+        titles: [Item], described: [Item], query: String, readsAsDescription: Bool,
+        id: (Item) -> Int, name: (Item) -> String, votes: (Item) -> Int?
+    ) -> Layout<Item> {
+        func match(_ item: Item) -> SearchRanking.TitleMatch {
+            SearchRanking.titleMatch(name(item), query: query, voteCount: votes(item))
+        }
+        func removing(_ items: [Item], from list: [Item]) -> [Item] {
+            let ids = Set(items.map(id))
+            return list.filter { !ids.contains(id($0)) }
+        }
+        guard !described.isEmpty else { return Layout(leadingTitles: titles) }
+        switch (titles.first.map(match) ?? .none, readsAsDescription) {
+        case (.none, _), (.strong, true):
+            return Layout(described: described, trailingTitles: removing(described, from: titles))
+        case (.exact, true):
+            let exact = titles.filter { match($0) == .exact }
+            let section = removing(exact, from: described)
+            return Layout(leadingTitles: exact, described: section,
+                          trailingTitles: removing(exact + section, from: titles))
+        case (.strong, false), (.exact, false):
+            return Layout(leadingTitles: titles, described: removing(titles, from: described))
+        }
+    }
+
+    /// The model's guesses that a title search finds by exactly that name among titles people
+    /// know (`SearchRanking.knownTitleVoteCount`) — it invents some ("Minor League", "Hockey").
+    private static func verifiedTitles(
+        _ guesses: [String], service: TMDBService
+    ) async -> (tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult]) {
+        guard !guesses.isEmpty, !Task.isCancelled else { return ([], []) }
+        let found = await concurrentMap(Array(guesses.prefix(5))) { guess -> (TMDBTVShowSearchResult?, TMDBMovieSearchResult?) in
+            async let tv = try? service.searchTVShows(query: guess)
+            async let movies = try? service.searchMovies(query: guess)
+            let (shows, films) = await (tv ?? [], movies ?? [])
+            return (
+                shows.first { SearchRanking.titleMatch($0.name, query: guess, voteCount: $0.voteCount) == .exact },
+                films.first { SearchRanking.titleMatch($0.title, query: guess, voteCount: $0.voteCount) == .exact }
+            )
+        }
+        var tvSeen = Set<Int>(), movieSeen = Set<Int>()
+        return (
+            found.compactMap(\.0).filter { tvSeen.insert($0.id).inserted },
+            found.compactMap(\.1).filter { movieSeen.insert($0.id).inserted }
+        )
+    }
+
+    /// The rules alone — `run` without the model.
+    private static func interpret(
+        query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType?, service: TMDBService
     ) async -> Results? {
         let selected = ProviderSettings.shared.selectedProviderIDs
         // Names for the user's own services; the majors have built-in names.
@@ -231,10 +346,15 @@ enum DescriptiveSearch {
         _ interpretation: Interpretation, region: String, service: TMDBService
     ) async -> (results: [TMDBTVShowSearchResult], matchedAny: Bool) {
         if let reference = interpretation.reference {
-            guard reference.mediaType == .tvShow,
-                  let recommendations = try? await service.fetchTVRecommendations(id: reference.id) else { return ([], false) }
-            let ranked = rankedByRecognition(recommendations, votes: \.voteCount)
-            return (narrowed(ranked, interpretation, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate), false)
+            guard reference.mediaType == .tvShow else { return ([], false) }
+            let pool = await similarPool(
+                to: reference, service: service,
+                recommendations: { try await service.fetchTVRecommendations(id: reference.id) },
+                discover: { try await service.discoverTVShows(filters: $0) },
+                search: { try await service.searchTVShows(query: $0) },
+                id: \.id, name: \.name, genreIDs: \.genreIds, votes: \.voteCount
+            )
+            return (narrowed(pool, interpretation, .tvShow, genreIDs: \.genreIds, date: \.firstAirDate), false)
         }
         if let person = interpretation.person {
             // Credits can't be checked against a service without a request per show.
@@ -253,25 +373,104 @@ enum DescriptiveSearch {
         _ interpretation: Interpretation, region: String, service: TMDBService
     ) async -> (results: [TMDBMovieSearchResult], matchedAny: Bool) {
         if let reference = interpretation.reference {
-            guard reference.mediaType == .movie,
-                  let recommendations = try? await service.fetchMovieRecommendations(id: reference.id) else { return ([], false) }
-            let ranked = rankedByRecognition(recommendations, votes: \.voteCount)
-            return (narrowed(ranked, interpretation, .movie, genreIDs: \.genreIds, date: \.releaseDate), false)
+            guard reference.mediaType == .movie else { return ([], false) }
+            let pool = await similarPool(
+                to: reference, service: service,
+                recommendations: { try await service.fetchMovieRecommendations(id: reference.id) },
+                discover: { try await service.discoverMovies(filters: $0) },
+                search: { try await service.searchMovies(query: $0) },
+                id: \.id, name: \.title, genreIDs: \.genreIds, votes: \.voteCount
+            )
+            return (narrowed(pool, interpretation, .movie, genreIDs: \.genreIds, date: \.releaseDate), false)
         }
         return await fetch(filters(for: .movie, interpretation, region: region)) {
             try await service.discoverMovies(filters: $0)
         }
     }
 
-    /// TMDB's recommendation order buries the obvious answers — for Inception, *The Matrix* and
-    /// *Interstellar* come 11th and 16th behind *Paycheck*. Someone asking for "movies like X"
-    /// wants titles people have seen, so vote count leads, with TMDB's order as a tiebreak-ish
-    /// penalty (a tenth of a log-vote per place).
-    private static func rankedByRecognition<T>(_ items: [T], votes: (T) -> Int?) -> [T] {
-        items.enumerated()
+    /// "Like X" from three sources, fused by rank so a title more than one of them names rises:
+    ///
+    /// - the on-device model's titles like X in tone (`SearchModel.similarTitles`), kept when a
+    ///   title search finds them exactly — the only source that gets Ted Lasso → *Abbott
+    ///   Elementary*, *Schitt's Creek* rather than more soccer;
+    /// - TMDB's recommendations, re-ranked toward titles people have seen;
+    /// - titles sharing X's keywords — one popularity-sorted discover per keyword, X's genres
+    ///   counting more — strong for plot-led titles (Breaking Bad → *Better Call Saul*, *Narcos*),
+    ///   blind to tone.
+    ///
+    /// Vote count breaks near-ties: someone asking for "like X" wants titles people have seen.
+    private static func similarPool<T: Sendable>(
+        to reference: Reference, service: TMDBService,
+        recommendations: @escaping @Sendable () async throws -> [T],
+        discover: @escaping @Sendable ([String: String]) async throws -> [T],
+        search: @escaping @Sendable (String) async throws -> [T],
+        id: (T) -> Int, name: (T) -> String, genreIDs: (T) -> [Int]?, votes: (T) -> Int?
+    ) async -> [T] {
+        let isTVShow = reference.mediaType == .tvShow
+        async let recommended = (try? recommendations()) ?? []
+        async let neighbours = keywordNeighbours(of: reference, service: service, discover: discover)
+        async let picks: [(guess: String, results: [T])] = {
+            guard let titles = await SearchModel.similarTitles(to: reference.title, isTVShow: isTVShow) else { return [] }
+            return await concurrentMap(Array(titles.prefix(8))) { ($0, (try? await search($0)) ?? []) }
+        }()
+        let (recs, lists, searched) = await (recommended, neighbours, picks)
+        guard !Task.isCancelled else { return [] }
+
+        var score: [Int: Double] = [:]
+        var byID: [Int: T] = [:]
+        func add(_ item: T, _ points: Double) {
+            guard id(item) != reference.id else { return }
+            score[id(item), default: 0] += points
+            byID[id(item)] = byID[id(item)] ?? item
+        }
+        // Each pick is the search result named exactly that, among known titles (see `verifiedTitles`).
+        for (rank, (guess, results)) in searched.enumerated() {
+            if let match = results.first(where: {
+                SearchRanking.titleMatch(name($0), query: guess, voteCount: votes($0)) == .exact
+            }) {
+                add(match, 3 * (1 - Double(rank) / 10))
+            }
+        }
+        // TMDB's own order buries the obvious (Inception → *The Matrix* 11th, *Interstellar* 16th,
+        // behind *Paycheck*); vote count leads, with a tenth of a log-vote per place of TMDB's order.
+        let recognized = recs.enumerated()
             .map { (item: $0.element, score: log1p(Double(votes($0.element) ?? 0)) - Double($0.offset) / 10) }
             .sorted { $0.score > $1.score }
             .map(\.item)
+        for (rank, item) in recognized.prefix(20).enumerated() {
+            add(item, 1.5 * (1 - Double(rank) / 25))
+        }
+        // A title sharing a single keyword with X is mostly a popular title with a generic one
+        // (Severance → *Grey's Anatomy*); it takes two to count.
+        var overlap: [Int: Double] = [:]
+        var hits: [Int: Int] = [:]
+        let referenceGenres = Set(reference.genreIDs)
+        for list in lists {
+            for (rank, item) in list.prefix(20).enumerated() where id(item) != reference.id {
+                let sharesGenre = !referenceGenres.isDisjoint(with: genreIDs(item) ?? [])
+                overlap[id(item), default: 0] += (sharesGenre ? 1 : 0.4) * (1 - Double(rank) / 40)
+                hits[id(item), default: 0] += 1
+                byID[id(item)] = byID[id(item)] ?? item
+            }
+        }
+        overlap = overlap.filter { hits[$0.key, default: 0] >= 2 }
+        let topOverlap = max(overlap.values.max() ?? 0, 1)
+        for (key, value) in overlap { score[key, default: 0] += 1.5 * value / topOverlap }
+        for key in score.keys { score[key, default: 0] += 0.1 * log1p(Double(byID[key].flatMap(votes) ?? 0)) }
+        return score.sorted { $0.value > $1.value }.prefix(20).compactMap { byID[$0.key] }
+    }
+
+    /// For each of X's first dozen keywords, the most popular known titles carrying it.
+    private static func keywordNeighbours<T: Sendable>(
+        of reference: Reference, service: TMDBService,
+        discover: @escaping @Sendable ([String: String]) async throws -> [T]
+    ) async -> [[T]] {
+        guard !Task.isCancelled,
+              let keywords = try? await service.titleKeywords(id: reference.id, isTVShow: reference.mediaType == .tvShow)
+        else { return [] }
+        return await concurrentMap(Array(keywords.prefix(12))) { keyword in
+            (try? await discover(["with_keywords": String(keyword.id), "sort_by": "popularity.desc", "vote_count.gte": "50"])) ?? []
+        }
     }
 
     /// Recommendations and credits can't be filtered server-side, so genres and years are
@@ -322,11 +521,11 @@ enum DescriptiveSearch {
         let (shows, films) = await (tv ?? [], movies ?? [])
         var candidates: [(reference: Reference, match: SearchRanking.TitleMatch, votes: Int)] = []
         if let show = shows.first {
-            candidates.append((Reference(title: show.name, id: show.id, mediaType: .tvShow),
+            candidates.append((Reference(title: show.name, id: show.id, mediaType: .tvShow, genreIDs: show.genreIds ?? []),
                                SearchRanking.titleMatch(show.name, query: query, voteCount: show.voteCount), show.voteCount ?? 0))
         }
         if let film = films.first {
-            candidates.append((Reference(title: film.title, id: film.id, mediaType: .movie),
+            candidates.append((Reference(title: film.title, id: film.id, mediaType: .movie, genreIDs: film.genreIds ?? []),
                                SearchRanking.titleMatch(film.title, query: query, voteCount: film.voteCount), film.voteCount ?? 0))
         }
         return candidates.filter { $0.match != .none }.max { lhs, rhs in

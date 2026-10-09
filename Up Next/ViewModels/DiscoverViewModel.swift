@@ -78,6 +78,13 @@ final class DiscoverViewModel {
             }
         }
 
+        var voteCount: Int? {
+            switch self {
+            case .tvShow(let r): r.voteCount
+            case .movie(let r): r.voteCount
+            }
+        }
+
         var mediaType: MediaType {
             switch self {
             case .tvShow: .tvShow
@@ -589,6 +596,7 @@ final class DiscoverViewModel {
     }
 
     private var searchTask: Task<Void, Never>?
+    private var hasPrewarmedSearchModel = false
 
     var searchQuery: String = "" {
         didSet {
@@ -624,47 +632,25 @@ final class DiscoverViewModel {
     }
 
     var hasSearchResults: Bool {
-        !searchResultItems.isEmpty || !describedSearchItems.isEmpty
+        let layout = searchLayout
+        return !layout.leadingTitles.isEmpty || !layout.described.isEmpty || !layout.trailingTitles.isEmpty
     }
 
-    /// The title search's best hit for the type on screen is the name the user typed — then the
-    /// title matches lead and the described section follows.
-    var describedSearchLeads: Bool {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let top = selectedMediaType == .tvShows
-            ? searchTVResults.first.map { ($0.name, $0.voteCount) }
-            : searchMovieResults.first.map { ($0.title, $0.voteCount) }
-        return !(top.map { SearchRanking.isStrongTitleMatch($0.0, query: query, voteCount: $0.1) } ?? false)
-    }
-
-    /// The title search results as `DiscoverItem`s for the selected media type, so the view can
-    /// reuse the same row builder as Browse All. A title the described section lists first is
-    /// left out here.
-    var searchResultItems: [DiscoverItem] {
-        let items: [DiscoverItem] = selectedMediaType == .tvShows
+    /// Title matches and the described section for the selected media type, in list order (see
+    /// `DescriptiveSearch.layout`), as `DiscoverItem`s so the view reuses Browse All's rows.
+    var searchLayout: DescriptiveSearch.Layout<DiscoverItem> {
+        let titles: [DiscoverItem] = selectedMediaType == .tvShows
             ? searchTVResults.map { .tvShow($0) }
             : searchMovieResults.map { .movie($0) }
-        guard describedSearchLeads else { return items }
-        let shown = Set(describedItems.map(\.id))
-        return items.filter { !shown.contains($0.id) }
-    }
-
-    /// The described section's rows for the selected media type, minus any the title section
-    /// lists first.
-    var describedSearchItems: [DiscoverItem] {
-        guard !describedSearchLeads else { return describedItems }
-        let titleIDs: [String] = selectedMediaType == .tvShows
-            ? searchTVResults.map { DiscoverItem.tvShow($0).id }
-            : searchMovieResults.map { DiscoverItem.movie($0).id }
-        let shown = Set(titleIDs)
-        return describedItems.filter { !shown.contains($0.id) }
-    }
-
-    private var describedItems: [DiscoverItem] {
-        guard let describedSearch else { return [] }
-        return selectedMediaType == .tvShows
-            ? describedSearch.tvShows.map { .tvShow($0) }
-            : describedSearch.movies.map { .movie($0) }
+        let described: [DiscoverItem] = selectedMediaType == .tvShows
+            ? (describedSearch?.tvShows ?? []).map { .tvShow($0) }
+            : (describedSearch?.movies ?? []).map { .movie($0) }
+        return DescriptiveSearch.layout(
+            titles: titles, described: described,
+            query: searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
+            readsAsDescription: describedSearch?.readsAsDescription == true,
+            id: \.tmdbId, name: \.title, votes: \.voteCount
+        )
     }
 
     /// How many results the *unselected* type has, for the "Show N movies instead" hint.
@@ -710,6 +696,11 @@ final class DiscoverViewModel {
             return
         }
 
+        // Load the on-device model on the first keystroke so the debounced search finds it warm.
+        if !hasPrewarmedSearchModel {
+            hasPrewarmedSearchModel = true
+            SearchModel.prewarm()
+        }
         isSearching = true
         tvSearchError = nil
         movieSearchError = nil
@@ -726,6 +717,8 @@ final class DiscoverViewModel {
     private func performSearch(query: String) async {
         async let tvFetch = fetchTVSearch(query: query)
         async let movieFetch = fetchMovieSearch(query: query)
+        // The on-device model reads the query alongside the title search (see `SearchModel`).
+        async let modelReading = SearchModel.read(query)
         let (tv, movie) = await (tvFetch, movieFetch)
 
         // The shared request task isn't cancelled by us, so check explicitly — a superseded
@@ -744,7 +737,7 @@ final class DiscoverViewModel {
             tv.results.first.map { SearchRanking.titleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? .none,
             movie.results.first.map { SearchRanking.titleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? .none
         )
-        let interpreted = await DescriptiveSearch.run(query: query, titleMatch: titleMatch)
+        let interpreted = await DescriptiveSearch.run(query: query, titleMatch: titleMatch, reading: await modelReading)
         guard !Task.isCancelled else { return }
         let previousType = describedSearchResults?.interpretation.mediaType
         describedSearchResults = interpreted

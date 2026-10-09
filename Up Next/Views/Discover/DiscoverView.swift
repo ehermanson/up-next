@@ -553,13 +553,7 @@ struct DiscoverView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, DesignTokens.Spacing.screenInset)
             }
-            if viewModel.describedSearchLeads {
-                describedSearchResults
-                titleSearchResults
-            } else {
-                titleSearchResults
-                describedSearchResults
-            }
+            searchResultBlocks(viewModel.searchLayout)
         } else {
             EmptyStateView(
                 icon: "magnifyingglass.circle",
@@ -577,24 +571,24 @@ struct DiscoverView: View {
         }
     }
 
+    /// Title headings appear only beside a described section; titles it pushed below are
+    /// "More". Zoom sources use a prefix per block — the same title can sit in two.
     @ViewBuilder
-    private var titleSearchResults: some View {
-        let items = viewModel.searchResultItems
-        if !items.isEmpty {
-            if !viewModel.describedSearchItems.isEmpty {
+    private func searchResultBlocks(_ layout: DescriptiveSearch.Layout<DiscoverViewModel.DiscoverItem>) -> some View {
+        if !layout.leadingTitles.isEmpty {
+            if !layout.described.isEmpty {
                 searchSectionHeader("Title Matches", systemImage: "textformat")
             }
-            searchResultRows(items, surface: "search")
+            searchResultRows(layout.leadingTitles, surface: "search")
         }
-    }
-
-    /// Zoom sources use their own prefix — the same title can sit in both sections.
-    @ViewBuilder
-    private var describedSearchResults: some View {
-        let items = viewModel.describedSearchItems
-        if !items.isEmpty, let described = viewModel.describedSearch {
-            searchSectionHeader(described.summary(for: viewModel.selectedMediaType == .tvShows ? .tvShow : .movie), systemImage: "text.magnifyingglass")
-            searchResultRows(items, surface: "described")
+        if !layout.described.isEmpty, let described = viewModel.describedSearch {
+            searchSectionHeader(described.summary(for: viewModel.selectedMediaType == .tvShows ? .tvShow : .movie),
+                                systemImage: "text.magnifyingglass")
+            searchResultRows(layout.described, surface: "described")
+        }
+        if !layout.trailingTitles.isEmpty {
+            searchSectionHeader(layout.leadingTitles.isEmpty ? "Title Matches" : "More Title Matches", systemImage: "textformat")
+            searchResultRows(layout.trailingTitles, surface: "search")
         }
     }
 

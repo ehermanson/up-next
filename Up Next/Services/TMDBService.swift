@@ -96,6 +96,14 @@ final class TMDBService {
         return response.results
     }
 
+    /// A title's own TMDB keywords (subjects and, lately, mood tags like "reflective").
+    func titleKeywords(id: Int, isTVShow: Bool) async throws -> [TMDBKeyword] {
+        let response: TMDBTitleKeywordsResponse = try await performRequest(
+            endpoint: "/\(isTVShow ? "tv" : "movie")/\(id)/keywords", queryItems: []
+        )
+        return response.results ?? response.keywords ?? []
+    }
+
     /// People named `query` (first page, TMDB's order).
     func searchPeople(query: String) async throws -> [TMDBPersonSearchResult] {
         let response: TMDBPersonSearchResponse = try await performRequest(

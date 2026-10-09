@@ -47,7 +47,7 @@ enum SearchRanking {
     /// words ("the office us"). One-word titles don't count that way — "zombie movies" isn't a
     /// name just because a film is called *Zombie* — and nor does a title hardly anyone has rated:
     /// TMDB has a "Dinosaur Movies" with a handful of votes.
-    enum TitleMatch: Comparable {
+    nonisolated enum TitleMatch: Comparable, Sendable {
         case none, strong, exact
     }
 
