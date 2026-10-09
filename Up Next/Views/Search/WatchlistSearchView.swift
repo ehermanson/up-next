@@ -31,6 +31,9 @@ struct WatchlistSearchView: View {
     @State private var tvSearchError: String?
     @State private var movieSearchError: String?
     @State private var searchTask: Task<Void, Never>?
+    /// Titles matching the query read as a description ("hulu hockey comedy") — see
+    /// `DescriptiveSearch`. Shown as its own section beside the title matches.
+    @State private var describedResults: DescriptiveSearch.Results?
     /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
     @State private var tvRecommendations: [TMDBTVShowSearchResult] = []
@@ -91,19 +94,26 @@ struct WatchlistSearchView: View {
         return nil
     }
 
+    /// `describedResults` while it still answers the query in the field — a slower
+    /// interpretation of the previous query never shows beside the new one's title matches.
+    private var described: DescriptiveSearch.Results? {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return describedResults?.query == query ? describedResults : nil
+    }
+
     private var errorMessage: String? {
         effectiveMediaType == .tvShow ? tvSearchError : movieSearchError
     }
 
     private var hasResults: Bool {
-        effectiveMediaType == .tvShow ? !tvShowResults.isEmpty : !movieResults.isEmpty
+        hasTitleRows || hasDescribedRows
     }
 
     private var hasNoResults: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !isLoading &&
         errorMessage == nil &&
-        (effectiveMediaType == .tvShow ? tvShowResults.isEmpty : movieResults.isEmpty)
+        !hasResults
     }
 
     // MARK: - Cross-type hint
@@ -115,7 +125,10 @@ struct WatchlistSearchView: View {
     /// How many results the *unselected* segment has. Both types are searched on every query,
     /// so this is always current.
     private var crossTypeResultCount: Int {
-        effectiveMediaType == .tvShow ? movieResults.count : tvShowResults.count
+        if effectiveMediaType == .tvShow {
+            return Set(movieResults.map(\.id) + (described?.movies.map(\.id) ?? [])).count
+        }
+        return Set(tvShowResults.map(\.id) + (described?.tvShows.map(\.id) ?? [])).count
     }
 
     /// Only offered when the picker is actually on screen — in a type-scoped context
@@ -260,7 +273,7 @@ struct WatchlistSearchView: View {
             // Only shimmer on a cold search — otherwise keystrokes would blank the
             // previous results while the debounced request is still in flight.
             ShimmerRows()
-        } else if let error = errorMessage {
+        } else if let error = errorMessage, !hasResults {
             errorRow(error)
         } else if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if isLoadingRecommendations {
@@ -319,41 +332,137 @@ struct WatchlistSearchView: View {
         }
     }
 
+    // MARK: - Results
+
+    /// The title search's best hit for the type on screen is the name the user typed — then the
+    /// title matches lead and the described section follows.
+    private var titleMatchIsStrong: Bool {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if effectiveMediaType == .tvShow {
+            return tvShowResults.first.map { SearchRanking.isStrongTitleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? false
+        }
+        return movieResults.first.map { SearchRanking.isStrongTitleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? false
+    }
+
+    private var describedLeads: Bool { !titleMatchIsStrong }
+
+    // A title can match both ways; it's listed only in whichever section comes first.
+    private var titleTVRows: [TMDBTVShowSearchResult] {
+        guard describedLeads, let described else { return tvShowResults }
+        let shown = Set(described.tvShows.map(\.id))
+        return tvShowResults.filter { !shown.contains($0.id) }
+    }
+
+    private var titleMovieRows: [TMDBMovieSearchResult] {
+        guard describedLeads, let described else { return movieResults }
+        let shown = Set(described.movies.map(\.id))
+        return movieResults.filter { !shown.contains($0.id) }
+    }
+
+    private var describedTVRows: [TMDBTVShowSearchResult] {
+        guard let described else { return [] }
+        guard !describedLeads else { return described.tvShows }
+        let shown = Set(tvShowResults.map(\.id))
+        return described.tvShows.filter { !shown.contains($0.id) }
+    }
+
+    private var describedMovieRows: [TMDBMovieSearchResult] {
+        guard let described else { return [] }
+        guard !describedLeads else { return described.movies }
+        let shown = Set(movieResults.map(\.id))
+        return described.movies.filter { !shown.contains($0.id) }
+    }
+
+    private var hasTitleRows: Bool {
+        effectiveMediaType == .tvShow ? !titleTVRows.isEmpty : !titleMovieRows.isEmpty
+    }
+
+    private var hasDescribedRows: Bool {
+        effectiveMediaType == .tvShow ? !describedTVRows.isEmpty : !describedMovieRows.isEmpty
+    }
+
     @ViewBuilder
     private var resultRows: some View {
-        if effectiveMediaType == .tvShow {
-            ForEach(tvShowResults) { result in
-                SearchResultRowWithImage(
-                    title: result.name,
-                    overview: result.overview,
-                    posterPath: result.posterPath,
-                    mediaId: result.id,
-                    mediaType: .tvShow,
-                    isAdded: isAlreadyAdded(id: result.id, mediaType: effectiveMediaType),
-                    onAdd: { addTVShow(result) },
-                    onTap: { openTVShowDetail(result) },
-                    voteAverage: result.voteAverage,
-                    year: year(from: result.firstAirDate),
-                    transitionSource: (id: MediaIDKey.make(.tvShow, result.id), namespace: detailNamespace)
-                )
-            }
+        if describedLeads {
+            describedSection
+            titleSection
         } else {
-            ForEach(movieResults) { result in
-                SearchResultRowWithImage(
-                    title: result.title,
-                    overview: result.overview,
-                    posterPath: result.posterPath,
-                    mediaId: result.id,
-                    mediaType: .movie,
-                    isAdded: isAlreadyAdded(id: result.id, mediaType: effectiveMediaType),
-                    onAdd: { addMovie(result) },
-                    onTap: { openMovieDetail(result) },
-                    voteAverage: result.voteAverage,
-                    year: year(from: result.releaseDate),
-                    transitionSource: (id: MediaIDKey.make(.movie, result.id), namespace: detailNamespace)
-                )
+            titleSection
+            describedSection
+        }
+    }
+
+    @ViewBuilder
+    private var titleSection: some View {
+        if hasTitleRows && hasDescribedRows {
+            sectionHeaderRow("Title Matches", systemImage: "textformat", id: "titleHeader")
+        }
+        if effectiveMediaType == .tvShow {
+            ForEach(titleTVRows) { tvShowRow($0) }
+        } else {
+            ForEach(titleMovieRows) { movieRow($0) }
+        }
+    }
+
+    /// Zoom sources are prefixed — the same title can sit in both sections.
+    @ViewBuilder
+    private var describedSection: some View {
+        if hasDescribedRows, let described {
+            sectionHeaderRow(described.summary(for: effectiveMediaType), systemImage: "text.magnifyingglass", id: "describedHeader")
+            if effectiveMediaType == .tvShow {
+                ForEach(describedTVRows) { tvShowRow($0, sourcePrefix: "described-") }
+            } else {
+                ForEach(describedMovieRows) { movieRow($0, sourcePrefix: "described-") }
             }
         }
+    }
+
+    private func tvShowRow(_ result: TMDBTVShowSearchResult, sourcePrefix: String = "") -> some View {
+        let sourceID = sourcePrefix + MediaIDKey.make(.tvShow, result.id)
+        return SearchResultRowWithImage(
+            title: result.name,
+            overview: result.overview,
+            posterPath: result.posterPath,
+            mediaId: result.id,
+            mediaType: .tvShow,
+            isAdded: isAlreadyAdded(id: result.id, mediaType: .tvShow),
+            onAdd: { addTVShow(result) },
+            onTap: { openTVShowDetail(result, sourceID: sourceID) },
+            voteAverage: result.voteAverage,
+            year: year(from: result.firstAirDate),
+            transitionSource: (id: sourceID, namespace: detailNamespace)
+        )
+    }
+
+    private func movieRow(_ result: TMDBMovieSearchResult, sourcePrefix: String = "") -> some View {
+        let sourceID = sourcePrefix + MediaIDKey.make(.movie, result.id)
+        return SearchResultRowWithImage(
+            title: result.title,
+            overview: result.overview,
+            posterPath: result.posterPath,
+            mediaId: result.id,
+            mediaType: .movie,
+            isAdded: isAlreadyAdded(id: result.id, mediaType: .movie),
+            onAdd: { addMovie(result) },
+            onTap: { openMovieDetail(result, sourceID: sourceID) },
+            voteAverage: result.voteAverage,
+            year: year(from: result.releaseDate),
+            transitionSource: (id: sourceID, namespace: detailNamespace)
+        )
+    }
+
+    /// Section headings are plain rows, not `Section` headers: `.plain` list headers pin under
+    /// the nav bar and these have no background, so scrolled rows showed through them.
+    private func sectionHeaderRow(_ title: String, systemImage: String, id: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 2, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .id(id)
     }
 
     // MARK: - Recommendations
@@ -369,54 +478,13 @@ struct WatchlistSearchView: View {
         return "Recommended For You"
     }
 
-    /// The heading is a plain row, not a `Section` header: `.plain` list headers pin under the
-    /// nav bar and this one has no background, so scrolled rows showed through it.
     @ViewBuilder
     private var recommendationsSection: some View {
-        Label(recommendationHeaderText, systemImage: "sparkles")
-            .font(.subheadline)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
-            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 2, trailing: 0))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .id("recommendationsHeader")
-
-        Group {
-            if effectiveMediaType == .tvShow {
-                ForEach(tvRecommendations) { result in
-                    SearchResultRowWithImage(
-                        title: result.name,
-                        overview: result.overview,
-                        posterPath: result.posterPath,
-                        mediaId: result.id,
-                        mediaType: .tvShow,
-                        isAdded: isAlreadyAdded(id: result.id, mediaType: effectiveMediaType),
-                        onAdd: { addTVShow(result) },
-                        onTap: { openTVShowDetail(result) },
-                        voteAverage: result.voteAverage,
-                        year: year(from: result.firstAirDate),
-                        transitionSource: (id: MediaIDKey.make(.tvShow, result.id), namespace: detailNamespace)
-                    )
-                }
-            } else {
-                ForEach(movieRecommendations) { result in
-                    SearchResultRowWithImage(
-                        title: result.title,
-                        overview: result.overview,
-                        posterPath: result.posterPath,
-                        mediaId: result.id,
-                        mediaType: .movie,
-                        isAdded: isAlreadyAdded(id: result.id, mediaType: effectiveMediaType),
-                        onAdd: { addMovie(result) },
-                        onTap: { openMovieDetail(result) },
-                        voteAverage: result.voteAverage,
-                        year: year(from: result.releaseDate),
-                        transitionSource: (id: MediaIDKey.make(.movie, result.id), namespace: detailNamespace)
-                    )
-                }
-            }
+        sectionHeaderRow(recommendationHeaderText, systemImage: "sparkles", id: "recommendationsHeader")
+        if effectiveMediaType == .tvShow {
+            ForEach(tvRecommendations) { tvShowRow($0) }
+        } else {
+            ForEach(movieRecommendations) { movieRow($0) }
         }
     }
 
@@ -538,14 +606,14 @@ struct WatchlistSearchView: View {
             .union(addedIDs)
     }
 
-    private func openTVShowDetail(_ result: TMDBTVShowSearchResult) {
-        detailSourceID = MediaIDKey.make(.tvShow, result.id)
+    private func openTVShowDetail(_ result: TMDBTVShowSearchResult, sourceID: String) {
+        detailSourceID = sourceID
         let tvShow = service.mapToTVShow(result)
         detailListItem = ListItem(tvShow: tvShow)
     }
 
-    private func openMovieDetail(_ result: TMDBMovieSearchResult) {
-        detailSourceID = MediaIDKey.make(.movie, result.id)
+    private func openMovieDetail(_ result: TMDBMovieSearchResult, sourceID: String) {
+        detailSourceID = sourceID
         let movie = service.mapToMovie(result)
         detailListItem = ListItem(movie: movie)
     }
@@ -583,6 +651,7 @@ struct WatchlistSearchView: View {
             isLoading = false
             tvShowResults = []
             movieResults = []
+            describedResults = nil
             return
         }
 
@@ -645,6 +714,28 @@ struct WatchlistSearchView: View {
         // Kept per type so flipping the segment re-reads the right banner without a refetch.
         tvSearchError = tv.error
         movieSearchError = movies.error
+
+        // Interpreted after the title results land (they're shown meanwhile), since a strong title
+        // match decides whether a keyword-only query is worth interpreting at all. `isLoading`
+        // stays on until then so an empty title search doesn't flash "No Results Found".
+        let titleMatch = max(
+            tv.results.first.map { SearchRanking.titleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? .none,
+            movies.results.first.map { SearchRanking.titleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? .none
+        )
+        let scopedType: MediaType? = switch context {
+        case .tvShows: .tvShow
+        case .movies: .movie
+        case .all, .specificList: nil
+        }
+        let interpreted = await DescriptiveSearch.run(query: query, titleMatch: titleMatch, mediaType: scopedType)
+        guard !Task.isCancelled else { return }
+        let previousType = describedResults?.interpretation.mediaType
+        describedResults = interpreted
+        // "slasher movies" — the query just named a type, so show it. Only on the change, so a
+        // user who taps back to the other type isn't overruled by the next keystroke.
+        if showMediaTypePicker, let mediaType = interpreted?.interpretation.mediaType, mediaType != previousType {
+            selectedMediaType = mediaType
+        }
         isLoading = false
     }
 
