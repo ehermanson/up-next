@@ -116,10 +116,13 @@ enum SearchRanking {
         return 0
     }
 
-    /// Case- and diacritic-folded, punctuation collapsed to single spaces ("The Walk-In" →
-    /// "the walk in").
+    /// Case- and diacritic-folded, apostrophes dropped ("Schitt's" → "schitts", one word as TMDB
+    /// searches it), other punctuation collapsed to single spaces ("The Walk-In" → "the walk in").
+    /// The one normalizer: titles, queries and the model's readings all go through it, so they
+    /// compare equal.
     static func normalized(_ text: String) -> String {
-        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        text.replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "’", with: "")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
             .map { $0.isLetter || $0.isNumber ? String($0) : " " }
             .joined()
             .split(separator: " ")

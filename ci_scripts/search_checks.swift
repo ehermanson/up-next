@@ -224,6 +224,17 @@ let cases: [Case] = [
     Case("the studio apple tv", .finds(["The Studio"], .tvShow, top: 3)),
     // Upcoming and brand-new titles have few or no votes
     Case("avengers doomsday", .finds(["Avengers: Doomsday"], .movie, top: 3)),
+    // Names being typed — a prefix the model may read as a description, with one leftover word
+    // that is some TMDB keyword
+    Case("squid", .finds(["Squid Game"], .tvShow, top: 1)),
+    Case("the morning", .finds(["The Morning Show"], .tvShow, top: 1)),
+    Case("the walking", .finds(["The Walking Dead"], .tvShow, top: 1)),
+    // A name plus a genre word, and a name with an apostrophe
+    // The rules can't tell a name plus a genre word from "heist movies"; the model can.
+    Case("the bear comedy", .finds(["The Bear"], .tvShow, top: 1), needsModel: true),
+    Case("the office sitcom", .finds(["The Office"], .tvShow, top: 1)),
+    Case("schitt's creek netflix", .finds(["Schitt's Creek"], .tvShow, top: 1)),
+    Case("shows like schitt's creek", .heading("Like Schitt's Creek", .tvShow)),
     // Names the model may misread as descriptions
     Case("you", .noSection, .finds(["You"], .tvShow, top: 1)),
     Case("industry", .noSection, .finds(["Industry"], .tvShow, top: 1)),
@@ -233,7 +244,7 @@ let cases: [Case] = [
     Case("zombies", .finds(["The Walking Dead", "World War Z", "Zombieland"], .movie), needsModel: true),
     Case("movie where a guy relives the same day", .finds(["Groundhog Day", "Palm Springs", "Edge of Tomorrow"], .movie), needsModel: true),
     Case("cozy mystery shows", .finds(["Only Murders in the Building", "Murder, She Wrote", "Poker Face", "Death in Paradise", "Midsomer Murders"], .tvShow),
-         gap: "TMDB's \"cozy\" keyword tags almost nothing, and the model's guesses for a two-word niche description vary — invented ones (\"House of Secrets\") rightly fail to verify"),
+         gap: "regressed with the shape-only schema: the model's guesses for this query are now invented (\"House of Secrets\") and rightly fail to verify, and TMDB's \"cozy\" keyword tags one show"),
     Case("sports dramedy", .finds(["Ted Lasso", "Shoresy", "Friday Night Lights"], .tvShow), needsModel: true),
     // People, origins, "like X"
     Case("tom hanks movies", .finds(["Forrest Gump", "Cast Away", "Saving Private Ryan", "Toy Story"], .movie)),
@@ -256,6 +267,9 @@ let cases: [Case] = [
     Case("movies like inception 2010", .heading("Like Inception", .movie)),
     Case("i would like something like ted lasso", .finds(["The Office", "Parks and Recreation", "Brooklyn Nine-Nine", "The Good Place", "Abbott Elementary", "Schitt's Creek", "Shrinking", "Scrubs"], .tvShow)),
     Case("tom hanks christmas", .finds(["The Polar Express"], .movie)),
+    Case("anything in the vein of ted lasso", .heading("Like Ted Lasso", .tvShow), needsModel: true),
+    // The rules split a four-word run word by word ("Age or Sport"); the model keeps the phrase.
+    Case("coming of age sports movies", .heading("Coming of Age", .movie), needsModel: true),
     // Known gaps — the to-do list
     Case("shows like ted lasso", .finds(["Shrinking", "Schitt's Creek", "Abbott Elementary", "Ghosts", "The Good Place"], .tvShow), needsModel: true),
     Case("movies like inception", .finds(["Interstellar", "Tenet", "The Matrix", "Shutter Island", "The Prestige"], .movie)),
@@ -296,13 +310,17 @@ func outcome(for query: String) async -> Outcome {
     let service = TMDBService.shared
     async let tvTitles = (try? service.searchTVShows(query: query)) ?? []
     async let movieTitles = (try? service.searchMovies(query: query)) ?? []
-    let started = ContinuousClock.now
-    async let modelReading = usesModel ? SearchModel.read(query) : nil
+    let modelOn = usesModel
+    async let modelReading: (SearchModel.Reading?, Double) = {
+        guard modelOn else { return (nil, 0) }
+        let started = ContinuousClock.now
+        let reading = await SearchModel.read(query)
+        let elapsed = ContinuousClock.now - started
+        return (reading, Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18)
+    }()
     var (tv, movies) = await (tvTitles, movieTitles)
     var outcome = Outcome()
-    outcome.reading = await modelReading
-    outcome.readingSeconds = Double((ContinuousClock.now - started).components.attoseconds) / 1e18
-        + Double((ContinuousClock.now - started).components.seconds)
+    (outcome.reading, outcome.readingSeconds) = await modelReading
     let best = SearchRanking.bestTitleMatch(
         tvShow: tv.first.map { ($0.name, $0.voteCount, $0.firstAirDate, $0.popularity) },
         movie: movies.first.map { ($0.title, $0.voteCount, $0.releaseDate, $0.popularity) }, query: query
