@@ -502,8 +502,8 @@ struct DiscoverView: View {
         }
     }
 
-    private func browseRow(_ item: DiscoverViewModel.DiscoverItem) -> some View {
-        let sourceID = transitionSourceID("browse", item)
+    private func browseRow(_ item: DiscoverViewModel.DiscoverItem, surface: String = "browse") -> some View {
+        let sourceID = transitionSourceID(surface, item)
         return SearchResultRowWithImage(
             title: item.title,
             overview: item.overview,
@@ -548,24 +548,13 @@ struct DiscoverView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, DesignTokens.Spacing.screenInset)
             }
-            Group {
-                if horizontalSizeClass == .regular {
-                    // Same grid as Browse All — one full-width column of rows reads as banners.
-                    LazyVGrid(columns: DesignTokens.Layout.rowGridColumns, spacing: 12) {
-                        ForEach(viewModel.searchResultItems) { item in
-                            browseRow(item)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                } else {
-                    LazyVStack(spacing: 8) {
-                        ForEach(viewModel.searchResultItems) { item in
-                            browseRow(item)
-                        }
-                    }
-                }
+            if viewModel.describedSearchLeads {
+                describedSearchResults
+                titleSearchResults
+            } else {
+                titleSearchResults
+                describedSearchResults
             }
-            .padding(.horizontal, DesignTokens.Spacing.screenInset)
         } else {
             EmptyStateView(
                 icon: "magnifyingglass.circle",
@@ -581,6 +570,57 @@ struct DiscoverView: View {
             }
             .padding(.vertical, 40)
         }
+    }
+
+    @ViewBuilder
+    private var titleSearchResults: some View {
+        let items = viewModel.searchResultItems
+        if !items.isEmpty {
+            if !viewModel.describedSearchItems.isEmpty {
+                searchSectionHeader("Title Matches", systemImage: "textformat")
+            }
+            searchResultRows(items, surface: "search")
+        }
+    }
+
+    /// Zoom sources use their own prefix — the same title can sit in both sections.
+    @ViewBuilder
+    private var describedSearchResults: some View {
+        let items = viewModel.describedSearchItems
+        if !items.isEmpty, let described = viewModel.describedSearch {
+            searchSectionHeader(described.summary(for: viewModel.selectedMediaType == .tvShows ? .tvShow : .movie), systemImage: "text.magnifyingglass")
+            searchResultRows(items, surface: "described")
+        }
+    }
+
+    private func searchSectionHeader(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, DesignTokens.Spacing.screenInset + 4)
+    }
+
+    private func searchResultRows(_ items: [DiscoverViewModel.DiscoverItem], surface: String) -> some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                // Same grid as Browse All — one full-width column of rows reads as banners.
+                LazyVGrid(columns: DesignTokens.Layout.rowGridColumns, spacing: 12) {
+                    ForEach(items) { item in
+                        browseRow(item, surface: surface)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            } else {
+                LazyVStack(spacing: 8) {
+                    ForEach(items) { item in
+                        browseRow(item, surface: surface)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.screenInset)
     }
 
     // MARK: - Detail Sheet

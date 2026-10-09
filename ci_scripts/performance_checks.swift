@@ -9,19 +9,35 @@ nonisolated struct TMDBTVShowSearchResult {
     let id: Int
     var name: String { "TV \(id)" }
     var posterPath: String? { nil }; var overview: String? { nil }
-    var voteAverage: Double? { nil }; var firstAirDate: String? { nil }
+    var voteAverage: Double? { nil }; var firstAirDate: String? { nil }; var voteCount: Int? { nil }
 }
 nonisolated struct TMDBMovieSearchResult {
     let id: Int
     var title: String { "Movie \(id)" }
     var posterPath: String? { nil }; var overview: String? { nil }
-    var voteAverage: Double? { nil }; var releaseDate: String? { nil }
+    var voteAverage: Double? { nil }; var releaseDate: String? { nil }; var voteCount: Int? { nil }
 }
 nonisolated struct TMDBTVShowSearchResponse { let results: [TMDBTVShowSearchResult]; let totalPages: Int? }
 nonisolated struct TMDBMovieSearchResponse { let results: [TMDBMovieSearchResult]; let totalPages: Int? }
 nonisolated struct Episode { let airDate: String?; let seasonNumber: Int; let episodeNumber: Int }
 nonisolated struct Detail { let nextEpisodeToAir: Episode? }
 func episodeCode(season: Int, episode: Int) -> String { "S\(season)E\(episode)" }
+enum SearchRanking {
+    enum TitleMatch: Comparable { case none, strong, exact }
+    static func titleMatch(_ title: String, query: String, voteCount: Int?) -> TitleMatch { .none }
+    static func isStrongTitleMatch(_ title: String, query: String, voteCount: Int?) -> Bool { false }
+}
+enum DescriptiveSearch {
+    struct Interpretation { var mediaType: MediaType? }
+    struct Results {
+        let query: String
+        let interpretation: Interpretation
+        let tvShows: [TMDBTVShowSearchResult]
+        let movies: [TMDBMovieSearchResult]
+        func summary(for mediaType: MediaType) -> String { "" }
+    }
+    static func run(query: String, titleMatch: SearchRanking.TitleMatch, mediaType: MediaType? = nil) async -> Results? { nil }
+}
 @Observable final class ProviderSettings {
     static let shared = ProviderSettings()
     var onlyMyServicesInDiscover = false

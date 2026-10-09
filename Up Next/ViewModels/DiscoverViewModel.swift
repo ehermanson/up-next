@@ -136,13 +136,15 @@ final class DiscoverViewModel {
     var selectedMediaType: DiscoverMediaType = .tvShows {
         didSet {
             guard oldValue != selectedMediaType else { return }
-            // TV and movie genre ids are different vocabularies — a genre picked for one type
-            // means something else (or nothing) for the other.
-            if selectedGenre != nil { selectedGenre = nil }
             // While searching, both types are already fetched — flipping the segment just
             // changes which results are displayed, no refetch needed. `scheduleSearch`'s
-            // empty-query branch catches up (via `loadedMediaType`) once search ends.
+            // empty-query branch catches up (via `loadedMediaType`), genre included, once search
+            // ends — clearing the genre here would start a Browse reload behind the results.
             guard !isSearchActive else { return }
+            // TV and movie genre ids are different vocabularies — a genre picked for one type
+            // means something else (or nothing) for the other. Its own reload is cancelled by
+            // `performReload`.
+            if selectedGenre != nil { selectedGenre = nil }
             reloadTask?.cancel()
             reloadTask = Task { await performReload() }
         }
@@ -597,6 +599,16 @@ final class DiscoverViewModel {
 
     var searchTVResults: [TMDBTVShowSearchResult] = []
     var searchMovieResults: [TMDBMovieSearchResult] = []
+    /// Titles matching the query read as a description ("hulu hockey comedy") — see
+    /// `DescriptiveSearch`. Shown as its own section beside the title matches.
+    private var describedSearchResults: DescriptiveSearch.Results?
+
+    /// `describedSearchResults` while it still answers the current query — a slower
+    /// interpretation of the previous query never shows beside the new one's title matches.
+    var describedSearch: DescriptiveSearch.Results? {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return describedSearchResults?.query == query ? describedSearchResults : nil
+    }
     var isSearching = false
     /// Set when the type currently on screen failed to load. A failed type keeps its previous
     /// results rather than blanking, mirroring `WatchlistSearchView`.
@@ -612,20 +624,55 @@ final class DiscoverViewModel {
     }
 
     var hasSearchResults: Bool {
-        selectedMediaType == .tvShows ? !searchTVResults.isEmpty : !searchMovieResults.isEmpty
+        !searchResultItems.isEmpty || !describedSearchItems.isEmpty
     }
 
-    /// The current search results as `DiscoverItem`s for the selected media type, so the view can
-    /// reuse the same row builder as Browse All.
+    /// The title search's best hit for the type on screen is the name the user typed — then the
+    /// title matches lead and the described section follows.
+    var describedSearchLeads: Bool {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let top = selectedMediaType == .tvShows
+            ? searchTVResults.first.map { ($0.name, $0.voteCount) }
+            : searchMovieResults.first.map { ($0.title, $0.voteCount) }
+        return !(top.map { SearchRanking.isStrongTitleMatch($0.0, query: query, voteCount: $0.1) } ?? false)
+    }
+
+    /// The title search results as `DiscoverItem`s for the selected media type, so the view can
+    /// reuse the same row builder as Browse All. A title the described section lists first is
+    /// left out here.
     var searchResultItems: [DiscoverItem] {
-        selectedMediaType == .tvShows
+        let items: [DiscoverItem] = selectedMediaType == .tvShows
             ? searchTVResults.map { .tvShow($0) }
             : searchMovieResults.map { .movie($0) }
+        guard describedSearchLeads else { return items }
+        let shown = Set(describedItems.map(\.id))
+        return items.filter { !shown.contains($0.id) }
+    }
+
+    /// The described section's rows for the selected media type, minus any the title section
+    /// lists first.
+    var describedSearchItems: [DiscoverItem] {
+        guard !describedSearchLeads else { return describedItems }
+        let titleIDs: [String] = selectedMediaType == .tvShows
+            ? searchTVResults.map { DiscoverItem.tvShow($0).id }
+            : searchMovieResults.map { DiscoverItem.movie($0).id }
+        let shown = Set(titleIDs)
+        return describedItems.filter { !shown.contains($0.id) }
+    }
+
+    private var describedItems: [DiscoverItem] {
+        guard let describedSearch else { return [] }
+        return selectedMediaType == .tvShows
+            ? describedSearch.tvShows.map { .tvShow($0) }
+            : describedSearch.movies.map { .movie($0) }
     }
 
     /// How many results the *unselected* type has, for the "Show N movies instead" hint.
     var crossTypeSearchResultCount: Int {
-        selectedMediaType == .tvShows ? searchMovieResults.count : searchTVResults.count
+        if selectedMediaType == .tvShows {
+            return Set(searchMovieResults.map(\.id) + (describedSearch?.movies.map(\.id) ?? [])).count
+        }
+        return Set(searchTVResults.map(\.id) + (describedSearch?.tvShows.map(\.id) ?? [])).count
     }
 
     var searchCrossTypeHintTitle: String {
@@ -652,10 +699,12 @@ final class DiscoverViewModel {
             movieSearchError = nil
             searchTVResults = []
             searchMovieResults = []
+            describedSearchResults = nil
             // The segment may have flipped mid-search (`selectedMediaType`'s didSet skips the
             // reload while `isSearchActive`) — catch up now that carousels/Browse All are back
             // on screen, instead of showing the wrong media type until the next full reload.
             if loadedMediaType != selectedMediaType {
+                if selectedGenre != nil { selectedGenre = nil }
                 Task { await runOwnedReload() }
             }
             return
@@ -688,6 +737,22 @@ final class DiscoverViewModel {
         // Only the type on screen gets to raise the error banner.
         tvSearchError = tv.error
         movieSearchError = movie.error
+
+        // Interpreted after the title results land (they're shown meanwhile) — see
+        // `WatchlistSearchView.performSearch`.
+        let titleMatch = max(
+            tv.results.first.map { SearchRanking.titleMatch($0.name, query: query, voteCount: $0.voteCount) } ?? .none,
+            movie.results.first.map { SearchRanking.titleMatch($0.title, query: query, voteCount: $0.voteCount) } ?? .none
+        )
+        let interpreted = await DescriptiveSearch.run(query: query, titleMatch: titleMatch)
+        guard !Task.isCancelled else { return }
+        let previousType = describedSearchResults?.interpretation.mediaType
+        describedSearchResults = interpreted
+        // "slasher movies" — the query just named a type, so show it. Only on the change, so a
+        // user who taps back to the other type isn't overruled by the next keystroke.
+        if let mediaType = interpreted?.interpretation.mediaType, mediaType != previousType {
+            selectedMediaType = mediaType == .tvShow ? .tvShows : .movies
+        }
         isSearching = false
     }
 
