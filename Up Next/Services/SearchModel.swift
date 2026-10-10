@@ -74,6 +74,18 @@ enum SearchModel {
         SystemLanguageModel(guardrails: .permissiveContentTransformations)
     }
 
+    /// Greedy decoding: the same query reads the same way every time, which the search checks
+    /// rely on. The parameter was renamed in the iOS 27 SDK (`sampling:` → `samplingMode:`, back-
+    /// deployed) and only the new name exists there; Xcode Cloud builds with Xcode 26, where only
+    /// the old one does. Swift 6.4 is the Xcode 27 toolchain.
+    private nonisolated static var greedy: GenerationOptions {
+        #if compiler(>=6.4)
+        GenerationOptions(samplingMode: .greedy)
+        #else
+        GenerationOptions(sampling: .greedy)
+        #endif
+    }
+
     /// `SEARCH_MODEL=off` in the environment turns it off — how `check_search.sh` scores the
     /// rules alone.
     static var isAvailable: Bool {
@@ -116,7 +128,7 @@ enum SearchModel {
                 instructions: "You recommend movies and TV shows. Match tone and feel, not just surface subject matter."
             )
             let response = try await session.respond(
-                to: prompt, generating: SimilarOutput.self, options: GenerationOptions(samplingMode: .greedy)
+                to: prompt, generating: SimilarOutput.self, options: greedy
             )
             // It sometimes labels them ("Normal People (TV show)"), which no title search matches.
             return response.content.titles.map {
@@ -157,7 +169,7 @@ enum SearchModel {
                 instructions: "You pick, from a numbered list of candidates, the ones most like a given title in tone, feel and viewing experience — not the ones that merely share its setting, city, profession or premise. Answer with candidate numbers only."
             )
             return try await session.respond(
-                to: prompt, generating: RankingOutput.self, options: GenerationOptions(samplingMode: .greedy)
+                to: prompt, generating: RankingOutput.self, options: greedy
             ).content.picks
         }
         guard let picks else { return nil }
@@ -218,7 +230,7 @@ enum SearchModel {
             // would color this one.
             let session = LanguageModelSession(model: model, instructions: instructions)
             let output = try await session.respond(
-                to: "Search query: \(query)", generating: Output.self, options: GenerationOptions(samplingMode: .greedy)
+                to: "Search query: \(query)", generating: Output.self, options: greedy
             ).content
             func text(_ value: String) -> String? {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
