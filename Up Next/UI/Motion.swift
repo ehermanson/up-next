@@ -15,6 +15,9 @@ enum Motion {
 
     /// Springy pop for state flips — checkmarks filling, the Add pill flipping to its status style.
     static let pop: Animation = .spring(response: 0.34, dampingFraction: 0.6)
+    /// Rows that arrive together settling into place — search results landing at once, rather
+    /// than appearing and then being pushed down by a section that arrives a moment later.
+    static let settle: Animation = .spring(response: 0.4, dampingFraction: 0.85)
 
     /// Cross-fade for a control that swaps between two forms (gear ↔ avatars, addable ↔ status pill).
     static let morph: AnyTransition = .scale(scale: 0.7).combined(with: .opacity)

@@ -554,6 +554,7 @@ struct DiscoverView: View {
                     .padding(.horizontal, DesignTokens.Spacing.screenInset)
             }
             searchResultBlocks(viewModel.searchLayout)
+                .animation(reduceMotion ? nil : Motion.settle, value: viewModel.searchLanding)
         } else {
             EmptyStateView(
                 icon: "magnifyingglass.circle",

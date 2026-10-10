@@ -374,7 +374,7 @@ func outcome(for query: String) async -> Outcome {
     func rows<Item>(_ layout: DescriptiveSearch.Layout<Item>, _ name: (Item) -> String) -> [String] {
         (layout.leadingTitles + layout.described + layout.trailingTitles).map(name)
     }
-    let descriptionFirst = outcome.described?.readsAsDescription == true || titleQuery != query
+    let descriptionFirst = (outcome.described?.readsAsDescription == true && session.sectionMayLead) || titleQuery != query
     outcome.rows[.tvShow] = rows(DescriptiveSearch.layout(
         titles: tv, described: outcome.described?.tvShows ?? [], query: titleQuery, descriptionFirst: descriptionFirst,
         id: \.id, name: \.name, votes: \.voteCount, date: \.firstAirDate, popularity: \.popularity), \.name)

@@ -31,12 +31,15 @@ struct WatchlistSearchView: View {
     @State private var tvSearchError: String?
     @State private var movieSearchError: String?
     @State private var searchTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Titles matching the query read as a description ("hulu hockey comedy") — see
     /// `DescriptiveSearch`. Shown as its own section beside the title matches.
     @State private var describedResults: DescriptiveSearch.Results?
     /// What the title rows were searched with: the query, or its name part after
     /// `DescriptiveSearch.remainderTitleSearch` ("the bear hulu" → "the bear").
     @State private var titleQuery = ""
+    /// Whether the described section may lead the rows (see `SearchSession.Outcome`).
+    @State private var sectionMayLead = true
     /// Type-namespaced IDs (see `MediaIDKey`) of titles added during this session.
     @State private var addedIDs: Set<String> = []
     @State private var tvRecommendations: [TMDBTVShowSearchResult] = []
@@ -344,7 +347,7 @@ struct WatchlistSearchView: View {
     private var tvLayout: DescriptiveSearch.Layout<TMDBTVShowSearchResult> {
         DescriptiveSearch.layout(
             titles: tvShowResults, described: described?.tvShows ?? [], query: titleQuery,
-            descriptionFirst: described?.readsAsDescription == true || titleQuery != trimmedQuery,
+            descriptionFirst: (described?.readsAsDescription == true && sectionMayLead) || titleQuery != trimmedQuery,
             id: \.id, name: \.name, votes: \.voteCount, date: \.firstAirDate, popularity: \.popularity
         )
     }
@@ -352,7 +355,7 @@ struct WatchlistSearchView: View {
     private var movieLayout: DescriptiveSearch.Layout<TMDBMovieSearchResult> {
         DescriptiveSearch.layout(
             titles: movieResults, described: described?.movies ?? [], query: titleQuery,
-            descriptionFirst: described?.readsAsDescription == true || titleQuery != trimmedQuery,
+            descriptionFirst: (described?.readsAsDescription == true && sectionMayLead) || titleQuery != trimmedQuery,
             id: \.id, name: \.title, votes: \.voteCount, date: \.releaseDate, popularity: \.popularity
         )
     }
@@ -673,18 +676,23 @@ struct WatchlistSearchView: View {
         }
         guard let outcome else { return }
         let previousType = describedResults?.interpretation.mediaType
-        describedResults = outcome.described
+        // One settle for everything that lands together (the held rows, the section, the name
+        // part's rows); gated on Reduce Motion.
+        withAnimation(reduceMotion ? nil : Motion.settle) {
+            sectionMayLead = outcome.sectionMayLead
+            describedResults = outcome.described
+            if let found = outcome.remainder {
+                tvShowResults = found.tvShows
+                movieResults = found.movies
+                titleQuery = found.query
+            }
+            isLoading = false
+        }
         // "slasher movies" — the query just named a type, so show it. Only on the change, so a
         // user who taps back to the other type isn't overruled by the next keystroke.
         if showMediaTypePicker, let mediaType = outcome.described?.interpretation.mediaType, mediaType != previousType {
             selectedMediaType = mediaType
         }
-        if let found = outcome.remainder {
-            tvShowResults = found.tvShows
-            movieResults = found.movies
-            titleQuery = found.query
-        }
-        isLoading = false
     }
 
     // MARK: - Add Actions

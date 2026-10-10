@@ -233,6 +233,17 @@ enum DescriptiveSearch {
             || interpretation.origin != nil || interpretation.person != nil || interpretation.reference != nil
     }
 
+    /// Whether `query` reads as a description to the rules alone — a genre, service, type, year,
+    /// origin or "like X" in it — decided synchronously from the majors' names (no provider
+    /// fetch). `SearchSession` uses it to hold the title rows back for a query whose section will
+    /// lead, so results land once instead of reordering under the user's thumb. A bare subject
+    /// ("zombies") doesn't count: its title rows are usually what was meant.
+    static func looksDescriptive(_ query: String) -> Bool {
+        let parsed = parse(query, providers: providerLookup([], selectedIDs: []))
+        return parsed.interpretation.descriptiveFacetCount > 0 || parsed.interpretation.mediaType != nil
+            || parsed.referenceQuery != nil
+    }
+
     // MARK: - Grounding
 
     /// The model's reading as a `Parse`. The model is trusted on the query's *shape* — which

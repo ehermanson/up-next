@@ -620,6 +620,11 @@ final class DiscoverViewModel {
     /// What the title results were searched with: the query, or its name part after
     /// `DescriptiveSearch.remainderTitleSearch` ("the bear hulu" → "the bear").
     private var searchTitleQuery = ""
+    /// Whether the described section may lead the rows (see `SearchSession.Outcome`).
+    private var searchSectionMayLead = true
+    /// Bumped when a search's rows and section land together — the view animates on it, so the
+    /// settle is one motion rather than rows appearing and then being pushed down.
+    private(set) var searchLanding = 0
 
     /// `describedSearchResults` while it still answers the current query — a slower
     /// interpretation of the previous query never shows beside the new one's title matches.
@@ -658,7 +663,8 @@ final class DiscoverViewModel {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         return DescriptiveSearch.layout(
             titles: titles, described: described, query: searchTitleQuery,
-            descriptionFirst: describedSearch?.readsAsDescription == true || searchTitleQuery != query,
+            descriptionFirst: (describedSearch?.readsAsDescription == true && searchSectionMayLead)
+                || searchTitleQuery != query,
             id: \.tmdbId, name: \.title, votes: \.voteCount, date: \.airOrReleaseDate, popularity: \.popularity
         )
     }
@@ -736,18 +742,21 @@ final class DiscoverViewModel {
         }
         guard let outcome else { return }
         let previousType = describedSearchResults?.interpretation.mediaType
+        searchSectionMayLead = outcome.sectionMayLead
         describedSearchResults = outcome.described
-        // "slasher movies" — the query just named a type, so show it. Only on the change, so a
-        // user who taps back to the other type isn't overruled by the next keystroke.
-        if let mediaType = outcome.described?.interpretation.mediaType, mediaType != previousType {
-            selectedMediaType = mediaType == .tvShow ? .tvShows : .movies
-        }
         if let found = outcome.remainder {
             searchTVResults = found.tvShows
             searchMovieResults = found.movies
             searchTitleQuery = found.query
         }
         isSearching = false
+        // Everything above lands in one pass; the view settles it on this (see `DiscoverView`).
+        searchLanding &+= 1
+        // "slasher movies" — the query just named a type, so show it. Only on the change, so a
+        // user who taps back to the other type isn't overruled by the next keystroke.
+        if let mediaType = outcome.described?.interpretation.mediaType, mediaType != previousType {
+            selectedMediaType = mediaType == .tvShow ? .tvShows : .movies
+        }
     }
 
 

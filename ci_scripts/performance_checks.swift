@@ -34,6 +34,8 @@ enum SearchSession {
         var tvError: String?; var movieError: String?
     }
     struct Outcome {
+        var titlesShownEarly = false
+        var sectionMayLead = true
         var described: DescriptiveSearch.Results?
         var remainder: (query: String, tvShows: [TMDBTVShowSearchResult], movies: [TMDBMovieSearchResult])?
     }
