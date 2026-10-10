@@ -76,8 +76,8 @@ enum SearchModel {
 
     /// Greedy decoding: the same query reads the same way every time, which the search checks
     /// rely on. The parameter was renamed in the iOS 27 SDK (`sampling:` → `samplingMode:`, back-
-    /// deployed) and only the new name exists there; Xcode Cloud builds with Xcode 26, where only
-    /// the old one does. Swift 6.4 is the Xcode 27 toolchain.
+    /// deployed) and only the new name exists there; a Swift 6.2/6.3 toolchain (Xcode 26) has only
+    /// the old one. Swift 6.4 is the Xcode 27 toolchain.
     private nonisolated static var greedy: GenerationOptions {
         #if compiler(>=6.4)
         GenerationOptions(samplingMode: .greedy)
