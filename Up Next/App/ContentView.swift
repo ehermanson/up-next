@@ -21,6 +21,14 @@ struct ContentView: View {
     /// before the library loads, not a tour of every settings row.
     @State private var showingOnboarding = false
     @State private var showingSearch = false
+    /// Screenshot mode's `--search` query for the add sheet; empty in every other run.
+    private var screenshotSearchText: String {
+        #if DEBUG
+        ScreenshotMode.isEnabled ? (ScreenshotMode.requestedSearch ?? "") : ""
+        #else
+        ""
+        #endif
+    }
     /// One-time offer to bring a 1.x library over (`LegacyImporter.isOfferPending`).
     @State private var showingLegacyImport = false
     @State private var joinErrorMessage: String?
@@ -89,6 +97,12 @@ struct ContentView: View {
                 await ScreenshotMode.seed(library: viewModel, lists: customListViewModel)
                 if let requestedID = ScreenshotMode.requestedDetailID {
                     screenshotDetailItem = viewModel.tvShows.first(where: { $0.media?.id == requestedID })
+                }
+                // `--search` on a watchlist tab opens the add sheet with the query typed in — the
+                // one search surface whose field stays visible on iPad (Discover's collapses to a
+                // toolbar icon there).
+                if ScreenshotMode.requestedSearch != nil, ScreenshotMode.requestedTab != "discover" {
+                    showingSearch = true
                 }
             }
             #endif
@@ -386,7 +400,8 @@ struct ContentView: View {
                 onMovieAdded: { viewModel.addMovie($0) },
                 customListViewModel: customListViewModel,
                 libraryTVShows: viewModel.tvShows,
-                libraryMovies: viewModel.movies
+                libraryMovies: viewModel.movies,
+                initialSearchText: screenshotSearchText
             )
         }
         #if DEBUG

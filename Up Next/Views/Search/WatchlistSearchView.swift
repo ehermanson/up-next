@@ -62,7 +62,8 @@ struct WatchlistSearchView: View {
         onMovieAdded: @escaping (Movie) -> Void,
         customListViewModel: CustomListViewModel? = nil,
         libraryTVShows: [ListItem] = [],
-        libraryMovies: [ListItem] = []
+        libraryMovies: [ListItem] = [],
+        initialSearchText: String = ""
     ) {
         self.context = context
         self.existingTVShowIDs = existingTVShowIDs
@@ -73,6 +74,7 @@ struct WatchlistSearchView: View {
         self.libraryTVShows = libraryTVShows
         self.libraryMovies = libraryMovies
         _selectedMediaType = State(initialValue: initialMediaType)
+        _searchText = State(initialValue: initialSearchText)
     }
 
     private var showMediaTypePicker: Bool {
@@ -237,6 +239,8 @@ struct WatchlistSearchView: View {
             .task {
                 SearchModel.prewarm()
                 loadRecommendations()
+                // An initial query (screenshot mode) never passes through `onChange`.
+                if !searchText.isEmpty { scheduleSearch(for: searchText) }
             }
             .onDisappear {
                 searchTask?.cancel()
