@@ -49,6 +49,15 @@ nonisolated struct TMDBPersonSearchResult: Codable, Sendable {
     let id: Int
     let name: String
     let popularity: Double?
+    /// "Acting", "Directing", …
+    let knownForDepartment: String?
+    /// The titles TMDB lists them for, each with its `media_type` — what tells a film actor
+    /// from a TV one.
+    let knownFor: [TMDBKnownFor]?
+}
+
+nonisolated struct TMDBKnownFor: Codable, Sendable {
+    let mediaType: String?
 }
 
 nonisolated struct TMDBPersonSearchResponse: Codable, Sendable {

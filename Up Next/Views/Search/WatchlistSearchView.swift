@@ -679,7 +679,7 @@ struct WatchlistSearchView: View {
             movieSearchError = titles.movieError
         }
         guard let outcome else { return }
-        let previousType = describedResults?.interpretation.mediaType
+        let previousType = describedResults?.interpretation.openingMediaType
         // One settle for everything that lands together (the held rows, the section, the name
         // part's rows); gated on Reduce Motion.
         withAnimation(reduceMotion ? nil : Motion.settle) {
@@ -694,7 +694,7 @@ struct WatchlistSearchView: View {
         }
         // "slasher movies" — the query just named a type, so show it. Only on the change, so a
         // user who taps back to the other type isn't overruled by the next keystroke.
-        if showMediaTypePicker, let mediaType = outcome.described?.interpretation.mediaType, mediaType != previousType {
+        if showMediaTypePicker, let mediaType = outcome.described?.interpretation.openingMediaType, mediaType != previousType {
             selectedMediaType = mediaType
         }
     }

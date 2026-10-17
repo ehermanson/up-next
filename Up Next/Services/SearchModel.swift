@@ -4,8 +4,8 @@ import os
 import Synchronization
 
 /// Apple's on-device language model (Foundation Models) reading the *shape* of a search query:
-/// a name or a description; the bare title in "the bear hulu"; the person in "tom hanks
-/// christmas"; the title in "anything in the vein of ted lasso"; the subjects of a sentence-long
+/// a name or a description; the bare title in "the bear hulu"; the people in "tom hanks
+/// christmas" and "ben affleck and kerry washington"; the title in "anything in the vein of ted lasso"; the subjects of a sentence-long
 /// description ("movie where a guy relives the same day" → time loop); and, for a description,
 /// the well-known titles that fit it (→ Groundhog Day).
 ///
@@ -30,8 +30,8 @@ enum SearchModel {
         let isTitleName: Bool
         /// That name on its own, without service or type words ("the bear hulu" → "The Bear").
         var title: String?
-        /// An actor, director or creator the query names.
-        var person: String?
+        /// Actors, directors or creators the query names, in the query's order.
+        var people: [String] = []
         /// The title in "shows like ted lasso".
         var similarTo: String?
         /// What a sentence-long description is about, as TMDB might tag it ("time loop").
@@ -51,8 +51,8 @@ enum SearchModel {
         @Guide(description: "When isTitleName: that title alone, copied from the query without the service or type words around it (\"the bear hulu\" → \"the bear\", \"breaking bad netflix\" → \"breaking bad\"). Otherwise empty.")
         var title: String
 
-        @Guide(description: "An actor, director or creator the query names, copied from the query (\"tom hanks movies\" → \"tom hanks\"). Empty unless the query contains a person's name.")
-        var person: String
+        @Guide(description: "Every actor, director or creator the query names, each copied from the query (\"tom hanks movies\" → [\"tom hanks\"], \"ben affleck and kerry washington\" → [\"ben affleck\", \"kerry washington\"]). Empty unless the query contains a person's name.", .maximumCount(3))
+        var people: [String]
 
         @Guide(description: "The title the query wants things similar to, copied from the query (\"shows like ted lasso on netflix\" → \"ted lasso\", \"something similar to the bear\" → \"the bear\"). Empty unless the query asks for things like a title.")
         var similarTo: String
@@ -64,7 +64,7 @@ enum SearchModel {
     private nonisolated static let instructions = """
         You read what someone typed into the search field of an app for tracking movies and TV \
         shows. Decide whether it names a specific title or describes what they want to watch. \
-        Copy a title, person or "like" title from the query's own words; never add one the query \
+        Copy a title, people or a "like" title from the query's own words; never add one the query \
         doesn't contain. For a description, suggest the titles that fit it best. Never invent titles.
         """
 
@@ -237,7 +237,7 @@ enum SearchModel {
                 return trimmed.isEmpty ? nil : trimmed
             }
             return Reading(
-                isTitleName: output.isTitleName, title: text(output.title), person: text(output.person),
+                isTitleName: output.isTitleName, title: text(output.title), people: output.people.compactMap(text),
                 similarTo: text(output.similarTo), subjects: output.subjects.compactMap(text),
                 titles: output.titles.compactMap(text)
             )

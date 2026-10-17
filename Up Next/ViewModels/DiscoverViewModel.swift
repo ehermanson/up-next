@@ -741,7 +741,7 @@ final class DiscoverViewModel {
             movieSearchError = titles.movieError
         }
         guard let outcome else { return }
-        let previousType = describedSearchResults?.interpretation.mediaType
+        let previousType = describedSearchResults?.interpretation.openingMediaType
         searchSectionMayLead = outcome.sectionMayLead
         describedSearchResults = outcome.described
         if let found = outcome.remainder {
@@ -754,7 +754,7 @@ final class DiscoverViewModel {
         searchLanding &+= 1
         // "slasher movies" — the query just named a type, so show it. Only on the change, so a
         // user who taps back to the other type isn't overruled by the next keystroke.
-        if let mediaType = outcome.described?.interpretation.mediaType, mediaType != previousType {
+        if let mediaType = outcome.described?.interpretation.openingMediaType, mediaType != previousType {
             selectedMediaType = mediaType == .tvShow ? .tvShows : .movies
         }
     }

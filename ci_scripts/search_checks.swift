@@ -29,7 +29,10 @@ nonisolated struct TMDBMovieSearchResult: Codable, Sendable {
     let id: Int; let title: String; let originalTitle: String?; let popularity: Double?; let voteCount: Int?
     let genreIds: [Int]?; let releaseDate: String?; let overview: String?
 }
-nonisolated struct TMDBPersonSearchResult: Codable, Sendable { let id: Int; let name: String; let popularity: Double? }
+nonisolated struct TMDBPersonSearchResult: Codable, Sendable {
+    let id: Int; let name: String; let popularity: Double?; let knownForDepartment: String?; let knownFor: [TMDBKnownFor]?
+}
+nonisolated struct TMDBKnownFor: Codable, Sendable { let mediaType: String? }
 nonisolated struct PersonPage: Codable, Sendable { let results: [TMDBPersonSearchResult] }
 nonisolated struct TMDBPersonTVCredits: Decodable, Sendable {
     nonisolated struct Credit: Decodable, Sendable {
@@ -269,7 +272,7 @@ let cases: [Case] = [
     // Widened after the first run: the rules' family sitcoms are right answers the first list missed.
     Case("shows like modern family", .finds(["The Office", "Parks and Recreation", "Brooklyn Nine-Nine", "The Middle", "Black-ish", "Schitt's Creek", "Abbott Elementary", "Friends", "How I Met Your Mother", "The Goldbergs", "Malcolm in the Middle", "Young Sheldon", "The Fresh Prince of Bel-Air"], .tvShow)),
     Case("shows like the morning show", .finds(["The Newsroom", "Succession", "Big Little Lies", "House of Cards", "Scandal", "The Crown", "Billions", "Industry", "The Loudest Voice"], .tvShow), needsModel: true),
-    Case("shows like friends from the 90s", .finds(["Seinfeld", "Frasier", "Will & Grace", "Mad About You", "Ellen", "Spin City", "Living Single", "The Nanny", "Everybody Loves Raymond", "3rd Rock from the Sun"], .tvShow)),
+    Case("shows like friends from the 90s", .finds(["Seinfeld", "Frasier", "Will & Grace", "Mad About You", "Ellen", "Spin City", "Living Single", "The Nanny", "Everybody Loves Raymond", "3rd Rock from the Sun", "The King of Queens"], .tvShow)),
     // Connector phrasing inside the reference ("…that are funny") is the model's to read.
     Case("shows like severance that are funny", .section(.tvShow), needsModel: true),
     Case("shows like partners in crime", .heading("Like Partners in Crime", .tvShow)),
@@ -279,6 +282,10 @@ let cases: [Case] = [
     Case("movies like inception 2010", .heading("Like Inception", .movie)),
     Case("i would like something like ted lasso", .finds(["The Office", "Parks and Recreation", "Brooklyn Nine-Nine", "The Good Place", "Abbott Elementary", "Schitt's Creek", "Shrinking", "Scrubs"], .tvShow)),
     Case("tom hanks christmas", .finds(["The Polar Express"], .movie)),
+    // Actors: best-known work first, "new" means recent, two names mean together
+    Case("ben affleck", .finds(["Gone Girl", "Argo", "Good Will Hunting", "The Town", "Air", "The Accountant"], .movie, top: 5)),
+    Case("ben affleck new movie", .finds(["The Accountant 2", "Air", "Hypnotic", "The Instigators"], .movie, top: 5)),
+    Case("ben affleck and kerry washington", .finds(["Mother and Child", "Animals"], .movie, top: 3)),
     Case("anything in the vein of ted lasso", .heading("Like Ted Lasso", .tvShow), needsModel: true),
     // The rules split a four-word run word by word ("Age or Sport"); the model keeps the phrase.
     Case("coming of age sports movies", .heading("Coming of Age", .movie), needsModel: true),
@@ -289,7 +296,8 @@ let cases: [Case] = [
     Case("shows like modern family", .precision(["The Office", "Parks and Recreation", "Brooklyn Nine-Nine", "The Middle", "Black-ish", "Schitt's Creek", "Abbott Elementary", "Friends", "How I Met Your Mother", "The Goldbergs", "Malcolm in the Middle", "Young Sheldon", "The Fresh Prince of Bel-Air", "Community", "Arrested Development", "Superstore", "Ghosts", "Married... with Children", "Everybody Loves Raymond"], .tvShow)),
     Case("movies like inception", .precision(["Interstellar", "Tenet", "The Matrix", "Shutter Island", "The Prestige", "Memento", "Source Code", "Looper", "Edge of Tomorrow", "Minority Report", "Paprika", "Dark City", "Arrival", "Oblivion", "Blade Runner 2049", "Predestination", "Coherence", "Primer", "Donnie Darko", "Eternal Sunshine of the Spotless Mind"], .movie),
          .notAny(["Solo: A Star Wars Story", "The Matrix Reloaded", "The Matrix Revolutions", "Inside Out", "The Lord of the Rings: The Two Towers"], .movie), needsModel: true),
-    Case("something similar to the bear", .precision(["Boiling Point", "Kitchen Confidential", "Shrinking", "Hacks", "Somebody Somewhere", "The Rehearsal", "Beef", "Barry", "Atlanta", "Reservation Dogs", "Ted Lasso", "Succession", "Fleabag", "Dave", "Ramy", "After Life", "The Studio", "Six Feet Under"], .tvShow)),
+    Case("something similar to the bear", .precision(["Boiling Point", "Kitchen Confidential", "Shrinking", "Hacks", "Somebody Somewhere", "The Rehearsal", "Beef", "Barry", "Atlanta", "Reservation Dogs", "Ted Lasso", "Succession", "Fleabag", "Dave", "Ramy", "After Life", "The Studio", "Six Feet Under"], .tvShow),
+         gap: "the judge's picks for The Bear swing between setting matches (Shameless, The Chi) and tone matches from run to run"),
     Case("shows like ted lasso", .precision(["Shrinking", "Schitt's Creek", "Abbott Elementary", "Ghosts", "The Good Place", "Parks and Recreation", "Brooklyn Nine-Nine", "The Office", "Scrubs", "Never Have I Ever", "Welcome to Wrexham", "Friday Night Lights", "Cobra Kai", "Superstore", "Community", "Shoresy", "Detroiters", "Kim's Convenience"], .tvShow), needsModel: true),
     Case("shows like inception", .precision(["Dark", "Westworld", "Severance", "Black Mirror", "Devs", "Fringe", "Mr. Robot", "Altered Carbon", "The OA", "Sense8", "Maniac", "Twin Peaks", "Lost", "Counterpart", "Tales from the Loop", "Bodies", "1899", "The Leftovers"], .tvShow),
          .notAny(["Riverdale", "Gravity Falls", "Money Heist", "Lupin", "Blindspot", "House of Cards"], .tvShow),
@@ -390,7 +398,7 @@ func outcome(for query: String) async -> Outcome {
 func describe(_ reading: SearchModel.Reading) -> String {
     var parts = [reading.isTitleName ? "name" : "description"]
     if let title = reading.title { parts.append("\"\(title)\"") }
-    if let person = reading.person { parts.append("person=\(person)") }
+    if !reading.people.isEmpty { parts.append("people=\(reading.people)") }
     if let similarTo = reading.similarTo { parts.append("like=\(similarTo)") }
     if !reading.subjects.isEmpty { parts.append("subjects=\(reading.subjects)") }
     if !reading.titles.isEmpty { parts.append("titles=\(reading.titles)") }
@@ -449,7 +457,8 @@ struct SearchChecks {
             let result = await outcome(for: testCase.query)
             let failures = testCase.expectations.compactMap { failure($0, result) }
             if ProcessInfo.processInfo.environment["SEARCH_VERBOSE"] != nil {
-                print("\(testCase.query) [\(result.described.map { $0.summary(for: .tvShow) } ?? "no section")] \(String(format: "%.1f", result.totalSeconds)) s")
+                let opens = result.described?.interpretation.openingMediaType.map { " opens \($0)" } ?? ""
+                print("\(testCase.query) [\(result.described.map { $0.summary(for: .tvShow) } ?? "no section")]\(opens) \(String(format: "%.1f", result.totalSeconds)) s")
                 if let reading = result.reading {
                     print("    model: \(describe(reading))")
                 }

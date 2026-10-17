@@ -60,7 +60,7 @@ enum SearchModel {
     static func read(_ query: String) async -> Reading? { nil }
 }
 enum DescriptiveSearch {
-    struct Interpretation { var mediaType: MediaType? }
+    struct Interpretation { var mediaType: MediaType?; var openingMediaType: MediaType? { mediaType } }
     struct Results {
         let query: String
         let interpretation: Interpretation

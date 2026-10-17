@@ -87,7 +87,7 @@ enum SearchSession {
             // "the studio apple tv": the section's subjects were the name's own words. A type word
             // ("christmas movies on disney plus") or a genre says the person described something.
             if let interpretation = outcome.described?.interpretation, interpretation.mediaType == nil,
-               interpretation.genres.isEmpty, interpretation.person == nil, interpretation.reference == nil,
+               interpretation.genres.isEmpty, interpretation.people.isEmpty, interpretation.reference == nil,
                interpretation.origin == nil {
                 outcome.described = nil
             }
