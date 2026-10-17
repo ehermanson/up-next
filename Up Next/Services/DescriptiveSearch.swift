@@ -1063,7 +1063,10 @@ enum DescriptiveSearch {
         guard !Task.isCancelled else { return nil }
         async let typed = try? service.searchKeywords(query: term)
         async let singular = forms.count > 1 ? try? service.searchKeywords(query: forms[0]) : []
-        let results = await (typed ?? []) + (singular ?? [])
+        // "super hero" is TMDB's "superhero"; its search doesn't bridge the space on its own.
+        let joined = term.replacingOccurrences(of: " ", with: "")
+        async let compound = joined != term ? try? service.searchKeywords(query: joined) : []
+        let results = await (typed ?? []) + (singular ?? []) + (compound ?? [])
         var seen = Set<Int>()
         return matchingKeyword(results.filter { seen.insert($0.id).inserted }, forms: forms)
     }
@@ -1075,11 +1078,15 @@ enum DescriptiveSearch {
     /// everything else is noise.
     static func matchingKeyword(_ keywords: [TMDBKeyword], forms: [String]) -> Keyword? {
         let oneWord = !forms.contains { $0.contains(" ") }
+        // Spaces don't count: "super hero" and "superhero" are one keyword to the person typing,
+        // and TMDB has both (the common one is the joined one).
+        func squashed(_ text: String) -> String { text.replacingOccurrences(of: " ", with: "") }
+        let squashedForms = forms.map(squashed)
         var exact: [(rank: Int, keyword: TMDBKeyword)] = []
         var kinds: [Int] = []
         for keyword in keywords {
             let name = SearchRanking.normalized(keyword.name)
-            if let rank = forms.firstIndex(of: name) {
+            if let rank = squashedForms.firstIndex(of: squashed(name)) {
                 exact.append((rank, keyword))
             } else if oneWord, case let words = name.split(separator: " "), words.count == 2,
                       forms.contains(String(words[1])) {

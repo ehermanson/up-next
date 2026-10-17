@@ -286,6 +286,10 @@ let cases: [Case] = [
     Case("ben affleck", .finds(["Gone Girl", "Argo", "Good Will Hunting", "The Town", "Air", "The Accountant"], .movie, top: 5)),
     Case("ben affleck new movie", .finds(["The Accountant 2", "Air", "Hypnotic", "The Instigators"], .movie, top: 5)),
     Case("ben affleck and kerry washington", .finds(["Mother and Child", "Animals"], .movie, top: 3)),
+    // "super hero" is TMDB's one-word keyword "superhero"
+    Case("super hero movie ben affleck", .finds(["Batman v Superman: Dawn of Justice", "Justice League", "Daredevil", "Zack Snyder's Justice League"], .movie, top: 3)),
+    Case("super hero movie christian bale", .finds(["The Dark Knight", "Batman Begins", "The Dark Knight Rises"], .movie, top: 3)),
+    Case("super hero movies", .finds(["The Avengers", "Spider-Man: No Way Home", "The Dark Knight", "Avengers: Endgame", "Deadpool", "Iron Man"], .movie)),
     Case("anything in the vein of ted lasso", .heading("Like Ted Lasso", .tvShow), needsModel: true),
     // The rules split a four-word run word by word ("Age or Sport"); the model keeps the phrase.
     Case("coming of age sports movies", .heading("Coming of Age", .movie), needsModel: true),
